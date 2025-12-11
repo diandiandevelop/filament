@@ -60,47 +60,109 @@ class ConcreteDispatcher;
 class Dispatcher;
 class CommandStream;
 
+/**
+ * Driver 抽象基类
+ * 
+ * Driver 是所有后端实现的基类，定义了统一的渲染 API 接口。
+ * 具体后端（OpenGL、Vulkan、Metal、WebGPU）需要实现这些虚函数。
+ * 
+ * 架构说明：
+ * - 主线程通过 DriverApi 调用 Driver 方法，命令被序列化到命令流
+ * - 渲染线程从命令流读取命令并执行对应的 Driver 方法
+ * - 异步方法通过命令流执行，同步方法直接调用
+ */
 class Driver {
 public:
     virtual ~Driver() noexcept;
 
+    /**
+     * 获取元素类型的大小（字节数）
+     * @param type 元素类型（BYTE、FLOAT、HALF 等）
+     * @return 元素类型的大小（字节）
+     */
     static size_t getElementTypeSize(ElementType type) noexcept;
 
-    // called from the main thread (NOT the render-thread) at various intervals, this
-    // is where the driver can execute user callbacks.
+    /**
+     * 清理回调队列
+     * 
+     * 在主线程（非渲染线程）定期调用，用于执行用户回调。
+     * 这是 Driver 执行用户回调的唯一入口点。
+     * 
+     * 实现说明：
+     * - 从回调队列中取出所有待处理的回调
+     * - 在主线程执行这些回调
+     * - 确保回调在正确的线程上下文中执行
+     */
     virtual void purge() noexcept = 0;
 
+    /**
+     * 获取着色器模型版本
+     * @return 着色器模型（如 GLSL 330、GLSL ES 300 等）
+     */
     virtual ShaderModel getShaderModel() const noexcept = 0;
 
-    // The shader languages used for shaders for this driver in order of preference, used to inform
-    // matdbg.
-    //
-    // The `preferredLanguage` is only a hint. If the backend supports it, it will appear first in
-    // the list.
-    //
-    // For OpenGL, this distinguishes whether the driver's shaders are powered by ESSL1 or ESSL3.
-    // This information is used by matdbg to display the correct shader code to the web UI and patch
-    // the correct chunk when rebuilding shaders live.
-    //
-    // Metal shaders can either be MSL or Metal libraries, but at time of writing, matdbg can only
-    // interface with MSL.
+    /**
+     * 获取支持的着色器语言列表（按优先级排序）
+     * 
+     * 用于 matdbg（材质调试工具）显示正确的着色器代码。
+     * 
+     * @param preferredLanguage 首选语言（仅作为提示）
+     * @return 支持的着色器语言列表，如果支持首选语言，它会在列表最前面
+     * 
+     * 说明：
+     * - OpenGL: 区分 ESSL1 和 ESSL3
+     * - Metal: 可以是 MSL 或 Metal 库，但 matdbg 目前只支持 MSL
+     */
     virtual utils::FixedCapacityVector<ShaderLanguage> getShaderLanguages(
             ShaderLanguage preferredLanguage) const noexcept = 0;
 
-    // Returns the dispatcher. This is only called once during initialization of the CommandStream,
-    // so it doesn't matter that it's virtual.
+    /**
+     * 获取命令分发器
+     * 
+     * 返回 Dispatcher 对象，用于将命令分发到对应的 Driver 方法。
+     * 只在 CommandStream 初始化时调用一次，所以虚函数调用开销可以接受。
+     * 
+     * @return Dispatcher 对象，包含所有 Driver 方法的函数指针映射
+     */
     virtual Dispatcher getDispatcher() const noexcept = 0;
 
-    // called from CommandStream::execute on the render-thread
-    // the fn function will execute a batch of driver commands
-    // this gives the driver a chance to wrap their execution in a meaningful manner
-    // the default implementation simply calls fn
+    /**
+     * 执行一批驱动命令
+     * 
+     * 在渲染线程的 CommandStream::execute() 中调用。
+     * 给 Driver 一个机会包装命令执行的上下文（如设置调试标记、性能分析等）。
+     * 
+     * 默认实现直接调用 fn，但具体后端可以重写以添加：
+     * - 调试标记（pushGroupMarker/popGroupMarker）
+     * - 性能分析（Profiler）
+     * - 错误检查
+     * 
+     * @param fn 要执行的函数，包含一批 Driver 命令
+     */
     virtual void execute(std::function<void(void)> const& fn);
 
-    // This is called on debug build, or when enabled manually on the backend thread side.
+    /**
+     * 调试：命令开始标记
+     * 
+     * 在调试构建或手动启用时，在命令执行前调用。
+     * 用于标记命令执行的开始，便于调试和性能分析。
+     * 
+     * @param cmds 命令流指针
+     * @param synchronous 是否为同步调用
+     * @param methodName 方法名称（用于日志和调试）
+     */
     virtual void debugCommandBegin(CommandStream* cmds,
             bool synchronous, const char* methodName) noexcept = 0;
 
+    /**
+     * 调试：命令结束标记
+     * 
+     * 在命令执行后调用，与 debugCommandBegin 配对使用。
+     * 
+     * @param cmds 命令流指针
+     * @param synchronous 是否为同步调用
+     * @param methodName 方法名称（用于日志和调试）
+     */
     virtual void debugCommandEnd(CommandStream* cmds,
             bool synchronous, const char* methodName) noexcept = 0;
 

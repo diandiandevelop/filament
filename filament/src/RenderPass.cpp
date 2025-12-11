@@ -232,6 +232,7 @@ void RenderPass::appendCommands(FEngine const& engine,
                 std::cref(work), jobs::CountSplitter<JOBS_PARALLEL_FOR_COMMANDS_COUNT>());
         js.runAndWait(jobCommandsParallel);
     }
+    // 生成绘制命令支持多线程分块；空命令槽末尾写入 sentinel
 
     // Always add an "eof" command
     // "eof" command. These commands are guaranteed to be sorted last in the
@@ -246,6 +247,7 @@ void RenderPass::appendCommands(FEngine const& engine,
             ma->prepareProgram(first->info.materialVariant, CompilerPriorityQueue::CRITICAL);
         }
     }
+    // 主线程确保相关 Program 已准备好（编译/链接）
 }
 
 void RenderPass::appendCustomCommand(Command* commands,
@@ -309,7 +311,7 @@ RenderPass::Command* RenderPass::instanceify(DriverApi& driver,
     // TODO: for the case of instancing we could actually use 128 instead of 64 instances
     constexpr size_t maxInstanceCount = CONFIG_MAX_INSTANCES;
 
-    while (curr != last) {
+    while (curr != last) { // 扫描排序后的命令流，尝试合并为 instanced draw
         // Currently, if we have skinning or morphing, we can't use auto instancing. This is
         // because the morphing/skinning data for comparison is not easily accessible; and also
         // because we're assuming that the per-renderable descriptor-set only has the
@@ -341,7 +343,7 @@ RenderPass::Command* RenderPass::instanceify(DriverApi& driver,
         assert_invariant(instanceCount <= CONFIG_MAX_INSTANCES);
 
         if (UTILS_UNLIKELY(instanceCount > 1)) {
-            drawCallsSavedCount += instanceCount - 1;
+            drawCallsSavedCount += instanceCount - 1; // 统计节省的 draw 次数
 
             // allocate our staging buffer only if needed
             if (UTILS_UNLIKELY(!stagingBuffer)) {

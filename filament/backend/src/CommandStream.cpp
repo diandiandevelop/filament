@@ -70,49 +70,73 @@ static UTILS_NOINLINE UTILS_UNUSED std::string_view extractMethodName(std::strin
 
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * CommandStream 构造函数
+ * 
+ * 初始化命令流，设置 Driver 和缓冲区，获取 Dispatcher。
+ * 
+ * @param driver Driver 实例引用
+ * @param buffer 循环缓冲区引用
+ */
 CommandStream::CommandStream(Driver& driver, CircularBuffer& buffer) noexcept
         : mDriver(driver),
           mCurrentBuffer(buffer),
-          mDispatcher(driver.getDispatcher())
+          mDispatcher(driver.getDispatcher())  // 获取命令分发器
 #ifndef NDEBUG
-          , mThreadId(ThreadUtils::getThreadId())
+          , mThreadId(ThreadUtils::getThreadId())  // 记录当前线程 ID（调试用）
 #endif
 {
 #ifdef __ANDROID__
+    // Android 特定：检查是否启用性能计数器
     char property[PROP_VALUE_MAX];
     __system_property_get("debug.filament.perfcounters", property);
     mUsePerformanceCounter = bool(atoi(property));
 #endif
 }
 
+/**
+ * 执行命令流
+ * 
+ * 在渲染线程调用，执行缓冲区中的所有命令。
+ * 
+ * 执行流程：
+ * 1. 启动性能分析器（如果启用）
+ * 2. 通过 Driver::execute() 包装执行（允许后端添加调试标记等）
+ * 3. 循环执行所有命令，直到遇到结束标记
+ * 4. 停止性能分析器并记录指标
+ * 
+ * @param buffer 命令缓冲区起始地址
+ * 
+ * 注意：不能使用 FILAMENT_TRACING_CALL()，因为 execute() 内部也使用 systrace，
+ * 而 END 不保证在这个作用域内发生。
+ */
 void CommandStream::execute(void* buffer) {
-    // NOTE: we can't use FILAMENT_TRACING_CALL() or similar here because, execute() below, also
-    // uses systrace BEGIN/END and the END is not guaranteed to be happening in this scope.
+    Profiler profiler;  // 性能分析器
 
-    Profiler profiler;
-
-
+    // 如果启用性能计数器，启动分析
     if constexpr (FILAMENT_TRACING_ENABLED) {
         if (UTILS_UNLIKELY(mUsePerformanceCounter)) {
-            // we want to remove all this when tracing is completely disabled
-            profiler.resetEvents(Profiler::EV_CPU_CYCLES  | Profiler::EV_BPU_MISSES);
+            // 当追踪完全禁用时，我们希望移除所有这些代码
+            profiler.resetEvents(Profiler::EV_CPU_CYCLES | Profiler::EV_BPU_MISSES);
             profiler.start();
         }
     }
 
     Driver& UTILS_RESTRICT driver = mDriver;
     CommandBase* UTILS_RESTRICT base = static_cast<CommandBase*>(buffer);
+    // 通过 Driver::execute() 执行，允许后端包装执行上下文
     mDriver.execute([&driver, base] {
         auto& d = driver;
         auto p = base;
+        // 循环执行所有命令，直到遇到结束标记（p == nullptr）
         while (UTILS_LIKELY(p)) {
-            p = p->execute(d);
+            p = p->execute(d);  // 执行命令并获取下一个命令
         }
     });
 
+    // 如果启用性能计数器，停止分析并记录指标
     if constexpr (FILAMENT_TRACING_ENABLED) {
         if (UTILS_UNLIKELY(mUsePerformanceCounter)) {
-            // we want to remove all this when tracing is completely disabled
             profiler.stop();
             UTILS_UNUSED Profiler::Counters const counters = profiler.readCounters();
             FILAMENT_TRACING_CONTEXT(FILAMENT_TRACING_CATEGORY_FILAMENT);
@@ -126,7 +150,16 @@ void CommandStream::execute(void* buffer) {
     }
 }
 
+/**
+ * 队列自定义命令
+ * 
+ * 将 lambda 函数作为命令添加到命令流中。
+ * 这比使用 Driver API 效率低得多，应谨慎使用。
+ * 
+ * @param command 要执行的函数对象（会被移动）
+ */
 void CommandStream::queueCommand(std::function<void()> command) {
+    // 分配 CustomCommand 的内存并构造
     new(allocateCommand(CustomCommand::align(sizeof(CustomCommand)))) CustomCommand(std::move(command));
 }
 

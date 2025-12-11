@@ -126,7 +126,7 @@ FrameGraph& FrameGraph::compile() noexcept {
     DependencyGraph& dependencyGraph = mGraph;
 
     // first we cull unreachable nodes
-    dependencyGraph.cull();
+    dependencyGraph.cull(); // 1) 剔除不可达的 pass / 资源节点
 
     /*
      * update the reference counter of the resource themselves and
@@ -163,7 +163,7 @@ FrameGraph& FrameGraph::compile() noexcept {
             passNode->registerResource(pNode->resourceHandle);
         }
 
-        passNode->resolve();
+        passNode->resolve(); // 2) 记录首/末资源使用，供生命周期管理
     }
 
     // add resource to de-virtualize or destroy to the corresponding list for each active pass
@@ -181,6 +181,7 @@ FrameGraph& FrameGraph::compile() noexcept {
             }
         }
     }
+    // 3) 确定资源生命周期：在哪个 pass 分配 / 销毁
 
     /*
      * Resolve Usage bits
@@ -190,7 +191,7 @@ FrameGraph& FrameGraph::compile() noexcept {
         // we could use "getResource(pNode->resourceHandle)->refcount" but that's expensive.
         // We also can't remove or reorder this array, as handles are indices to it.
         // We might need to build an array of indices to active resources.
-        pNode->resolveResourceUsage(dependencyGraph);
+        pNode->resolveResourceUsage(dependencyGraph); // 4) 解析资源使用标志（采样/附件/读写）
     }
 
     return *this;
@@ -219,17 +220,17 @@ void FrameGraph::execute(backend::DriverApi& driver) noexcept {
         for (VirtualResource* resource : node->devirtualize) {
             assert_invariant(resource->first == node);
             resource->devirtualize(resourceAllocator, useProtectedMemory);
-        }
+        } // 1) 去虚拟化：在该 pass 首次使用前创建具体 GPU 资源
 
         // call execute
         FrameGraphResources const resources(*this, *node);
-        node->execute(resources, driver);
+        node->execute(resources, driver); // 2) 执行 pass，内部发 DriverApi 命令
 
         // destroy concrete resources
         for (VirtualResource* resource : node->destroy) {
             assert_invariant(resource->last == node);
             resource->destroy(resourceAllocator);
-        }
+        } // 3) 生命周期结束立即销毁，减少占用
         driver.popGroupMarker();
     }
     driver.popGroupMarker();

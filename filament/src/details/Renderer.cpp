@@ -615,10 +615,12 @@ void FRenderer::renderInternal(FView const* view, bool flush) {
 
     // per-renderpass data
     RootArenaScope rootArenaScope(engine.getPerRenderPassArena());
+    // 每帧的 RenderPass 临时内存，退出本函数自动回收
 
     // create a root job so no other job can escape
     JobSystem& js = engine.getJobSystem();
     auto *rootJob = js.setRootJob(js.createJob());
+    // 根 Job 防止子任务泄漏，保证多线程工作完整收尾
 
     // execute the render pass
     renderJob(rootArenaScope, const_cast<FView&>(*view));
@@ -645,6 +647,7 @@ void FRenderer::renderJob(RootArenaScope& rootArenaScope, FView& view) {
     // DEBUG: driver commands must all happen from the same thread. Enforce that on debug builds.
     driver.debugThreading();
 
+    // ---------- 配置渲染选项（后处理、AA、分辨率、MSAA、SSR 等） ----------
     bool hasPostProcess = view.hasPostProcessPass();
     bool hasScreenSpaceRefraction = false;
     bool hasColorGrading = hasPostProcess;
@@ -830,6 +833,7 @@ void FRenderer::renderJob(RootArenaScope& rootArenaScope, FView& view) {
     FrameGraph fg(*mResourceAllocator,
         isProtectedContent ? FrameGraph::Mode::PROTECTED : FrameGraph::Mode::UNPROTECTED);
     auto& blackboard = fg.getBlackboard();
+    // FrameGraph 负责本帧的资源声明/依赖/自动剔除与最终执行
 
     PostProcessManager::ScreenSpaceRefConfig const ssrConfig = PostProcessManager::prepareMipmapSSR(
             fg, svp.width, svp.height,
@@ -853,6 +857,7 @@ void FRenderer::renderJob(RootArenaScope& rootArenaScope, FView& view) {
     // get into such a case though.
     view.prepareViewport(svp, xvp);
     view.commitUniforms(driver);
+    // 上述 prepare* 完成剔除、光照/阴影数据、UBO 和描述符集提交
 
     /*
      * Update the PER_VIEW UBO use for the structure pass. It never updated again after this point.
@@ -925,6 +930,7 @@ void FRenderer::renderJob(RootArenaScope& rootArenaScope, FView& view) {
                     .variant(shadowVariant));
         blackboard["shadows"] = shadows;
     }
+    // 阴影贴图渲染：输出 shadow 纹理写入 FrameGraph blackboard
 
     // When we don't have a custom RenderTarget, customRenderTarget below is nullptr and is
     // recorded in the list of targets already rendered into -- this ensures that
@@ -977,6 +983,7 @@ void FRenderer::renderJob(RootArenaScope& rootArenaScope, FView& view) {
             .keepOverrideStart = keepOverrideStartFlags,
             .keepOverrideEnd = keepOverrideEndFlags
     }, viewRenderTarget);
+    // 将 SwapChain 或自定义 RenderTarget 作为外部资源导入 FrameGraph
 
     const TextureFormat hdrFormat = getHdrFormat(view, needsAlphaChannel);
 
@@ -997,6 +1004,7 @@ void FRenderer::renderJob(RootArenaScope& rootArenaScope, FView& view) {
             .hasScreenSpaceReflectionsOrRefractions = ssReflectionsOptions.enabled,
             .enabledStencilBuffer = view.isStencilBufferEnabled()
     };
+    // Color Pass 配置：视口/MSAA/HDR 格式/清屏等
 
     /*
      * Depth + Color passes
@@ -1151,6 +1159,7 @@ void FRenderer::renderJob(RootArenaScope& rootArenaScope, FView& view) {
 
     // create the pass, which generates all its commands (this is a heavy operation)
     RenderPass const pass{ passBuilder.build(engine, driver) };
+    // RenderPass 构建：生成排序后的绘制命令列表
 
     // now that we have the commands we can figure out if we have refraction commands
     auto* const firstRefractionCommand = [&view](RenderPass const& pass) {
@@ -1220,6 +1229,7 @@ void FRenderer::renderJob(RootArenaScope& rootArenaScope, FView& view) {
                 .structure = structure
             },
             colorBufferDesc, config, colorGradingConfigForColor, pass.getExecutor());
+    // FrameGraph Color Pass：执行 RenderPass 命令并输出线性/色调映射结果
 
     if (UTILS_UNLIKELY(hasScreenSpaceRefraction)) {
         // This cancels the colorPass() call above if refraction is active.
@@ -1486,6 +1496,7 @@ void FRenderer::renderJob(RootArenaScope& rootArenaScope, FView& view) {
     //DLOG(INFO) << graphviz.c_str();
 
     fg.execute(driver);
+    // FrameGraph 生命周期：forward/present -> compile(分配资源/剔除) -> execute(依赖序执行 pass)
 
     // save the current history entry and destroy the oldest entry
     view.commitFrameHistory(engine);

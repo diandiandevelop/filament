@@ -71,6 +71,7 @@ vec3 isotropicLobe(const PixelParams pixel, const Light light, const vec3 h,
     return (D * V) * F;
 }
 
+// Cook–Torrance 镜面：D(粗糙度,N·H) * V(可见性,Smith GGX) * F(Schlick)
 vec3 specularLobe(const PixelParams pixel, const Light light, const vec3 h,
         float NoV, float NoL, float NoH, float LoH) {
 #if defined(MATERIAL_HAS_ANISOTROPY)
@@ -117,8 +118,7 @@ vec3 surfaceShading(const PixelParams pixel, const Light light, float occlusion)
 
     // TODO: attenuate the diffuse lobe to avoid energy gain
 
-    // The energy compensation term is used to counteract the darkening effect
-    // at high roughness
+    // energyCompensation 抵消高粗糙度下 GGX 多次散射导致的变暗
     vec3 color = Fd + Fr * pixel.energyCompensation;
 
 #if defined(MATERIAL_HAS_SHEEN_COLOR)

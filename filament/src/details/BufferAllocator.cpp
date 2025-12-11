@@ -70,6 +70,7 @@ void BufferAllocator::reset(allocation_size_t newTotalSize) {
     firstNode->offsetMapIterator = offsetMapIter.first;
 }
 
+// Best-fit allocate a slot (aligned to slotSize); may return REALLOCATION_REQUIRED if no space.
 std::pair<BufferAllocator::AllocationId, BufferAllocator::allocation_size_t>
     BufferAllocator::allocate(allocation_size_t size) noexcept {
     if (size == 0) {

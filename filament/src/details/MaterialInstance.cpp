@@ -59,8 +59,13 @@ namespace filament {
 
 using namespace backend;
 
+// MaterialInstance 构造函数：创建材质实例
+// engine: Filament 引擎引用
+// material: 关联的 Material（材质定义）
+// name: 实例名称（可选，如果为 nullptr 则使用 Material 的名称）
 FMaterialInstance::FMaterialInstance(FEngine& engine, FMaterial const* material, const char* name) noexcept
         : mMaterial(material),
+          // 创建描述符集，使用 Material 的描述符集布局
           mDescriptorSet("MaterialInstance", material->getDescriptorSetLayout()),
           mCulling(CullingMode::BACK),
           mShadowCulling(CullingMode::BACK),
@@ -70,58 +75,66 @@ FMaterialInstance::FMaterialInstance(FEngine& engine, FMaterial const* material,
           mHasScissor(false),
           mIsDoubleSided(false),
           mIsDefaultInstance(false),
+          // 是否使用 UBO 批处理（从 Material 继承）
           mUseUboBatching(material->useUboBatching()),
           mTransparencyMode(TransparencyMode::DEFAULT),
           mName(name ? CString(name) : material->getName()) {
     FEngine::DriverApi& driver = engine.getDriverApi();
 
-    // even if the material doesn't have any parameters, we allocate a small UBO because it's
-    // expected by the per-material descriptor-set layout
+    // 即使材质没有任何参数，我们也分配一个小的 UBO（最小 16 字节）
+    // 因为 per-material 描述符集布局期望有一个 UBO
     size_t const uboSize = std::max(size_t(16), material->getUniformInterfaceBlock().getSize());
     mUniforms = UniformBuffer(uboSize);
 
+    // 根据是否使用 UBO 批处理选择不同的 UBO 分配策略
     if (mUseUboBatching) {
+        // UBO 批处理模式：不立即分配，由 UboManager 统一管理
         mUboData = BufferAllocator::UNALLOCATED;
         engine.getUboManager()->manageMaterialInstance(this);
     } else {
+        // 独立 UBO 模式：立即创建独立的 BufferObject
         mUboData = driver.createBufferObject(mUniforms.getSize(), BufferObjectBinding::UNIFORM,
                 BufferUsage::STATIC, ImmutableCString{ material->getName().c_str_safe() });
-        // set the UBO, always descriptor 0
+        // 设置 UBO 到描述符集，总是使用 descriptor 0
         mDescriptorSet.setBuffer(material->getDescriptorSetLayout(),
                 0, std::get<Handle<HwBufferObject>>(mUboData), 0, mUniforms.getSize());
     }
 
+    // 从 Material 的 RasterState 继承渲染状态
     const RasterState& rasterState = material->getRasterState();
-    // At the moment, only MaterialInstances have a stencil state, but in the future it should be
-    // possible to set the stencil state directly on a material (through material definitions, or
-    // MaterialBuilder).
-    // TODO: Here is where we'd "inherit" the stencil state from the Material.
+    // 注意：目前只有 MaterialInstance 有 stencil state，但未来应该可以直接在 Material 上设置
+    // TODO: 这里应该从 Material 继承 stencil state
     // mStencilState = material->getStencilState();
 
-    // We inherit the resolved culling mode rather than the builder-set culling mode.
-    // This preserves the property whereby double-sidedness automatically disables culling.
+    // 我们继承已解析的 culling mode，而不是 builder 设置的 culling mode
+    // 这样可以保持 double-sidedness 自动禁用 culling 的特性
     mCulling = rasterState.culling;
     mShadowCulling = rasterState.culling;
     mColorWrite = rasterState.colorWrite;
     mDepthWrite = rasterState.depthWrite;
     mDepthFunc = rasterState.depthFunc;
 
+    // 生成材质排序键（用于渲染排序，基于 Material ID 和 Instance ID）
     mMaterialSortingKey = RenderPass::makeMaterialSortingKey(
             material->getId(), material->generateMaterialInstanceId());
 
+    // 如果材质使用 MASKED 混合模式，设置遮罩阈值
     if (material->getBlendingMode() == BlendingMode::MASKED) {
         setMaskThreshold(material->getMaskThreshold());
     }
 
+    // 如果材质支持双面渲染，设置双面状态
     if (material->hasDoubleSidedCapability()) {
         setDoubleSided(material->isDoubleSided());
     }
 
+    // 如果材质启用镜面反射抗锯齿，设置相关参数
     if (material->hasSpecularAntiAliasing()) {
         setSpecularAntiAliasingVariance(material->getSpecularAntiAliasingVariance());
         setSpecularAntiAliasingThreshold(material->getSpecularAntiAliasingThreshold());
     }
 
+    // 设置透明度模式
     setTransparencyMode(material->getTransparencyMode());
 }
 
@@ -215,45 +228,59 @@ void FMaterialInstance::commit(FEngine& engine) const {
     }
 }
 
+// 提交 MaterialInstance 的参数到 GPU
+// driver: 驱动 API 引用
+// uboManager: UBO 管理器（用于 UBO 批处理模式）
+// 此方法将 Uniform Buffer 和纹理参数更新到 GPU，并提交 DescriptorSet
 void FMaterialInstance::commit(FEngine::DriverApi& driver, UboManager* uboManager) const {
+    // 1. 更新 Uniform Buffer（如果已修改）
     if (mUniforms.isDirty()) {
-        mUniforms.clean();
+        mUniforms.clean();  // 清除脏标记
         if (isUsingUboBatching()) {
+            // UBO 批处理模式：更新批处理 Buffer 中的槽位
             if (!BufferAllocator::isValid(getAllocationId())) {
-                // The allocation hasn't happened yet, return.
+                // 分配尚未发生，返回（等待分配完成）
                 return;
             }
-
+            // 更新批处理 Buffer 中的指定槽位
             uboManager->updateSlot(driver, getAllocationId(), mUniforms.toBufferDescriptor(driver));
         }
         else {
+            // 独立 UBO 模式：更新独立的 BufferObject
             auto* ubHandle = std::get_if<Handle<HwBufferObject>>(&mUboData);
             assert_invariant(ubHandle != nullptr);
             driver.updateBufferObject(*ubHandle, mUniforms.toBufferDescriptor(driver), 0);
         }
     }
+    
+    // 2. 更新纹理参数（如果有）
     if (!mTextureParameters.empty()) {
         for (auto const& [binding, p]: mTextureParameters) {
             assert_invariant(p.texture);
-            // TODO: figure out a way to do this more efficiently (isValid() is a hashmap lookup)
+            // TODO: 找到更高效的方法（isValid() 是哈希表查找）
             FEngine const& engine = mMaterial->getEngine();
+            // 验证纹理仍然有效
             FILAMENT_CHECK_PRECONDITION(engine.isValid(p.texture))
                     << "Invalid texture still bound to MaterialInstance: '" << getName() << "'\n";
+            // 获取纹理的采样句柄
             Handle<HwTexture> const handle = p.texture->getHwHandleForSampling();
             assert_invariant(handle);
+            // 设置采样器到描述符集
             mDescriptorSet.setSampler(mMaterial->getDescriptorSetLayout(),
                 binding, handle, p.params);
         }
     }
 
-    // TODO: eventually we should remove this in RELEASE builds
+    // 3. 修复缺失的采样器（为未设置的采样器设置占位符纹理）
+    // TODO: 最终应该在 RELEASE 构建中移除此检查
     fixMissingSamplers();
 
+    // 4. 如果使用 UBO 批处理但分配尚未完成，返回
     if (isUsingUboBatching() && !BufferAllocator::isValid(getAllocationId())) {
         return;
     }
 
-    // Commit descriptors if needed (e.g. when textures are updated,or the first time)
+    // 5. 提交描述符集（例如当纹理更新时，或首次提交时）
     mDescriptorSet.commit(mMaterial->getDescriptorSetLayout(), driver);
 }
 
@@ -394,26 +421,34 @@ const char* FMaterialInstance::getName() const noexcept {
 
 // ------------------------------------------------------------------------------------------------
 
+// 绑定 MaterialInstance 的描述符集到渲染管线
+// driver: 驱动 API 引用
+// variant: 当前使用的变体（用于判断是否为共享变体）
+// 此方法在渲染时调用，将 MaterialInstance 的 DescriptorSet 绑定到指定的绑定点
 void FMaterialInstance::use(FEngine::DriverApi& driver, Variant variant) const {
+    // 如果描述符集尚未创建（未提交），直接返回
     if (!mDescriptorSet.getHandle()) {
         return;
     }
 
+    // 如果使用 UBO 批处理但分配尚未完成，返回
     if (isUsingUboBatching() && !BufferAllocator::isValid(getAllocationId())) {
         return;
     }
 
+    // 检查是否有缺失的采样器参数（仅警告一次）
     if (UTILS_UNLIKELY(mMissingSamplerDescriptors.any())) {
         std::call_once(mMissingSamplersFlag, [this] {
             auto const& list = mMaterial->getSamplerInterfaceBlock().getSamplerInfoList();
             LOG(WARNING) << "sampler parameters not set in MaterialInstance \""
                          << mName.c_str_safe() << "\" or Material \""
                          << mMaterial->getName().c_str_safe() << "\":";
+            // 遍历所有缺失的采样器，输出警告信息
             mMissingSamplerDescriptors.forEachSetBit([&list](descriptor_binding_t binding) {
                 auto const pos = std::find_if(list.begin(), list.end(), [binding](const auto& item) {
                     return item.binding == binding;
                 });
-                // just safety-check, should never fail
+                // 安全检查，应该永远不会失败
                 if (UTILS_LIKELY(pos != list.end())) {
                     LOG(WARNING) << "[" << +binding << "] " << pos->name.c_str();
                 }
@@ -422,12 +457,14 @@ void FMaterialInstance::use(FEngine::DriverApi& driver, Variant variant) const {
         mMissingSamplerDescriptors.clear();
     }
 
-    // Checks if this variant is shared. If so, FMaterial takes responsibility for binding the
-    // descriptor sets.
+    // 检查此变体是否为共享变体（深度变体）
+    // 如果是共享变体，FMaterial 负责绑定描述符集（使用默认材质的 DescriptorSet）
     if (mMaterial->useShared(driver, variant)) {
         return;
     }
 
+    // 绑定 MaterialInstance 的描述符集到 PER_MATERIAL 绑定点
+    // 如果使用 UBO 批处理，mUboOffset 是动态偏移；否则为 0
     mDescriptorSet.bind(driver, DescriptorSetBindingPoints::PER_MATERIAL,
             { { mUboOffset }, driver });
 }

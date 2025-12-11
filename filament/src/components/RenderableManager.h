@@ -64,20 +64,27 @@ public:
     using Instance = Instance;
     using GeometryType = Builder::GeometryType;
 
-    // TODO: consider renaming, this pertains to material variants, not strictly visibility.
+    /**
+     * Visibility 结构体
+     * 
+     * 存储 Renderable 的可见性相关属性。
+     * 使用位域压缩到 16 位，以提高内存效率。
+     * 
+     * TODO: 考虑重命名，这实际上与材质变体相关，而不仅仅是可见性。
+     */
     struct Visibility {
-        uint8_t priority                : 3;
-        uint8_t channel                 : 3;
-        bool castShadows                : 1;
-        bool receiveShadows             : 1;
+        uint8_t priority                : 3;  // 绘制优先级（0-7，7 是最低优先级）
+        uint8_t channel                 : 3;  // 渲染通道（0-7）
+        bool castShadows                : 1;  // 是否投射阴影
+        bool receiveShadows             : 1;  // 是否接收阴影
 
-        bool culling                    : 1;
-        bool skinning                   : 1;
-        bool morphing                   : 1;
-        bool screenSpaceContactShadows  : 1;
-        bool reversedWindingOrder       : 1;
-        bool fog                        : 1;
-        GeometryType geometryType       : 2;
+        bool culling                    : 1;  // 是否启用视锥剔除
+        bool skinning                   : 1;  // 是否使用骨骼动画
+        bool morphing                   : 1;  // 是否使用变形动画
+        bool screenSpaceContactShadows  : 1;  // 是否使用屏幕空间接触阴影
+        bool reversedWindingOrder       : 1;  // 是否反转绕序（镜像变换）
+        bool fog                        : 1;  // 是否受雾影响
+        GeometryType geometryType       : 2;  // 几何类型（DYNAMIC、STATIC_BOUNDS、STATIC）
     };
 
     static_assert(sizeof(Visibility) == sizeof(uint16_t), "Visibility should be 16 bits");

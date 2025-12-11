@@ -1292,10 +1292,10 @@ void FRenderer::renderJob(RootArenaScope& rootArenaScope, FView& view) {
     // input can change below
     FrameGraphId<FrameGraphTexture> input = postProcessInput;
 
-    // Resolve depth -- which might be needed because of TAA or DoF. This pass will be culled
-    // if the depth is not used below or if the depth is not MS (e.g. it could have been
-    // auto-resolved).
-    // In practice, this is used on Vulkan and older Metal devices.
+    // 解析深度缓冲 - 可能被 TAA 或 DoF 使用
+    // 如果深度缓冲未被后续 Pass 使用，或者深度缓冲不是 MSAA（可能已被自动解析），
+    // 此 Pass 会被 FrameGraph 自动剔除
+    // 实际使用场景：Vulkan 和较旧的 Metal 设备
     auto depth = ppm.resolve(fg, "Resolved Depth Buffer", colorPassOutput.depth, { .levels = 1 });
 
     // Debug: CSM visualisation
@@ -1304,15 +1304,16 @@ void FRenderer::renderJob(RootArenaScope& rootArenaScope, FView& view) {
         input = ppm.debugShadowCascades(fg, input, depth);
     }
 
-    // TODO: DoF should be applied here, before TAA -- but if we do this it'll result in a lot of
-    //       fireflies due to the instability of the highlights. This can be fixed with a
-    //       dedicated TAA pass for the DoF, as explained in
-    //       "Life of a Bokeh" by Guillaume Abadie, SIGGRAPH 2018
+    // TODO: DoF 应该在这里应用，在 TAA 之前 - 但如果这样做会导致大量闪烁（fireflies），
+    //       因为高光的不稳定性。可以通过为 DoF 使用专用的 TAA Pass 来解决，
+    //       如 Guillaume Abadie 在 SIGGRAPH 2018 的 "Life of a Bokeh" 中所述
 
-    // TAA for color pass
+    // TAA（时间抗锯齿）Pass - 通过多帧历史数据减少锯齿和闪烁
     if (taaOptions.enabled) {
+        // 执行 TAA：混合当前帧和重投影的历史帧
         input = ppm.taa(fg, input, depth, view.getFrameHistory(), &FrameHistoryEntry::taa,
                 taaOptions, colorGradingConfig);
+        // 如果启用了 TAA 上采样，更新视口尺寸
         if (taaOptions.upscaling) {
             scale = 1.0f;
             scaled = false;
@@ -1346,10 +1347,12 @@ void FRenderer::renderJob(RootArenaScope& rootArenaScope, FView& view) {
                     bokehScale, dofOptions);
         }
 
+        // Bloom（泛光）Pass - 模拟明亮光源的泛光效果
         FrameGraphId<FrameGraphTexture> bloom, flare;
         if (bloomOptions.enabled) {
-            // Generate the bloom buffer, which is stored in the blackboard as "bloom". This is
-            // consumed by the colorGrading pass and will be culled if colorGrading is disabled.
+            // 生成泛光缓冲，存储在 blackboard 中作为 "bloom"
+            // 此缓冲会被 colorGrading Pass 消费，如果 colorGrading 被禁用则会被剔除
+            // 流程：提取亮部 -> 多级下采样 -> 上采样并混合
             auto [bloom_, flare_] = ppm.bloom(fg, input, TextureFormat::R11F_G11F_B10F,
                     bloomOptions, taaOptions, scale);
             bloom = bloom_;

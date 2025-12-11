@@ -279,6 +279,7 @@ bool Froxelizer::prepare(
     return uniformsNeedUpdating;
 }
 
+// Compute froxel grid resolution based on viewport and buffer budget.
 void Froxelizer::computeFroxelLayout(
         uint2* dim, uint16_t* countX, uint16_t* countY, uint16_t* countZ,
         size_t const froxelBufferEntryCount, filament::Viewport const& viewport) noexcept {
@@ -381,6 +382,7 @@ void Froxelizer::updateBoundingSpheres(
 }
 
 UTILS_NOINLINE
+// Recompute froxel grid when options/view/projection change; updates slice planes and counts.
 bool Froxelizer::update() noexcept {
     bool uniformsNeedUpdating = false;
 

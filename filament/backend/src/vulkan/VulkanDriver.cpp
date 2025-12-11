@@ -210,7 +210,21 @@ void DebugUtils::setName(VkObjectType type, uint64_t handle, char const* name) {
 }
 #endif // FVK_ENABLED(FVK_DEBUG_DEBUG_UTILS)
 
+/**
+ * 获取命令分发器
+ * 
+ * 返回 VulkanDriver 的 Dispatcher，包含所有 Driver API 方法的函数指针映射。
+ * 
+ * 实现说明：
+ * - 使用 ConcreteDispatcher 模板生成 Dispatcher
+ * - ConcreteDispatcher 会为每个 Driver API 方法生成对应的执行函数
+ * - 执行函数负责从命令对象中解包参数并调用对应的 VulkanDriver 方法
+ * 
+ * @return Dispatcher 对象，包含所有方法的函数指针
+ */
 Dispatcher VulkanDriver::getDispatcher() const noexcept {
+    // 使用 ConcreteDispatcher 模板生成 Dispatcher
+    // 模板会自动为所有 Driver API 方法生成执行函数
     return ConcreteDispatcher<VulkanDriver>::make();
 }
 

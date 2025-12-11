@@ -124,6 +124,7 @@ void ShadowMapManager::terminate(FEngine& engine) {
     }
 }
 
+// Build shadow-map list and perform per-shadow culling; returns what shadow techniques are active.
 ShadowMapManager::ShadowTechnique ShadowMapManager::update(
         Builder const& builder,
         FEngine& engine, FView& view,
@@ -167,9 +168,11 @@ ShadowMapManager::ShadowTechnique ShadowMapManager::update(
     // Compute scene-dependent values shared across all shadow maps
     ShadowMap::SceneInfo const info{ *view.getScene(), view.getVisibleLayers() };
 
+    // Directional (CSM) shadows
     shadowTechnique |= updateCascadeShadowMaps(
             engine, view, cameraInfo, renderableData, lightData, info);
 
+    // Spot / point light shadow maps
     shadowTechnique |= updateSpotShadowMaps(
             engine, lightData);
 
@@ -223,6 +226,7 @@ ShadowMapManager::Builder& ShadowMapManager::Builder::shadowMap(size_t const lig
     return *this;
 }
 
+// Emit FrameGraph passes to render all shadow maps into the atlas.
 FrameGraphId<FrameGraphTexture> ShadowMapManager::render(FEngine& engine, FrameGraph& fg,
         RenderPassBuilder const& passBuilder,
         FView& view, CameraInfo const& mainCameraInfo,

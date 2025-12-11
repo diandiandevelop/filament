@@ -48,24 +48,42 @@ void FTransformManager::create(Entity const entity) {
     create(entity, 0, mat4f{});
 }
 
+/**
+ * 创建 Transform 组件（单精度版本）
+ * 
+ * 为 Entity 创建 Transform 组件，并设置父子关系和局部变换。
+ * 
+ * @param entity 要创建组件的 Entity
+ * @param parent 父节点的 Instance（如果为 0，则创建根节点）
+ * @param localTransform 局部变换矩阵（相对于父节点）
+ * 
+ * 注意：这总是在数组末尾添加，所以所有现有实例保持有效。
+ * TODO: 尝试保持条目与其兄弟/父节点排序，以改善缓存访问。
+ */
 void FTransformManager::create(Entity const entity, Instance const parent, const mat4f& localTransform) {
-    // this always adds at the end, so all existing instances stay valid
     auto& manager = mManager;
 
-    // TODO: try to keep entries sorted with their siblings/parents to improve cache access
+    // 如果 Entity 已有组件，先销毁
     if (UTILS_UNLIKELY(manager.hasComponent(entity))) {
         destroy(entity);
     }
+    
+    // 添加组件（返回 Instance）
     Instance const i = manager.addComponent(entity);
     assert_invariant(i);
-    assert_invariant(i != parent);
+    assert_invariant(i != parent);  // 不能将自己设为父节点
 
     if (i && i != parent) {
-        manager[i].parent = 0;
-        manager[i].next = 0;
-        manager[i].prev = 0;
-        manager[i].firstChild = 0;
+        // 初始化节点字段
+        manager[i].parent = 0;        // 父节点（稍后设置）
+        manager[i].next = 0;          // 下一个兄弟节点
+        manager[i].prev = 0;          // 上一个兄弟节点
+        manager[i].firstChild = 0;    // 第一个子节点
+        
+        // 插入到层次结构中
         insertNode(i, parent);
+        
+        // 设置局部变换（这会自动计算世界变换）
         setTransform(i, localTransform);
     }
 }
@@ -92,20 +110,34 @@ void FTransformManager::create(Entity const entity, Instance const parent, const
     }
 }
 
+/**
+ * 重新设置父节点
+ * 
+ * 将 Transform 组件重新父化到新的父节点。
+ * 
+ * @param i 要重新父化的 Transform 实例
+ * @param parent 新的父节点实例（如果为 0，则成为根节点）
+ * 
+ * 注意：将 Entity 重新父化到其后代是错误的，会导致未定义行为。
+ * TODO: 在调试构建中，确保新父节点不是我们的后代。
+ * 
+ * 注意：setParent() 不会在数组中重新排序子节点到父节点之后，
+ * 但这不是问题，因为 TransformManager 不依赖于此。
+ * 另外注意，commitLocalTransformTransaction() 确实会将所有子节点
+ * 重新排序到其父节点之后，作为计算世界变换的优化。
+ */
 void FTransformManager::setParent(Instance const i, Instance const parent) noexcept {
     validateNode(i);
     if (i) {
         auto& manager = mManager;
         Instance const oldParent = manager[i].parent;
         if (oldParent != parent) {
-            // TODO: on debug builds, ensure that the new parent isn't one of our descendant
+            // 从旧父节点移除
             removeNode(i);
+            // 插入到新父节点
             insertNode(i, parent);
+            // 更新节点变换（重新计算世界变换）
             updateNodeTransform(i);
-            // Note: setParent() doesn't reorder the child after the parent in the array,
-            // but that's not a problem because TransformManager doesn't rely on that.
-            // Also note that commitLocalTransformTransaction() does reorder all children after
-            // their parent, as an optimization to calculate the world transform.
         }
     }
 }
@@ -167,24 +199,52 @@ void FTransformManager::destroy(Entity const e) noexcept {
     }
 }
 
+/**
+ * 设置局部变换（单精度版本）
+ * 
+ * 设置 Transform 组件的局部变换矩阵（相对于父节点）。
+ * 这会自动更新世界变换（如果不在事务中）。
+ * 
+ * @param ci Transform 实例
+ * @param model 局部变换矩阵
+ * 
+ * 注意：如果层次结构很深，此操作可能较慢。
+ * 如果需要更新大量变换，考虑使用 openLocalTransformTransaction() / commitLocalTransformTransaction()。
+ */
 void FTransformManager::setTransform(Instance const ci, const mat4f& model) noexcept {
     validateNode(ci);
     if (ci) {
         auto& manager = mManager;
-        // store our local transform
+        // 存储局部变换
         manager[ci].local = model;
-        manager[ci].localTranslationLo = {};
+        manager[ci].localTranslationLo = {};  // 单精度版本不使用高精度平移
+        // 更新节点变换（计算世界变换并传播到子节点）
         updateNodeTransform(ci);
     }
 }
 
+/**
+ * 设置局部变换（双精度版本，支持高精度平移）
+ * 
+ * 设置 Transform 组件的局部变换矩阵（相对于父节点），
+ * 并保持双精度平移信息（用于大世界场景）。
+ * 这会自动更新世界变换（如果不在事务中）。
+ * 
+ * @param ci Transform 实例
+ * @param model 局部变换矩阵（双精度）
+ * 
+ * 注意：只有平移部分使用双精度，旋转和缩放仍使用单精度。
+ * 需要先调用 setAccurateTranslationsEnabled(true) 启用高精度模式。
+ */
 void FTransformManager::setTransform(Instance const ci, const mat4& model) noexcept {
     validateNode(ci);
     if (ci) {
         auto& manager = mManager;
-        // store our local transform + accurate translation information
-        manager[ci].local = mat4f(model);
+        // 存储局部变换 + 高精度平移信息
+        manager[ci].local = mat4f(model);  // 单精度矩阵
+        // 计算并存储双精度平移的低位部分
         manager[ci].localTranslationLo = float3{ model[3].xyz - float3{ model[3].xyz }};
+        // 更新节点变换（计算世界变换并传播到子节点）
         updateNodeTransform(ci);
     }
 }

@@ -318,12 +318,30 @@ OpenGLDriver::~OpenGLDriver() noexcept { // NOLINT(modernize-use-equals-default)
     // this is called from the main thread. Can't call GL.
 }
 
+/**
+ * 获取命令分发器
+ * 
+ * 返回 OpenGLDriver 的 Dispatcher，包含所有 Driver API 方法的函数指针映射。
+ * 
+ * 实现说明：
+ * - 使用 ConcreteDispatcher 模板生成默认的 Dispatcher
+ * - 对于 OpenGL ES 2.0，需要特殊处理 draw2 方法（使用不同的实现）
+ * - Dispatcher 的函数指针在编译时确定，运行时直接调用
+ * 
+ * @return Dispatcher 对象，包含所有方法的函数指针
+ */
 Dispatcher OpenGLDriver::getDispatcher() const noexcept {
+    // 使用 ConcreteDispatcher 模板生成 Dispatcher
+    // ConcreteDispatcher 会为每个 Driver API 方法生成对应的执行函数
     auto dispatcher = ConcreteDispatcher<OpenGLDriver>::make();
+    
+    // OpenGL ES 2.0 特殊处理：draw2 方法使用不同的实现
+    // 因为 ES 2.0 不支持某些特性，需要使用兼容的实现
     if (mContext.isES2()) {
         dispatcher.draw2_ = +[](Driver& driver, CommandBase* base, intptr_t* next){
             using Cmd = COMMAND_TYPE(draw2);
             OpenGLDriver& concreteDriver = static_cast<OpenGLDriver&>(driver);
+            // 使用 ES 2.0 特定的 draw2 实现
             Cmd::execute(&OpenGLDriver::draw2GLES2, concreteDriver, base, next);
         };
     }

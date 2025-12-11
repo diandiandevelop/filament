@@ -364,17 +364,44 @@ public:
     virtual int getOSVersion() const noexcept = 0;
 
     /**
-     * Creates and initializes the low-level API (e.g. an OpenGL context or Vulkan instance),
-     * then creates the concrete Driver.
-     * The caller takes ownership of the returned Driver* and must destroy it with delete.
-     *
-     * @param sharedContext an optional shared context. This is not meaningful with all graphic
-     *                      APIs and platforms.
-     *                      For EGL platforms, this is an EGLContext.
-     *
-     * @param driverConfig  specifies driver initialization parameters
-     *
-     * @return nullptr on failure, or a pointer to the newly created driver.
+     * 创建并初始化底层图形 API，然后创建具体的 Driver
+     * 
+     * 这是 Platform 的核心方法，负责：
+     * 1. 初始化底层图形 API：
+     *    - OpenGL: 创建 OpenGL 上下文（通过 EGL、GLX、WGL 等）
+     *    - Vulkan: 创建 VkInstance 和 VkDevice
+     *    - Metal: 创建 MTLDevice 和 MTLCommandQueue
+     *    - WebGPU: 创建 WebGPU 设备
+     * 2. 创建对应的 Driver 实例
+     * 3. 返回 Driver 指针（调用者负责销毁）
+     * 
+     * 实现说明：
+     * - 每个 Platform 实现必须重写此方法
+     * - 失败时返回 nullptr
+     * - 成功时返回 Driver 指针，调用者必须使用 delete 销毁
+     * 
+     * @param sharedContext 共享上下文（可选）
+     *                      - 对于 EGL 平台：EGLContext
+     *                      - 对于其他平台：可能无意义或为 nullptr
+     *                      - 用于多上下文场景（如多线程渲染）
+     * 
+     * @param driverConfig Driver 配置参数
+     *                    - handleArenaSize: Handle 分配器大小
+     *                    - disableParallelShaderCompile: 禁用并行着色器编译
+     *                    - stereoscopicType: 立体渲染类型
+     *                    - 等等...
+     * 
+     * @return Driver 指针，失败返回 nullptr
+     * 
+     * 示例：
+     * ```cpp
+     * Platform* platform = PlatformFactory::create(&backend);
+     * Driver* driver = platform->createDriver(nullptr, config);
+     * if (driver) {
+     *     // 使用 driver...
+     *     delete driver;
+     * }
+     * ```
      */
     virtual Driver* UTILS_NULLABLE createDriver(void* UTILS_NULLABLE sharedContext,
             const DriverConfig& driverConfig) = 0;

@@ -514,6 +514,19 @@ JobSystem::Job* createJob(JobSystem& js, JobSystem::Job* parent,
 
 namespace details {
 
+/**
+ * ParallelForJobData（并行循环任务数据）
+ * 
+ * 这是 parallel_for 的内部数据结构，用于递归分割任务。
+ * 
+ * 设计思路：
+ * - 将大任务递归分割成小任务
+ * - 每个分割创建子 Job，并行执行
+ * - 当任务足够小时，直接执行
+ * 
+ * @tparam S 分割器类型（SplitterType）
+ * @tparam F 函数对象类型（Functor）
+ */
 template<typename S, typename F>
 struct ParallelForJobData {
     using SplitterType = S;
@@ -521,6 +534,15 @@ struct ParallelForJobData {
     using JobData = ParallelForJobData;
     using size_type = uint32_t;
 
+    /**
+     * 构造函数
+     * 
+     * @param start 起始索引
+     * @param count 任务数量
+     * @param splits 当前分割深度
+     * @param functor 要执行的函数对象
+     * @param splitter 分割器（决定是否继续分割）
+     */
     ParallelForJobData(size_type const start, size_type const count, uint8_t const splits,
             Functor functor,
             const SplitterType& splitter) noexcept
@@ -530,44 +552,101 @@ struct ParallelForJobData {
               splitter(splitter) {
     }
 
+    /**
+     * 并行执行函数
+     * 
+     * 这是 parallel_for 的核心逻辑：
+     * 1. 检查是否应该继续分割
+     * 2. 如果应该分割：
+     *    - 创建左半部分的子 Job
+     *    - 运行左半部分的 Job
+     *    - 在当前线程处理右半部分（重用当前 Job，避免创建开销）
+     * 3. 如果不应该分割：
+     *    - 直接执行任务
+     * 
+     * @param js JobSystem 引用
+     * @param parent 父 Job（必须非空）
+     */
     void parallelWithJobs(JobSystem& js, JobSystem::Job* parent) noexcept {
         assert(parent);
 
-        // this branch is often miss-predicted (it both sides happen 50% of the calls)
+        /**
+         * 这个分支经常被错误预测（两个分支各占 50% 的调用）
+         * 使用 goto 避免分支预测失败的开销
+         */
 right_side:
+        /**
+         * 检查是否应该继续分割
+         * 
+         * 分割条件由 Splitter 决定，通常基于：
+         * - 当前分割深度（splits）
+         * - 任务数量（count）
+         */
         if (splitter.split(splits, count)) {
-            const size_type lc = count / 2;
+            /**
+             * 应该分割：将任务分成两半
+             */
+            const size_type lc = count / 2;  // 左半部分的数量
+            
+            /**
+             * 创建左半部分的子 Job
+             * 
+             * 左半部分：[start, start + lc)
+             * 分割深度：splits + 1
+             */
             JobSystem::Job* l = js.emplaceJob<JobData, &JobData::parallelWithJobs>(parent,
                     start, lc, splits + uint8_t(1), functor, splitter);
+            
             if (UTILS_UNLIKELY(l == nullptr)) {
-                // couldn't create a job, just pretend we're done splitting
+                /**
+                 * 无法创建 Job（Job 池可能已满）
+                 * 
+                 * 在这种情况下，停止分割，直接执行任务
+                 */
                 goto execute;
             }
 
-            // start the left side before attempting the right side, so we parallelize in case
-            // of job creation failure -- rare, but still.
+            /**
+             * 运行左半部分的 Job
+             * 
+             * 在创建右半部分之前启动左半部分，这样即使 Job 创建失败，
+             * 我们也能并行化（虽然这种情况很少见）
+             * 
+             * 使用父 Job 的线程 ID，确保子 Job 在同一个线程池中执行
+             */
             js.run(l, JobSystem::getThreadId(parent));
 
-            // don't spawn a job for the right side, just reuse us -- spawning jobs is more
-            // costly than we'd like.
-            start += lc;
-            count -= lc;
-            ++splits;
-            goto right_side;
+            /**
+             * 处理右半部分（重用当前 Job）
+             * 
+             * 不创建新的 Job，而是重用当前 Job 处理右半部分
+             * 这样可以避免 Job 创建的开销
+             * 
+             * 右半部分：[start + lc, start + count)
+             */
+            start += lc;      // 更新起始索引
+            count -= lc;      // 更新任务数量
+            ++splits;         // 增加分割深度
+            goto right_side;  // 继续处理右半部分（可能继续分割）
 
         } else {
+            /**
+             * 不应该分割：直接执行任务
+             * 
+             * 当任务足够小或达到最大分割深度时，直接执行
+             */
 execute:
-            // we're done splitting, do the real work here!
+            // 分割完成，执行实际工作！
             functor(start, count);
         }
     }
 
 private:
-    size_type start;            // 4
-    size_type count;            // 4
-    Functor functor;            // ?
-    uint8_t splits;             // 1
-    SplitterType splitter;      // 1
+    size_type start;            // 起始索引（4 字节）
+    size_type count;            // 任务数量（4 字节）
+    Functor functor;            // 函数对象（大小取决于类型）
+    uint8_t splits;             // 当前分割深度（1 字节）
+    SplitterType splitter;      // 分割器（1 字节）
 };
 
 } // namespace details
@@ -602,9 +681,46 @@ JobSystem::Job* parallel_for(JobSystem& js, JobSystem::Job* parent,
 }
 
 
+/**
+ * CountSplitter（计数分割器）
+ * 
+ * 基于任务数量决定是否继续分割的分割器。
+ * 
+ * 分割条件：
+ * - 当前分割深度 < MAX_SPLITS（避免过度分割）
+ * - 任务数量 >= COUNT * 2（确保分割后每个子任务至少有 COUNT 个任务）
+ * 
+ * 使用示例：
+ * ```cpp
+ * // 当任务数 >= 128 时分割，最多分割 12 次
+ * jobs::CountSplitter<64, 12> splitter;
+ * 
+ * // 当任务数 >= 64 时分割，最多分割 8 次
+ * jobs::CountSplitter<32, 8> splitter;
+ * ```
+ * 
+ * @tparam COUNT 最小任务数阈值（分割后每个子任务至少 COUNT 个任务）
+ * @tparam MAX_SPLITS 最大分割深度（默认 12）
+ */
 template<size_t COUNT, size_t MAX_SPLITS = 12>
 class CountSplitter {
 public:
+    /**
+     * 判断是否应该分割
+     * 
+     * @param splits 当前分割深度
+     * @param count 当前任务数量
+     * @return true 如果应该分割，false 否则
+     * 
+     * 分割条件：
+     * 1. splits < MAX_SPLITS：未达到最大分割深度
+     * 2. count >= COUNT * 2：任务数足够大，分割后每个子任务至少有 COUNT 个任务
+     * 
+     * 示例：
+     * - COUNT = 64, count = 100：应该分割（100 >= 128 为 false，但 100 >= 64*2 为 false，实际不会分割）
+     * - COUNT = 64, count = 200：应该分割（200 >= 128 为 true）
+     * - COUNT = 64, splits = 12：不应该分割（已达到最大分割深度）
+     */
     bool split(size_t const splits, size_t const count) const noexcept {
         return (splits < MAX_SPLITS && count >= COUNT * 2);
     }

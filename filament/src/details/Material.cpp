@@ -253,31 +253,43 @@ filament::DescriptorSetLayout const& FMaterial::getPerViewDescriptorSetLayout(
     return mDefinition.perViewDescriptorSetLayout;
 }
 
+// 异步编译材质的所有指定变体
+// priority: 编译优先级队列（HIGH 或 LOW）
+// variantSpec: 要编译的变体掩码（UserVariantFilterMask）
+// handler: 回调处理器（用于线程间通信）
+// callback: 编译完成后的回调函数（在主线程调用）
 void FMaterial::compile(CompilerPriorityQueue const priority,
         UserVariantFilterMask variantSpec,
         CallbackHandler* handler,
         Invocable<void(Material*)>&& callback) noexcept {
 
-    // Turn off the STE variant if stereo is not supported.
+    // 如果后端不支持立体渲染，则关闭 STE（立体）变体
     if (!mEngine.getDriverApi().isStereoSupported()) {
         variantSpec &= ~UserVariantFilterMask(UserVariantFilterBit::STE);
     }
 
+    // 计算要过滤掉的变体掩码（variantSpec 指定要编译的，variantFilter 是要过滤的）
     UserVariantFilterMask const variantFilter =
             ~variantSpec & UserVariantFilterMask(UserVariantFilterBit::ALL);
 
+    // 如果后端支持并行着色器编译，则并行编译所有变体
     if (UTILS_LIKELY(mEngine.getDriverApi().isParallelShaderCompileSupported())) {
+        // 根据材质是 Lit 还是 Unlit 获取对应的变体列表
         auto const& variants = isVariantLit() ?
                 VariantUtils::getLitVariants() : VariantUtils::getUnlitVariants();
         for (auto const variant: variants) {
+            // 如果 variantFilter 为空（编译所有变体），或者当前变体通过过滤
             if (!variantFilter || variant == Variant::filterUserVariant(variant, variantFilter)) {
+                // 检查材质包中是否包含此变体的着色器
                 if (hasVariant(variant)) {
+                    // 准备并编译此变体的着色器程序（如果尚未缓存）
                     prepareProgram(variant, priority);
                 }
             }
         }
     }
 
+    // 如果有回调函数，注册到驱动 API 的编译队列
     if (callback) {
         struct Callback {
             Invocable<void(Material*)> f;
@@ -288,9 +300,11 @@ void FMaterial::compile(CompilerPriorityQueue const priority,
                 delete c;
             }
         };
+        // 创建回调包装器，在编译完成后调用用户回调
         auto* const user = new(std::nothrow) Callback{ std::move(callback), this };
         mEngine.getDriverApi().compilePrograms(priority, handler, &Callback::func, user);
     } else {
+        // 没有回调，只触发编译（不等待完成）
         mEngine.getDriverApi().compilePrograms(priority, nullptr, nullptr, nullptr);
     }
 }
@@ -378,22 +392,33 @@ void FMaterial::prepareProgramSlow(Variant const variant,
     }
 }
 
+// 为 Surface 材质域创建着色器程序（慢路径，实际编译）
+// variant: 完整的变体掩码（包含所有位）
+// priorityQueue: 编译优先级队列
 void FMaterial::getSurfaceProgramSlow(Variant const variant,
         CompilerPriorityQueue const priorityQueue) const noexcept {
-    // filterVariant() has already been applied in generateCommands(), shouldn't be needed here
-    // if we're unlit, we don't have any bits that correspond to lit materials
+    // filterVariant() 已经在 generateCommands() 中应用，这里不应该再需要
+    // 如果是 Unlit 材质，不应该有任何对应 Lit 材质的位
     assert_invariant(variant == Variant::filterVariant(variant, isVariantLit()) );
 
+    // 确保变体不是保留的（无效的）变体
     assert_invariant(!Variant::isReserved(variant));
 
+    // 分别过滤出顶点着色器和片段着色器需要的变体位
+    // 顶点着色器只关心：立体、蒙皮、阴影接收、动态光源、方向光
     Variant const vertexVariant   = Variant::filterVariantVertex(variant);
+    // 片段着色器只关心：VSM、雾效、阴影接收、动态光源、方向光
     Variant const fragmentVariant = Variant::filterVariantFragment(variant);
 
+    // 从 MaterialParser 获取顶点和片段着色器代码，构建 Program 对象
     Program pb{ getProgramWithVariants(variant, vertexVariant, fragmentVariant) };
+    // 设置编译优先级队列
     pb.priorityQueue(priorityQueue);
+    // 如果是多视图立体渲染，启用 multiview 扩展
     pb.multiview(
             mEngine.getConfig().stereoscopicType == StereoscopicType::MULTIVIEW &&
             Variant::isStereoVariant(variant));
+    // 创建着色器程序并缓存
     createAndCacheProgram(std::move(pb), variant);
 }
 
@@ -404,6 +429,10 @@ void FMaterial::getPostProcessProgramSlow(Variant const variant,
     createAndCacheProgram(std::move(pb), variant);
 }
 
+// 从 MaterialParser 获取顶点和片段着色器代码，构建 Program 对象
+// variant: 完整的变体掩码
+// vertexVariant: 过滤后的顶点着色器变体
+// fragmentVariant: 过滤后的片段着色器变体
 Program FMaterial::getProgramWithVariants(
         Variant variant,
         Variant vertexVariant,
@@ -412,16 +441,19 @@ Program FMaterial::getProgramWithVariants(
     const ShaderModel sm = engine.getShaderModel();
     const bool isNoop = engine.getBackend() == Backend::NOOP;
     /*
-     * Vertex shader
+     * Vertex shader - 从材质包中提取顶点着色器代码
      */
 
     MaterialParser const& parser = getMaterialParser();
 
+    // 获取引擎的顶点着色器内容缓冲区（可重用的临时缓冲区）
     ShaderContent& vsBuilder = engine.getVertexShaderContent();
 
+    // 从 MaterialParser 获取指定变体的顶点着色器代码
     UTILS_UNUSED_IN_RELEASE bool const vsOK = parser.getShader(vsBuilder, sm,
             vertexVariant, ShaderStage::VERTEX);
 
+    // 验证顶点着色器是否成功提取（NOOP 后端除外）
     FILAMENT_CHECK_POSTCONDITION(isNoop || (vsOK && !vsBuilder.empty()))
             << "The material '" << mDefinition.name.c_str()
             << "' has not been compiled to include the required GLSL or SPIR-V chunks for the "
@@ -429,24 +461,31 @@ Program FMaterial::getProgramWithVariants(
             << +variant.key << ", filtered=" << +vertexVariant.key << ").";
 
     /*
-     * Fragment shader
+     * Fragment shader - 从材质包中提取片段着色器代码
      */
 
+    // 获取引擎的片段着色器内容缓冲区（可重用的临时缓冲区）
     ShaderContent& fsBuilder = engine.getFragmentShaderContent();
 
+    // 从 MaterialParser 获取指定变体的片段着色器代码
     UTILS_UNUSED_IN_RELEASE bool const fsOK = parser.getShader(fsBuilder, sm,
             fragmentVariant, ShaderStage::FRAGMENT);
 
+    // 验证片段着色器是否成功提取（NOOP 后端除外）
     FILAMENT_CHECK_POSTCONDITION(isNoop || (fsOK && !fsBuilder.empty()))
             << "The material '" << mDefinition.name.c_str()
             << "' has not been compiled to include the required GLSL or SPIR-V chunks for the "
                "fragment shader (variant="
             << +variant.key << ", filtered=" << +fragmentVariant.key << ").";
 
+    // 构建 Program 对象
     Program program;
+    // 设置顶点和片段着色器代码
     program.shader(ShaderStage::VERTEX, vsBuilder.data(), vsBuilder.size())
             .shader(ShaderStage::FRAGMENT, fsBuilder.data(), fsBuilder.size())
+            // 设置着色器语言（GLSL、SPIR-V、MSL、WGSL）
             .shaderLanguage(parser.getShaderLanguage())
+            // 设置诊断信息（用于错误报告）
             .diagnostics(mDefinition.name,
                     [variant, vertexVariant, fragmentVariant](utils::CString const& name,
                             io::ostream& out) -> io::ostream& {
@@ -456,58 +495,71 @@ Program FMaterial::getProgramWithVariants(
                                    << io::hex << +fragmentVariant.key << io::dec << ")";
                     });
 
+    // ESSL1（OpenGL ES 2.0）需要额外的 Uniform 和 Attribute 绑定信息
     if (UTILS_UNLIKELY(parser.getShaderLanguage() == ShaderLanguage::ESSL1)) {
         assert_invariant(!mDefinition.bindingUniformInfo.empty());
+        // 设置 Uniform 绑定信息（用于 ESSL1 的 Uniform 位置绑定）
         for (auto const& [index, name, uniforms] : mDefinition.bindingUniformInfo) {
             program.uniforms(uint32_t(index), name, uniforms);
         }
+        // 设置 Attribute 信息（用于 ESSL1 的 Attribute 位置绑定）
         program.attributes(mDefinition.attributeInfo);
     }
 
+    // 设置描述符集绑定信息（用于 Vulkan/Metal 的 Descriptor Set 绑定）
     program.descriptorBindings(+DescriptorSetBindingPoints::PER_VIEW,
             mDefinition.programDescriptorBindings[+DescriptorSetBindingPoints::PER_VIEW]);
     program.descriptorBindings(+DescriptorSetBindingPoints::PER_RENDERABLE,
             mDefinition.programDescriptorBindings[+DescriptorSetBindingPoints::PER_RENDERABLE]);
     program.descriptorBindings(+DescriptorSetBindingPoints::PER_MATERIAL,
             mDefinition.programDescriptorBindings[+DescriptorSetBindingPoints::PER_MATERIAL]);
+    // 设置特化常量（用于编译时优化）
     program.specializationConstants(mSpecializationConstants);
 
+    // 设置 Push Constants（用于 Vulkan/Metal 的小数据传递）
     program.pushConstants(ShaderStage::VERTEX,
             mDefinition.pushConstants[uint8_t(ShaderStage::VERTEX)]);
     program.pushConstants(ShaderStage::FRAGMENT,
             mDefinition.pushConstants[uint8_t(ShaderStage::FRAGMENT)]);
 
+    // 设置缓存 ID（用于程序缓存，基于材质缓存 ID 和变体键）
     program.cacheId(hash::combine(size_t(mDefinition.cacheId), variant.key));
 
     return program;
 }
 
+// 创建着色器程序并缓存到 Material 的 mCachedPrograms 数组中
+// p: 已构建的 Program 对象（包含着色器代码和元数据）
+// variant: 变体键（用于索引缓存数组）
 void FMaterial::createAndCacheProgram(Program&& p, Variant const variant) const noexcept {
     FEngine const& engine = mEngine;
     DriverApi& driverApi = mEngine.getDriverApi();
 
+    // 检查是否为共享变体（深度变体，可以从默认材质共享）
     bool const isShared = isSharedVariant(variant);
 
-    // Check if the default material has this program cached
+    // 如果是共享变体，先检查默认材质是否已经缓存了此程序
     if (isShared) {
         FMaterial const* const pDefaultMaterial = engine.getDefaultMaterial();
         if (pDefaultMaterial) {
             auto const program = pDefaultMaterial->mCachedPrograms[variant.key];
             if (program) {
+                // 直接使用默认材质的缓存程序，避免重复创建
                 mCachedPrograms[variant.key] = program;
                 return;
             }
         }
     }
 
+    // 通过驱动 API 创建实际的着色器程序（编译着色器代码）
     auto const program = driverApi.createProgram(std::move(p),
             ImmutableCString{ mDefinition.name.c_str_safe() });
     assert_invariant(program);
+    // 缓存到当前材质的程序数组中
     mCachedPrograms[variant.key] = program;
 
-    // If the default material doesn't already have this program cached, and all caching conditions
-    // are met (Surface Domain and no custom depth shader), cache it now.
-    // New Materials will inherit these program automatically.
+    // 如果是共享变体，且默认材质还没有缓存此程序，则也缓存到默认材质
+    // 这样后续创建的材质可以自动继承这些程序，减少重复编译
     if (isShared) {
         FMaterial const* const pDefaultMaterial = engine.getDefaultMaterial();
         if (pDefaultMaterial && !pDefaultMaterial->mCachedPrograms[variant.key]) {
@@ -799,24 +851,30 @@ FMaterial::processSpecializationConstants(Builder const& builder) {
     return specializationConstants;
 }
 
+// 预缓存深度变体，优化首次渲染性能
+// 对于默认材质：预编译所有深度变体
+// 对于其他材质：从默认材质继承深度变体（如果没有自定义深度着色器）
 void FMaterial::precacheDepthVariants(FEngine& engine) {
 
+    // 检查是否需要禁用默认材质的深度预缓存（某些驱动的工作around）
     bool const disableDepthPrecacheForDefaultMaterial = engine.getDriverApi().isWorkaroundNeeded(
                                Workaround::DISABLE_DEPTH_PRECACHE_FOR_DEFAULT_MATERIAL);
 
-    // pre-cache all depth variants inside the default material. Note that this should be
-    // entirely optional; if we remove this pre-caching, these variants will be populated
-    // later, when/if needed by createAndCacheProgram(). Doing it now potentially uses more
-    // memory and increases init time, but reduces hiccups during the first frame.
+    // 如果是默认材质，预编译所有深度变体
+    // 注意：这是可选的优化；如果移除预缓存，这些变体会在首次需要时通过 createAndCacheProgram() 创建
+    // 预缓存的代价：使用更多内存，增加初始化时间
+    // 预缓存的收益：减少第一帧的卡顿（避免首次渲染时的编译延迟）
     if (UTILS_UNLIKELY(mIsDefaultMaterial && !disableDepthPrecacheForDefaultMaterial)) {
         const bool stereoSupported = mEngine.getDriverApi().isStereoSupported();
+        // 获取所有有效的深度变体列表
         auto const allDepthVariants = VariantUtils::getDepthVariants();
         for (auto const variant: allDepthVariants) {
-            // Don't precache any stereo variants if stereo is not supported.
+            // 如果不支持立体渲染，跳过立体变体
             if (!stereoSupported && Variant::isStereoVariant(variant)) {
                 continue;
             }
             assert_invariant(Variant::isValidDepthVariant(variant));
+            // 如果材质包中包含此变体的着色器，则预编译
             if (hasVariant(variant)) {
                 prepareProgram(variant, CompilerPriorityQueue::HIGH);
             }
@@ -824,15 +882,18 @@ void FMaterial::precacheDepthVariants(FEngine& engine) {
         return;
     }
 
-    // if possible pre-cache all depth variants from the default material
+    // 对于非默认材质，如果可能，从默认材质继承深度变体
+    // 条件：Surface 材质域、非默认材质、没有自定义深度着色器
     if (mDefinition.materialDomain == MaterialDomain::SURFACE &&
             !mIsDefaultMaterial &&
             !mDefinition.hasCustomDepthShader) {
         FMaterial const* const pDefaultMaterial = engine.getDefaultMaterial();
         assert_invariant(pDefaultMaterial);
+        // 获取所有深度变体，直接从默认材质复制程序句柄
         auto const allDepthVariants = VariantUtils::getDepthVariants();
         for (auto const variant: allDepthVariants) {
             assert_invariant(Variant::isValidDepthVariant(variant));
+            // 直接共享默认材质的程序，避免重复编译
             mCachedPrograms[variant.key] = pDefaultMaterial->mCachedPrograms[variant.key];
         }
     }

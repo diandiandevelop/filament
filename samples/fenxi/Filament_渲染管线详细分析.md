@@ -4,6 +4,42 @@
 
 Filament 的渲染管线采用 FrameGraph 架构，将渲染过程分解为多个 Pass，每个 Pass 声明其资源依赖关系，FrameGraph 自动管理资源分配和执行顺序。
 
+## 渲染步骤总览（图式）
+
+- 帧入口：`beginFrame()` → 设置 swapchain、时间戳、driver.beginFrame。
+- View 渲染：`render(view)` → `renderInternal()` → `renderJob()`。
+- 视图准备（CPU）：
+  - 相机/视口/动态分辨率、TAA 抖动。
+  - 剔除：视锥剔除、阴影剔除；光源筛选/排序；Froxel/Tile 光分配。
+  - 阴影准备：CSM / Spot / Point cube atlas。
+  - UBO/材质：`UboManager` 分配槽位，`MaterialInstance::commit()`。
+- FrameGraph 构建：
+  - Pass 声明：Shadow → Structure/Depth → SSAO/SSR → Color → PostProcess。
+  - 资源依赖：read/write 声明；虚拟资源。
+- FrameGraph 编译：
+  - 拓扑排序、未用 Pass 剔除、资源生命周期(first/last use)→ create/destroy。
+- 执行阶段：
+  - Shadow Pass：渲染阴影贴图。
+  - Structure/Depth Pass：深度/GBuffer 子集。
+  - 屏幕空间：SSAO / SSR 等。
+  - Color Pass：主色彩，PBR + 直射光/IBL + 阴影 + 透明。
+  - 后处理：TAA → DoF → Bloom → Color Grading/ToneMap → FXAA/锐化 → Final Blit。
+- 提交与同步：`driver.flush()` → CommandStream → 后端；Fence/Sync 回收，帧时间记录。
+
+### 可编程图形管线速览（类似示意图风格）
+```
+顶点数据 → 顶点着色器 → 图元装配 → 细分着色器(可选) → 几何着色器(可选)
+          ↓                                         ↑
+      片段着色器 ← 光栅化 ← 插值/生成片段 ← 深度/模板/混合
+```
+- 顶点着色器：变换顶点、输出裁剪空间/自定义属性。
+- 图元装配：组装三角形/线段/点。
+- 细分着色器（可选）：曲面细分前后将控制点/细分为更多图元。
+- 几何着色器（可选）：对整条图元再生成/过滤。
+- 光栅化：将图元转为片段，插值顶点属性。
+- 片段着色器：逐片段计算材质/光照（PBR）、写颜色/深度。
+- 深度/模板/混合：裁剪不可见片段，按混合方式写入目标。
+
 ## 主流程入口
 
 ### 1. Renderer::beginFrame() - 帧开始

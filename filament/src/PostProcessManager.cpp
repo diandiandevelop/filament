@@ -3008,18 +3008,24 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::taa(FrameGraph& fg,
         FrameGraphId<FrameGraphTexture> output;
         FrameGraphId<FrameGraphTexture> tonemappedOutput;
     };
+    // TAA Pass：时间抗锯齿，通过多帧历史数据减少锯齿和闪烁
     auto const& taaPass = fg.addPass<TAAData>("TAA",
             [&](FrameGraph::Builder& builder, auto& data) {
+                // 获取输入纹理描述符
                 auto desc = fg.getDescriptor(input);
+                // 如果启用了 TAA 上采样，输出尺寸翻倍
                 if (taaOptions.upscaling) {
                     desc.width *= 2;
                     desc.height *= 2;
                 }
-                data.color = builder.sample(input);
-                data.depth = builder.sample(depth);
-                data.history = builder.sample(colorHistory);
+                // 声明输入资源（只读）
+                data.color = builder.sample(input);      // 当前帧颜色
+                data.depth = builder.sample(depth);      // 深度缓冲
+                data.history = builder.sample(colorHistory);  // 历史帧颜色
+                // 创建输出纹理
                 data.output = builder.createTexture("TAA output", desc);
                 data.output = builder.write(data.output);
+                // 如果 Color Grading 作为 Subpass，创建色调映射输出缓冲
                 if (colorGradingConfig.asSubpass) {
                     data.tonemappedOutput = builder.createTexture("Tonemapped Buffer", {
                             .width = desc.width,
@@ -3027,9 +3033,11 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::taa(FrameGraph& fg,
                             .format = colorGradingConfig.ldrFormat
                     });
                     data.tonemappedOutput = builder.write(data.tonemappedOutput, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+                    // TAA 输出作为 Subpass 输入
                     data.output = builder.read(data.output, FrameGraphTexture::Usage::SUBPASS_INPUT);
                 }
                 data.output = builder.write(data.output, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+                // 声明 Render Pass
                 builder.declareRenderPass("TAA target", {
                         .attachments = { .color = { data.output, data.tonemappedOutput }}
                 });
@@ -3045,12 +3053,14 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::taa(FrameGraph& fg,
                         0, 0, 0,  1
                 }};
 
+                // 3x3 采样偏移（9 个采样点）
                 constexpr float2 sampleOffsets[9] = {
                         { -1.0f, -1.0f }, {  0.0f, -1.0f }, {  1.0f, -1.0f }, { -1.0f,  0.0f },
                         {  0.0f,  0.0f },
                         {  1.0f,  0.0f }, { -1.0f,  1.0f }, {  0.0f,  1.0f }, {  1.0f,  1.0f },
                 };
 
+                // 子像素偏移（用于上采样模式，4 个子像素）
                 constexpr float2 subSampleOffsets[4] = {
                         { -0.25f,  0.25f },
                         {  0.25f,  0.25f },
@@ -3058,6 +3068,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::taa(FrameGraph& fg,
                         { -0.25f, -0.25f }
                 };
 
+                // Lanczos 滤波函数：用于计算采样权重，减少重投影错误
                 UTILS_UNUSED
                 auto const lanczos = [](float const x, float const a) -> float {
                     if (x <= std::numeric_limits<float>::epsilon()) {
@@ -3070,47 +3081,56 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::taa(FrameGraph& fg,
                     return 0.0f;
                 };
 
+                // 计算滤波权重
                 float const filterWidth = std::clamp(taaOptions.filterWidth, 1.0f, 2.0f);
                 float4 sum = 0.0;
                 float4 weights[9];
 
-                // this doesn't get vectorized (probably because of exp()), so don't bother
-                // unrolling it.
+                // 计算每个采样点的权重（使用 Lanczos 滤波）
+                // 注意：此循环不会被向量化（可能是因为 exp()），所以不需要展开
                 UTILS_NOUNROLL
                 for (size_t i = 0; i < 9; i++) {
                     float2 const o = sampleOffsets[i];
+                    // 如果启用上采样，为每个子像素计算权重
                     for (size_t j = 0; j < 4; j++) {
                         float2 const subPixelOffset = taaOptions.upscaling ? subSampleOffsets[j] : float2{ 0 };
+                        // 计算采样偏移相对于抖动的距离
                         float2 const d = (o - (current.jitter - subPixelOffset)) / filterWidth;
+                        // 使用 Lanczos 滤波计算权重
                         weights[i][j] = lanczos(length(d), filterWidth);
                     }
                     sum += weights[i];
                 }
+                // 归一化权重
                 for (auto& w : weights) {
                     w /= sum;
                 }
 
+                // 获取渲染资源
                 auto out = resources.getRenderPassInfo();
-                auto color = resources.getTexture(data.color);
-                auto depth = resources.getTexture(data.depth);
-                auto history = resources.getTexture(data.history);
+                auto color = resources.getTexture(data.color);      // 当前帧颜色
+                auto depth = resources.getTexture(data.depth);      // 深度缓冲
+                auto history = resources.getTexture(data.history);  // 历史帧颜色
                 auto const& material = getPostProcessMaterial("taa");
 
+                // 选择材质变体（透明或不透明）
                 PostProcessVariant const variant = colorGradingConfig.translucent ?
                         PostProcessVariant::TRANSLUCENT : PostProcessVariant::OPAQUE;
 
                 FMaterial const* const ma = material.getMaterial(mEngine, variant);
 
+                // 获取材质实例并设置参数
                 FMaterialInstance* mi = getMaterialInstance(ma);
-                mi->setParameter("color",  color, SamplerParams{});  // nearest
-                mi->setParameter("depth",  depth, SamplerParams{});  // nearest
-                mi->setParameter("alpha", taaOptions.feedback);
+                mi->setParameter("color",  color, SamplerParams{});  // 当前帧颜色（最近邻采样）
+                mi->setParameter("depth",  depth, SamplerParams{});  // 深度缓冲（最近邻采样）
+                mi->setParameter("alpha", taaOptions.feedback);     // 反馈系数（混合权重）
                 mi->setParameter("history", history, SamplerParams{
-                        .filterMag = SamplerMagFilter::LINEAR,
+                        .filterMag = SamplerMagFilter::LINEAR,      // 历史帧使用线性滤波
                         .filterMin = SamplerMinFilter::LINEAR
                 });
-                mi->setParameter("filterWeights",  weights, 9);
-                mi->setParameter("jitter",  current.jitter);
+                mi->setParameter("filterWeights",  weights, 9);      // Lanczos 滤波权重
+                mi->setParameter("jitter",  current.jitter);        // 当前帧的抖动偏移
+                // 重投影矩阵：将历史帧重投影到当前帧的屏幕空间
                 mi->setParameter("reprojection",
                         mat4f{ historyProjection * inverse(current.projection) } *
                         normalizedToClip);

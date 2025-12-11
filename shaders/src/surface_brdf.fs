@@ -51,6 +51,7 @@
 // Specular BRDF implementations
 //------------------------------------------------------------------------------
 
+// GGX 法线分布函数（Walter 2007），roughness=α，决定高光形状与宽度
 float D_GGX(float roughness, float NoH, const vec3 h) {
     // Walter et al. 2007, "Microfacet Models for Refraction through Rough Surfaces"
 
@@ -99,6 +100,7 @@ float D_Charlie(float roughness, float NoH) {
     return (2.0 + invAlpha) * pow(sin2h, invAlpha * 0.5) / (2.0 * PI);
 }
 
+// Smith GGX 相关可见性（Heitz 2014），遮挡/阴影项
 float V_SmithGGXCorrelated(float roughness, float NoV, float NoL) {
     // Heitz 2014, "Understanding the Masking-Shadowing Function in Microfacet-Based BRDFs"
     float a2 = roughness * roughness;
@@ -142,6 +144,7 @@ float V_Neubelt(float NoV, float NoL) {
     return PREVENT_DIV0(1.0, 4.0 * (NoL + NoV - NoL * NoV), 0.00001532);
 }
 
+// Schlick 菲涅耳近似（f0 / f90），用于金属/介电镜面
 vec3 F_Schlick(const vec3 f0, float f90, float VoH) {
     // Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"
     return f0 + (f90 - f0) * pow5(1.0 - VoH);

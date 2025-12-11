@@ -394,6 +394,7 @@ bool FView::isSkyboxVisible() const noexcept {
     return skybox != nullptr && (skybox->getLayerMask() & mVisibleLayers);
 }
 
+// Gather shadow-casters and build shadow-map list; kicks shadow-map culling.
 void FView::prepareShadowing(FEngine& engine, FScene::RenderableSoa& renderableData,
         FScene::LightSoa const& lightData, CameraInfo const& cameraInfo) noexcept {
     FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
@@ -469,6 +470,7 @@ void FView::prepareShadowing(FEngine& engine, FScene::RenderableSoa& renderableD
     }
 }
 
+// Fill lighting-related UBO/descriptor data (dynamic lights, exposure, IBL, directional light).
 void FView::prepareLighting(FEngine& engine, CameraInfo const& cameraInfo) noexcept {
     FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
     FILAMENT_TRACING_CONTEXT(FILAMENT_TRACING_CATEGORY_FILAMENT);

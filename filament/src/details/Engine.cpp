@@ -137,51 +137,69 @@ struct Engine::BuilderDetails {
     static Config validateConfig(Config config) noexcept;
 };
 
+/**
+ * 创建 Engine 实例
+ * 
+ * 这是 Engine 创建的主要入口点。创建过程包括：
+ * 1. 分配 FEngine 对象
+ * 2. 创建 Platform 和 Driver（多线程或单线程模式）
+ * 3. 初始化 Engine 的所有子系统
+ * 
+ * @param builder Engine 构建器，包含配置参数
+ * @return 创建的 Engine 实例，如果失败返回 nullptr
+ */
 Engine* FEngine::create(Builder const& builder) {
     FILAMENT_TRACING_ENABLE(FILAMENT_TRACING_CATEGORY_FILAMENT);
     FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
 
+    // 分配 FEngine 实例
     FEngine* instance = new FEngine(builder);
 
-    // initialize all fields that need an instance of FEngine
-    // (this cannot be done safely in the ctor)
+    // 初始化所有需要 FEngine 实例的字段
+    // （这不能在构造函数中安全地完成）
 
-    // Normally we launch a thread and create the context and Driver from there (see FEngine::loop).
-    // In the single-threaded case, we do so in the here and now.
+    // 通常我们在单独的线程中启动并创建上下文和 Driver（见 FEngine::loop）。
+    // 在单线程情况下，我们在这里立即创建。
     if constexpr (!UTILS_HAS_THREADING) {
+        // 单线程模式：立即创建 Platform 和 Driver
         Platform* platform = builder->mPlatform;
         void* const sharedContext = builder->mSharedContext;
 
+        // 如果没有提供 Platform，创建默认的
         if (platform == nullptr) {
             platform = PlatformFactory::create(&instance->mBackend);
             instance->mPlatform = platform;
-            instance->mOwnPlatform = true;
+            instance->mOwnPlatform = true;  // 标记为拥有 Platform，析构时释放
         }
         if (platform == nullptr) {
             LOG(ERROR) << "Selected backend not supported in this build.";
             delete instance;
             return nullptr;
         }
+        // 创建 Driver（在当前线程）
         instance->mDriver = platform->createDriver(sharedContext, getDriverConfig(instance));
 
     } else {
-        // start the driver thread
+        // 多线程模式：在单独线程中创建 Driver
+        // 启动驱动线程（在 FEngine::loop 中创建 Driver）
         instance->mDriverThread = std::thread(&FEngine::loop, instance);
 
-        // wait for the driver to be ready
+        // 等待 Driver 准备就绪（通过栅栏同步）
         instance->mDriverBarrier.await();
 
         if (UTILS_UNLIKELY(!instance->mDriver)) {
-            // something went horribly wrong during driver initialization
+            // Driver 初始化失败
             instance->mDriverThread.join();
             delete instance;
             return nullptr;
         }
     }
 
-    // now we can initialize the largest part of the engine
+    // 现在可以初始化 Engine 的大部分子系统
+    // （此时 Driver 已经可用，可以执行 Driver 命令）
     instance->init();
 
+    // 单线程模式：立即执行一次命令队列
     if constexpr (!UTILS_HAS_THREADING) {
         instance->execute();
     }
@@ -246,42 +264,55 @@ static constexpr float4 sFullScreenTriangleVertices[3] = {
 // these must be static because only a pointer is copied to the render stream
 static constexpr uint16_t sFullScreenTriangleIndices[3] = { 0, 1, 2 };
 
+/**
+ * FEngine 构造函数
+ * 
+ * 初始化 Engine 的所有成员变量。注意：Driver 的创建在 create() 中进行，
+ * 因为需要根据单线程/多线程模式选择不同的创建方式。
+ * 
+ * @param builder Engine 构建器，包含所有配置参数
+ */
 FEngine::FEngine(Builder const& builder) :
-        mBackend(builder->mBackend),
-        mActiveFeatureLevel(builder->mFeatureLevel),
-        mPlatform(builder->mPlatform),
-        mSharedGLContext(builder->mSharedContext),
-        mPostProcessManager(*this),
-        mEntityManager(EntityManager::get()),
-        mRenderableManager(*this),
-        mLightManager(*this),
-        mCameraManager(*this),
-        mCommandBufferQueue(
-                builder->mConfig.minCommandBufferSizeMB * MiB,
-                builder->mConfig.commandBufferSizeMB * MiB,
-                builder->mPaused),
-        mPerRenderPassArena(
+        mBackend(builder->mBackend),                    // 后端类型（OpenGL、Vulkan、Metal 等）
+        mActiveFeatureLevel(builder->mFeatureLevel),    // 激活的特性级别
+        mPlatform(builder->mPlatform),                  // 平台对象（可能为 nullptr）
+        mSharedGLContext(builder->mSharedContext),      // 共享 OpenGL 上下文（可能为 nullptr）
+        mPostProcessManager(*this),                     // 后处理管理器
+        mEntityManager(EntityManager::get()),          // Entity 管理器（单例）
+        mRenderableManager(*this),                      // Renderable 组件管理器
+        mLightManager(*this),                          // Light 组件管理器
+        mCameraManager(*this),                         // Camera 组件管理器
+        mCommandBufferQueue(                            // 命令缓冲区队列
+                builder->mConfig.minCommandBufferSizeMB * MiB,      // 最小缓冲区大小
+                builder->mConfig.commandBufferSizeMB * MiB,         // 总缓冲区大小
+                builder->mPaused),                      // 是否暂停
+        mPerRenderPassArena(                            // 每渲染通道内存池
                 "FEngine::mPerRenderPassAllocator",
                 builder->mConfig.perRenderPassArenaSizeMB * MiB),
-        mHeapAllocator("FEngine::mHeapAllocator", AreaPolicy::NullArea{}),
-        mJobSystem(getJobSystemThreadPoolSize(builder->mConfig)),
-        mEngineEpoch(std::chrono::steady_clock::now()),
-        mDriverBarrier(1),
-        mMainThreadId(ThreadUtils::getThreadId()),
-        mConfig(builder->mConfig)
+        mHeapAllocator("FEngine::mHeapAllocator", AreaPolicy::NullArea{}),  // 堆分配器
+        mJobSystem(getJobSystemThreadPoolSize(builder->mConfig)),  // JobSystem（工作线程池）
+        mEngineEpoch(std::chrono::steady_clock::now()), // Engine 启动时间点
+        mDriverBarrier(1),                              // Driver 初始化栅栏（用于同步）
+        mMainThreadId(ThreadUtils::getThreadId()),      // 主线程 ID
+        mConfig(builder->mConfig)                       // 配置对象
 {
-    // update a feature flag from Engine::Config if the flag is not specified in the Builder
+    /**
+     * 特性标志向后兼容处理
+     * 
+     * 如果 Builder 中没有指定特性标志，则从 Engine::Config 中读取。
+     * 这允许旧的配置方式继续工作。
+     */
     auto const featureFlagsBackwardCompatibility =
             [this, &builder](std::string_view const name, bool const value) {
         if (builder->mFeatureFlags.find(name) == builder->mFeatureFlags.end()) {
             auto* const p = getFeatureFlagPtr(name, true);
             if (p) {
-                *p = value;
+                *p = value;  // 设置特性标志值
             }
         }
     };
 
-    // update all the features flags specified in the builder
+    // 更新 Builder 中指定的所有特性标志
     for (auto const& feature : builder->mFeatureFlags) {
         auto* const p = getFeatureFlagPtr(feature.first, true);
         if (p) {
@@ -289,7 +320,7 @@ FEngine::FEngine(Builder const& builder) :
         }
     }
 
-    // update "old" feature flags that were specified in Engine::Config
+    // 更新 Engine::Config 中指定的"旧"特性标志（向后兼容）
     featureFlagsBackwardCompatibility("backend.disable_parallel_shader_compile",
             mConfig.disableParallelShaderCompile);
     featureFlagsBackwardCompatibility("backend.disable_handle_use_after_free_check",
@@ -297,36 +328,61 @@ FEngine::FEngine(Builder const& builder) :
     featureFlagsBackwardCompatibility("backend.opengl.assert_native_window_is_valid",
             mConfig.assertNativeWindowIsValid);
 
-    // We're assuming we're on the main thread here.
-    // (it may not be the case)
+    // 假设我们在主线程中（可能不是这样）
+    // 让 JobSystem 采用当前线程作为主线程
     mJobSystem.adopt();
 
     LOG(INFO) << "FEngine (" << sizeof(void*) * 8 << " bits) created at " << this << " "
               << "(threading is " << (UTILS_HAS_THREADING ? "enabled)" : "disabled)");
 }
 
+/**
+ * 获取 JobSystem 线程池大小
+ * 
+ * 根据配置和硬件并发数计算工作线程数量。
+ * 
+ * 策略：
+ * - 如果配置中指定了线程数，使用配置值
+ * - 否则：硬件并发数 - 2（1 个用户线程 + 1 个后端线程）
+ * - 确保至少有 1 个工作线程
+ * 
+ * @param config Engine 配置
+ * @return 工作线程数量
+ */
 uint32_t FEngine::getJobSystemThreadPoolSize(Config const& config) noexcept {
     if (config.jobSystemThreadCount > 0) {
-        return config.jobSystemThreadCount;
+        return config.jobSystemThreadCount;  // 使用配置值
     }
 
-    // 1 thread for the user, 1 thread for the backend
+    // 1 个线程给用户，1 个线程给后端
+    // 剩余线程用于 JobSystem 工作线程
     int threadCount = int(std::thread::hardware_concurrency()) - 2;
-    // make sure we have at least 1 thread though
+    // 确保至少有 1 个工作线程
     threadCount = std::max(1, threadCount);
     return threadCount;
 }
 
-/*
- * init() is called just after the driver thread is initialized. Driver commands are therefore
- * possible.
+/**
+ * 初始化 Engine
+ * 
+ * 在 Driver 线程初始化后调用。此时可以执行 Driver 命令。
+ * 
+ * 初始化流程：
+ * 1. 创建 DriverApi（命令流接口）
+ * 2. 确定特性级别
+ * 3. 创建资源分配器
+ * 4. 创建全屏三角形（用于后处理）
+ * 5. 创建默认资源（材质、纹理、IBL 等）
+ * 6. 创建描述符集布局
+ * 7. 初始化 UboManager（如果启用）
  */
-
 void FEngine::init() {
     FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
 
-    // this must be first.
+    // 这必须是第一步：创建 DriverApi
+    // 确保 mDriverApiStorage 正确对齐
     assert_invariant( intptr_t(&mDriverApiStorage) % alignof(DriverApi) == 0 );
+    // 使用 placement new 在预分配的存储中构造 DriverApi
     ::new(&mDriverApiStorage) DriverApi(*mDriver, mCommandBufferQueue.getCircularBuffer());
 
     DriverApi& driverApi = getDriverApi();

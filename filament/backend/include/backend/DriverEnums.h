@@ -165,6 +165,7 @@ enum class Backend : uint8_t {
     METAL = 3,    //!< Selects the Metal driver if the platform supports it (default on MacOS/iOS).
     WEBGPU = 4,   //!< Selects the Webgpu driver if the platform supports webgpu.
     NOOP = 5,     //!< Selects the no-op driver for testing purposes.
+    DX12 = 6,     //!< Selects the DirectX 12 driver (Windows only, optional build).
 };
 
 enum class TimerQueryResult : int8_t {
@@ -185,6 +186,8 @@ constexpr std::string_view to_string(Backend const backend) noexcept {
             return "Metal";
         case Backend::WEBGPU:
             return "WebGPU";
+        case Backend::DX12:
+            return "DX12";
         case Backend::DEFAULT:
             return "Default";
     }

@@ -76,6 +76,10 @@
     #endif
 #endif
 
+#if defined(FILAMENT_SUPPORTS_DX12) && defined(WIN32)
+#include "dx12/PlatformDX12.h"
+#endif
+
 #if defined (FILAMENT_SUPPORTS_METAL)
 namespace filament::backend {
 filament::backend::Platform* createDefaultMetalPlatform();
@@ -133,6 +137,8 @@ Platform* PlatformFactory::create(Backend* backend) noexcept {
         *backend = Backend::OPENGL;  // Android 默认使用 OpenGL ES
 #elif defined(FILAMENT_IOS) || defined(__APPLE__)
         *backend = Backend::METAL;   // Apple 平台默认使用 Metal
+#elif defined(FILAMENT_SUPPORTS_DX12) && defined(WIN32)
+        *backend = Backend::DX12;    // Windows 优先 DX12（若已启用）
 #elif defined(FILAMENT_DRIVER_SUPPORTS_VULKAN)
         *backend = Backend::VULKAN;  // Linux/Windows 优先使用 Vulkan
 #else
@@ -169,13 +175,22 @@ Platform* PlatformFactory::create(Backend* backend) noexcept {
             return nullptr;  // Vulkan 后端未编译
         #endif
     }
-    
+
     // WebGPU 后端
     if (*backend == Backend::WEBGPU) {
         #if defined(FILAMENT_SUPPORTS_WEBGPU)
             return new WebGPUPlatform();
         #else
             return nullptr;  // WebGPU 后端未编译
+        #endif
+    }
+
+    // DX12 后端（Windows，仅当开启宏）
+    if (*backend == Backend::DX12) {
+        #if defined(FILAMENT_SUPPORTS_DX12) && defined(WIN32)
+            return new PlatformDX12();
+        #else
+            return nullptr;
         #endif
     }
     

@@ -29,7 +29,7 @@ namespace samples {
 
 std::string getBackendAPIArgumentsUsage() {
     return "   --api, -a\n"
-           "       Specify the backend API: opengl, vulkan, metal, or webgpu\n\n";
+           "       Specify the backend API: opengl, vulkan, metal, webgpu, or dx12\n\n";
 }
 
 static void printUsage(char* name) {
@@ -62,8 +62,10 @@ filament::Engine::Backend parseArgumentsForBackend(const std::string& backend) {
         return filament::Engine::Backend::VULKAN;
     } else if (backend == "webgpu") {
         return filament::Engine::Backend::WEBGPU;
+    } else if (backend == "dx12") {
+        return filament::Engine::Backend::DX12;
     } else {
-        std::cerr << "Unrecognized target API. Must be 'opengl'|'vulkan'|'metal'|'webgpu'."
+        std::cerr << "Unrecognized target API. Must be 'opengl'|'vulkan'|'metal'|'webgpu'|'dx12'."
                   << std::endl;
         exit(1);
     }

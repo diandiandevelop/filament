@@ -5,6 +5,9 @@ set(TARGET backend)
 set(PUBLIC_HDR_DIR include)
 set(GENERATION_ROOT ${CMAKE_CURRENT_BINARY_DIR})
 
+# Optional: DirectX 12 backend (Windows only). Default OFF to avoid impacting other builds.
+option(FILAMENT_SUPPORTS_DX12 "Enable DirectX 12 backend (Windows only)" OFF)
+
 # ==================================================================================================
 # Sources and headers
 # ==================================================================================================
@@ -355,6 +358,20 @@ if (FILAMENT_SUPPORTS_WEBGPU)
             ${FILAMENT_WEBGPU_IMMEDIATE_ERROR_HANDLING_DEFAULT})
 endif()
 
+# DX12 sources (guarded; Windows only)
+if (FILAMENT_SUPPORTS_DX12 AND WIN32)
+    list(APPEND SRCS
+            src/dx12/PlatformDX12.cpp
+            src/dx12/Dx12Driver.cpp
+    )
+    list(APPEND PRIVATE_HDRS
+            src/dx12/PlatformDX12.h
+            src/dx12/Dx12Driver.h
+            src/dx12/Dx12Handles.h
+    )
+    target_link_libraries(${TARGET} PUBLIC d3d12 dxgi dxguid d3dcompiler)
+endif()
+
 if (ANDROID)
     list(APPEND SRCS src/BackendUtilsAndroid.cpp)
 endif()
@@ -379,6 +396,9 @@ set_target_properties(${TARGET} PROPERTIES FOLDER Filament)
 # we need to export the headers properly for backend.lib on windows
 if (WIN32 AND FILAMENT_SUPPORTS_WEBGPU)
     target_compile_definitions(${TARGET} PRIVATE "WGPU_IMPLEMENTATION")
+endif()
+if (FILAMENT_SUPPORTS_DX12)
+    target_compile_definitions(${TARGET} PRIVATE FILAMENT_SUPPORTS_DX12)
 endif()
 
 # ==================================================================================================

@@ -35,6 +35,14 @@ using namespace utils;
 
 namespace GLUtils {
 
+/**
+ * 获取 OpenGL 错误字符串
+ * 
+ * 将 OpenGL 错误代码转换为可读的字符串。
+ * 
+ * @param error OpenGL 错误代码
+ * @return 错误字符串视图
+ */
 UTILS_NOINLINE
 std::string_view getGLErrorString(GLenum error) noexcept {
     switch (error) {
@@ -56,6 +64,15 @@ std::string_view getGLErrorString(GLenum error) noexcept {
     return "unknown";
 }
 
+/**
+ * 检查 OpenGL 错误（非致命）
+ * 
+ * 检查是否有 OpenGL 错误，如果有则记录日志但不中断执行。
+ * 
+ * @param function 函数名（用于日志）
+ * @param line 行号（用于日志）
+ * @return OpenGL 错误代码（GL_NO_ERROR 表示无错误）
+ */
 UTILS_NOINLINE
 GLenum checkGLError(const char* function, size_t line) noexcept {
     GLenum const error = glGetError();
@@ -69,6 +86,14 @@ GLenum checkGLError(const char* function, size_t line) noexcept {
     return error;
 }
 
+/**
+ * 断言 OpenGL 错误（致命）
+ * 
+ * 检查是否有 OpenGL 错误，如果有则记录日志并触发调试陷阱。
+ * 
+ * @param function 函数名（用于日志）
+ * @param line 行号（用于日志）
+ */
 UTILS_NOINLINE
 void assertGLError(const char* function, size_t line) noexcept {
     GLenum const err = checkGLError(function, line);
@@ -77,6 +102,14 @@ void assertGLError(const char* function, size_t line) noexcept {
     }
 }
 
+/**
+ * 获取帧缓冲区状态字符串
+ * 
+ * 将帧缓冲区状态代码转换为可读的字符串。
+ * 
+ * @param status 帧缓冲区状态代码
+ * @return 状态字符串视图
+ */
 UTILS_NOINLINE
 std::string_view getFramebufferStatusString(GLenum status) noexcept {
     switch (status) {
@@ -100,6 +133,16 @@ std::string_view getFramebufferStatusString(GLenum status) noexcept {
     return "unknown";
 }
 
+/**
+ * 检查帧缓冲区状态（非致命）
+ * 
+ * 检查帧缓冲区状态，如果不完整则记录日志但不中断执行。
+ * 
+ * @param target 帧缓冲区目标（GL_FRAMEBUFFER、GL_DRAW_FRAMEBUFFER 等）
+ * @param function 函数名（用于日志）
+ * @param line 行号（用于日志）
+ * @return 帧缓冲区状态代码
+ */
 UTILS_NOINLINE
 GLenum checkFramebufferStatus(GLenum target, const char* function, size_t line) noexcept {
     GLenum const status = glCheckFramebufferStatus(target);
@@ -113,6 +156,15 @@ GLenum checkFramebufferStatus(GLenum target, const char* function, size_t line) 
     return status;
 }
 
+/**
+ * 断言帧缓冲区状态（致命）
+ * 
+ * 检查帧缓冲区状态，如果不完整则记录日志并触发调试陷阱。
+ * 
+ * @param target 帧缓冲区目标
+ * @param function 函数名（用于日志）
+ * @param line 行号（用于日志）
+ */
 UTILS_NOINLINE
 void assertFramebufferStatus(GLenum target, const char* function, size_t line) noexcept {
     GLenum const status = checkFramebufferStatus(target, function, line);
@@ -121,17 +173,43 @@ void assertFramebufferStatus(GLenum target, const char* function, size_t line) n
     }
 }
 
+/**
+ * 检查是否包含字符串
+ * 
+ * 检查集合中是否包含指定的字符串。
+ * 
+ * @param str 要查找的字符串视图
+ * @return 如果包含返回 true，否则返回 false
+ */
 bool unordered_string_set::has(std::string_view str) const noexcept {
     return find(str) != end();
 }
 
+/**
+ * 分割扩展字符串
+ * 
+ * 将 OpenGL 扩展字符串（空格分隔）分割为字符串集合。
+ * 用于解析 glGetString(GL_EXTENSIONS) 返回的扩展列表。
+ * 
+ * @param extensions 扩展字符串（空格分隔，如 "GL_EXT_texture_filter_anisotropic GL_EXT_debug_marker"）
+ * @return 包含所有扩展名称的无序字符串集合
+ * 
+ * 算法：
+ * 1. 创建字符串视图
+ * 2. 循环查找空格分隔符
+ * 3. 将每个扩展名称添加到集合中
+ * 4. 继续处理剩余字符串
+ */
 unordered_string_set split(const char* extensions) noexcept {
     unordered_string_set set;
     std::string_view string(extensions);
     do {
+        // 查找下一个空格或字符串结束
         auto p = string.find(' ');
         p = (p == std::string_view::npos ? string.length() : p);
+        // 将扩展名称添加到集合
         set.emplace(string.data(), p);
+        // 移除已处理的扩展名称（包括空格）
         string.remove_prefix(p == string.length() ? p : p + 1);
     } while(!string.empty());
     return set;

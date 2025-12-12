@@ -37,49 +37,136 @@ typedef struct ASurfaceTexture ASurfaceTexture;
 
 namespace filament::backend {
 
-/*
- * ExternalStreamManagerAndroid::Stream is basically a wrapper for SurfaceTexture.
- *
- * This class DOES DEPEND on having a GLES context, because that's how SurfaceTexture works.
+/**
+ * Android 外部流管理器
+ * 
+ * ExternalStreamManagerAndroid::Stream 基本上是 SurfaceTexture 的包装器。
+ * 
+ * 此类确实依赖于 GLES 上下文，因为 SurfaceTexture 就是这样工作的。
+ * 
+ * 主要功能：
+ * 1. 管理 Android SurfaceTexture 对象
+ * 2. 将 SurfaceTexture 附加/分离到 GLES 上下文
+ * 3. 更新纹理图像
+ * 4. 获取变换矩阵
+ * 
+ * 使用场景：
+ * - 从相机或视频流获取图像
+ * - 将 Android SurfaceTexture 集成到 Filament 渲染管线
  */
 class ExternalStreamManagerAndroid {
 public:
     using Stream = Platform::Stream;
 
-    // must be called on GLES thread
+    /**
+     * 创建外部流管理器
+     * 
+     * 必须在 GLES 线程上调用。
+     * 
+     * @return 管理器引用
+     */
     static ExternalStreamManagerAndroid& create() noexcept;
 
-    // must be called on GLES thread
+    /**
+     * 销毁外部流管理器
+     * 
+     * 必须在 GLES 线程上调用。
+     * 
+     * @param pExternalStreamManagerAndroid 管理器指针
+     */
     static void destroy(ExternalStreamManagerAndroid* pExternalStreamManagerAndroid) noexcept;
 
+    /**
+     * 获取流
+     * 
+     * 从 SurfaceTexture 对象创建流。
+     * 
+     * @param surfaceTexture Java SurfaceTexture 对象
+     * @return 流指针，失败返回 nullptr
+     */
     Stream* acquire(jobject surfaceTexture) noexcept;
+    
+    /**
+     * 释放流
+     * 
+     * 释放流资源。
+     * 
+     * @param stream 流指针
+     */
     void release(Stream* stream) noexcept;
 
-    // attach Stream to current GLES context
+    /**
+     * 将流附加到当前 GLES 上下文
+     * 
+     * @param stream 流指针
+     * @param tname 纹理名称
+     */
     void attach(Stream* stream, intptr_t tname) noexcept;
 
-    // detach Stream to current GLES context
+    /**
+     * 从当前 GLES 上下文分离流
+     * 
+     * @param stream 流指针
+     */
     void detach(Stream* stream) noexcept;
 
-    // must be called on GLES context thread, updates the stream content
+    /**
+     * 更新纹理图像
+     * 
+     * 必须在 GLES 上下文线程上调用，更新流内容。
+     * 
+     * @param stream 流指针
+     * @param timestamp 输出参数：时间戳
+     */
     void updateTexImage(Stream* stream, int64_t* timestamp) noexcept;
 
-    // must be called on GLES context thread, returns the transform matrix
+    /**
+     * 获取变换矩阵
+     * 
+     * 必须在 GLES 上下文线程上调用，返回变换矩阵。
+     * 
+     * @param stream 流指针
+     * @return 变换矩阵
+     */
     math::mat3f getTransformMatrix(Stream* stream) noexcept;
 
 private:
+    /**
+     * 构造函数
+     * 
+     * 私有构造函数，只能通过 create() 创建。
+     */
     ExternalStreamManagerAndroid() noexcept;
+    
+    /**
+     * 析构函数
+     * 
+     * 清理资源。
+     */
     ~ExternalStreamManagerAndroid() noexcept;
 
-    VirtualMachineEnv& mVm;
-    JNIEnv* mJniEnv = nullptr;
+    VirtualMachineEnv& mVm;  // Java 虚拟机环境
+    JNIEnv* mJniEnv = nullptr;  // JNI 环境（缓存）
 
+    /**
+     * EGL 流结构
+     * 
+     * 扩展 Platform::Stream，存储 SurfaceTexture 对象。
+     */
     struct EGLStream : public Stream {
-        jobject             jSurfaceTexture = nullptr;
-        ASurfaceTexture*    nSurfaceTexture = nullptr;
+        jobject             jSurfaceTexture = nullptr;  // Java SurfaceTexture 对象
+        ASurfaceTexture*    nSurfaceTexture = nullptr;  // 原生 SurfaceTexture 对象（Android 28+）
     };
 
-    // Must only be called from the backend thread
+    /**
+     * 获取 JNI 环境
+     * 
+     * 必须仅从后端线程调用。
+     * 快速路径：返回缓存的 JNI 环境。
+     * 慢速路径：如果缓存为空，调用 getEnvironmentSlow()。
+     * 
+     * @return JNI 环境指针
+     */
     JNIEnv* getEnvironment() noexcept {
         JNIEnv* env = mJniEnv;
         if (UTILS_UNLIKELY(!env)) {
@@ -88,13 +175,21 @@ private:
         return env;
     }
 
+    /**
+     * 获取 JNI 环境（慢速路径）
+     * 
+     * 从虚拟机获取 JNI 环境并缓存方法 ID。
+     * 
+     * @return JNI 环境指针
+     */
     JNIEnv* getEnvironmentSlow() noexcept;
 
-    jmethodID mSurfaceTextureClass_updateTexImage{};
-    jmethodID mSurfaceTextureClass_getTimestamp{};
-    jmethodID mSurfaceTextureClass_getTransformMatrix{};
-    jmethodID mSurfaceTextureClass_attachToGLContext{};
-    jmethodID mSurfaceTextureClass_detachFromGLContext{};
+    // SurfaceTexture 类的方法 ID（缓存）
+    jmethodID mSurfaceTextureClass_updateTexImage{};        // updateTexImage 方法
+    jmethodID mSurfaceTextureClass_getTimestamp{};          // getTimestamp 方法
+    jmethodID mSurfaceTextureClass_getTransformMatrix{};    // getTransformMatrix 方法
+    jmethodID mSurfaceTextureClass_attachToGLContext{};     // attachToGLContext 方法
+    jmethodID mSurfaceTextureClass_detachFromGLContext{};   // detachFromGLContext 方法
 };
 } // namespace filament::backend
 

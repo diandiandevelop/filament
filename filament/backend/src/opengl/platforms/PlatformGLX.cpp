@@ -28,74 +28,103 @@
 
 #include <mutex>
 
-#define LIBRARY_GLX "libGL.so.1"
-#define LIBRARY_X11 "libX11.so.6"
+// 库名称定义
+#define LIBRARY_GLX "libGL.so.1"  // GLX 库
+#define LIBRARY_X11 "libX11.so.6"  // X11 库
 
-// Function pointer types for X11 functions
+// X11 函数指针类型
 typedef Display* (* X11_OPEN_DISPLAY)(const char*);
 typedef Display* (* X11_CLOSE_DISPLAY)(Display*);
 typedef int (* X11_FREE)(void*);
 
-// Function pointer types for GLX functions
+// GLX 函数指针类型
 typedef void (* GLX_DESTROY_CONTEXT)(Display*, GLXContext);
 typedef void (* GLX_SWAP_BUFFERS)(Display* dpy, GLXDrawable drawable);
-// Stores GLX function pointers and a handle to the system's GLX library
-struct GLXFunctions {
-    PFNGLXCHOOSEFBCONFIGPROC chooseFbConfig;
-    PFNGLXCREATECONTEXTATTRIBSARBPROC createContext;
-    PFNGLXCREATEPBUFFERPROC createPbuffer;
-    PFNGLXDESTROYPBUFFERPROC destroyPbuffer;
-    PFNGLXMAKECONTEXTCURRENTPROC setCurrentContext;
 
-    /*
-       When creating a shared GL context, we query the used
-       GLX_FBCONFIG_ID to make sure our display framebuffer
-       attributes match; otherwise making our context current
-       results in a BadMatch
-       https://gist.github.com/roxlu/c282d642c353ce96ef19b6359c741bcb
-    */
+/**
+ * GLX 函数结构
+ * 
+ * 存储 GLX 函数指针和系统 GLX 库的句柄。
+ * 使用动态加载以避免硬链接依赖。
+ */
+struct GLXFunctions {
+    PFNGLXCHOOSEFBCONFIGPROC chooseFbConfig;        // 选择帧缓冲区配置
+    PFNGLXCREATECONTEXTATTRIBSARBPROC createContext; // 创建上下文（带属性）
+    PFNGLXCREATEPBUFFERPROC createPbuffer;          // 创建像素缓冲区
+    PFNGLXDESTROYPBUFFERPROC destroyPbuffer;         // 销毁像素缓冲区
+    PFNGLXMAKECONTEXTCURRENTPROC setCurrentContext; // 设置当前上下文
+
+    /**
+     * 查询上下文
+     * 
+     * 创建共享 GL 上下文时，我们查询使用的 GLX_FBCONFIG_ID
+     * 以确保我们的显示帧缓冲区属性匹配；否则使我们的上下文
+     * 成为当前上下文会导致 BadMatch。
+     * https://gist.github.com/roxlu/c282d642c353ce96ef19b6359c741bcb
+     */
     PFNGLXQUERYCONTEXTPROC queryContext;
 
-    /*
-       When creating a shared GL context, we select the matching
-       GLXFBConfig that is used by the shared GL context. `getFBConfigs`
-       will return all the available GLXFBConfigs.
-    */
+    /**
+     * 获取帧缓冲区配置
+     * 
+     * 创建共享 GL 上下文时，我们选择与共享 GL 上下文匹配的
+     * GLXFBConfig。`getFBConfigs` 将返回所有可用的 GLXFBConfigs。
+     */
     PFNGLXGETFBCONFIGSPROC getFbConfigs;
 
-    /*
-      When creating a shared GL contect, we iterate over the
-      available GLXFBConfigs that are returned by `getFBConfigs`,
-      we use `getFbConfigAttrib` to find the matching
-      `GLX_FBCONFIG_ID`.
-    */
+    /**
+     * 获取帧缓冲区配置属性
+     * 
+     * 创建共享 GL 上下文时，我们遍历 `getFBConfigs` 返回的
+     * 可用 GLXFBConfigs，使用 `getFbConfigAttrib` 查找匹配的
+     * `GLX_FBCONFIG_ID`。
+     */
     PFNGLXGETFBCONFIGATTRIBPROC getFbConfigAttrib;
 
-    GLX_DESTROY_CONTEXT destroyContext;
-    GLX_SWAP_BUFFERS swapBuffers;
-    void* library;
+    GLX_DESTROY_CONTEXT destroyContext;  // 销毁上下文
+    GLX_SWAP_BUFFERS swapBuffers;        // 交换缓冲区
+    void* library;                        // 库句柄
 } g_glx;
 
-// Stores X11 function pointers and a handle to the system's X11 library
+/**
+ * X11 函数结构
+ * 
+ * 存储 X11 函数指针和系统 X11 库的句柄。
+ */
 struct X11Functions {
-    X11_OPEN_DISPLAY openDisplay;
-    X11_CLOSE_DISPLAY closeDisplay;
-    X11_FREE free;
-    void* library;
+    X11_OPEN_DISPLAY openDisplay;   // 打开显示
+    X11_CLOSE_DISPLAY closeDisplay; // 关闭显示
+    X11_FREE free;                  // 释放内存
+    void* library;                   // 库句柄
 } g_x11;
 
+/**
+ * 获取函数地址
+ * 
+ * GLX 函数地址获取函数指针。
+ */
 static PFNGLXGETPROCADDRESSPROC getProcAddress;
 
+/**
+ * 加载库
+ * 
+ * 动态加载 GLX 和 X11 库，并获取函数指针。
+ * 
+ * @return 如果成功返回 true，否则返回 false
+ */
 static bool loadLibraries() {
+    // 加载 GLX 库
     g_glx.library = dlopen(LIBRARY_GLX, RTLD_LOCAL | RTLD_NOW);
     if (!g_glx.library) {
         LOG(ERROR) << "Could not find library " << LIBRARY_GLX;
         return false;
     }
 
+    // 获取 glXGetProcAddressARB 函数指针
     getProcAddress =
             (PFNGLXGETPROCADDRESSPROC)dlsym(g_glx.library, "glXGetProcAddressARB");
 
+    // 获取 GLX 函数指针
     g_glx.chooseFbConfig = (PFNGLXCHOOSEFBCONFIGPROC)
             getProcAddress((const GLubyte*)"glXChooseFBConfig");
     g_glx.createContext = (PFNGLXCREATECONTEXTATTRIBSARBPROC)

@@ -34,28 +34,56 @@ namespace filament::backend {
 
 using namespace backend;
 
+/**
+ * Cocoa GL 交换链结构
+ * 
+ * 封装 macOS NSView 作为 OpenGL 交换链。
+ * 跟踪视图边界和窗口框架变化。
+ */
 struct CocoaGLSwapChain : public Platform::SwapChain {
+    /**
+     * 构造函数
+     * 
+     * @param inView NSView 指针
+     */
     explicit CocoaGLSwapChain(NSView* inView);
+    
+    /**
+     * 析构函数
+     * 
+     * 清理通知观察者。
+     */
     ~CocoaGLSwapChain() noexcept;
 
-    NSView* view;
-    NSRect previousBounds;
-    NSRect previousWindowFrame;
-    NSMutableArray<id<NSObject>>* observers;
-    NSRect currentBounds;
-    NSRect currentWindowFrame;
+    NSView* view;                                    // NSView 指针
+    NSRect previousBounds;                          // 之前的边界
+    NSRect previousWindowFrame;                     // 之前的窗口框架
+    NSMutableArray<id<NSObject>>* observers;        // 通知观察者数组
+    NSRect currentBounds;                           // 当前边界
+    NSRect currentWindowFrame;                      // 当前窗口框架
 };
 
+/**
+ * Cocoa GL 平台实现结构
+ * 
+ * 存储 macOS OpenGL 平台的内部状态。
+ */
 struct PlatformCocoaGLImpl {
-    NSOpenGLContext* mGLContext = nullptr;
-    CocoaGLSwapChain* mCurrentSwapChain = nullptr;
-    std::vector<NSView*> mHeadlessSwapChains;
-    std::vector<NSOpenGLContext*> mAdditionalContexts;
-    CVOpenGLTextureCacheRef mTextureCache = nullptr;
-    std::unique_ptr<CocoaExternalImage::SharedGl> mExternalImageSharedGl;
-    void updateOpenGLContext(NSView *nsView, bool resetView, bool clearView);
+    NSOpenGLContext* mGLContext = nullptr;                          // 主 OpenGL 上下文
+    CocoaGLSwapChain* mCurrentSwapChain = nullptr;                   // 当前交换链
+    std::vector<NSView*> mHeadlessSwapChains;                       // 无头交换链视图
+    std::vector<NSOpenGLContext*> mAdditionalContexts;              // 额外上下文（用于多线程）
+    CVOpenGLTextureCacheRef mTextureCache = nullptr;                // CoreVideo 纹理缓存
+    std::unique_ptr<CocoaExternalImage::SharedGl> mExternalImageSharedGl;  // 外部图像共享 GL 对象
+    void updateOpenGLContext(NSView *nsView, bool resetView, bool clearView);  // 更新 OpenGL 上下文
+    
+    /**
+     * 外部图像结构
+     * 
+     * 封装 CVPixelBuffer 作为外部图像。
+     */
     struct ExternalImageCocoaGL final : public Platform::ExternalImage {
-        CVPixelBufferRef cvBuffer;
+        CVPixelBufferRef cvBuffer;  // CoreVideo 像素缓冲区
     protected:
         ~ExternalImageCocoaGL() noexcept final;
     };
@@ -63,6 +91,18 @@ struct PlatformCocoaGLImpl {
 
 PlatformCocoaGLImpl::ExternalImageCocoaGL::~ExternalImageCocoaGL() noexcept = default;
 
+/**
+ * 构造函数
+ * 
+ * 初始化交换链并注册视图变化通知。
+ * 
+ * @param inView NSView 指针
+ * 
+ * 执行流程：
+ * 1. 初始化成员变量
+ * 2. 在主线程上注册通知观察者
+ * 3. 监听窗口和视图的尺寸/位置变化
+ */
 CocoaGLSwapChain::CocoaGLSwapChain( NSView* inView )
         : view(inView)
         , previousBounds(NSZeroRect)
@@ -73,15 +113,22 @@ CocoaGLSwapChain::CocoaGLSwapChain( NSView* inView )
     NSView* __weak weakView = view;
     NSMutableArray* __weak weakObservers = observers;
     
+    /**
+     * 通知处理块
+     * 
+     * 当视图或窗口尺寸/位置改变时更新当前边界和窗口框架。
+     */
     void (^notificationHandler)(NSNotification *notification) = ^(NSNotification *notification) {
         NSView* strongView = weakView;
         if ((weakView != nil) && (weakObservers != nil)) {
+            // 更新当前边界（转换为后备存储坐标）
             this->currentBounds = [strongView convertRectToBacking: strongView.bounds];
+            // 更新当前窗口框架
             this->currentWindowFrame = strongView.window.frame;
         }
     };
     
-    // Various methods below should only be called from the main thread:
+    // 以下各种方法应仅从主线程调用：
     // -[NSView bounds], -[NSView convertRectToBacking:], -[NSView window],
     // -[NSWindow frame], -[NSView superview],
     // -[NSView setPostsFrameChangedNotifications:],
@@ -148,13 +195,30 @@ PlatformCocoaGL::~PlatformCocoaGL() noexcept {
     delete pImpl;
 }
 
+/**
+ * 创建驱动
+ * 
+ * 初始化 macOS OpenGL 上下文并创建驱动。
+ * 
+ * @param sharedContext 共享上下文（可选）
+ * @param driverConfig 驱动配置
+ * @return 创建的驱动指针
+ * 
+ * 执行流程：
+ * 1. 配置像素格式属性（OpenGL 3.2 Core Profile）
+ * 2. 创建 OpenGL 上下文
+ * 3. 设置交换间隔为 0（禁用垂直同步）
+ * 4. 绑定 BlueGL（加载 OpenGL 入口点）
+ * 5. 创建 CoreVideo 纹理缓存
+ * 6. 创建驱动
+ */
 Driver* PlatformCocoaGL::createDriver(void* sharedContext, const Platform::DriverConfig& driverConfig) {
-    // NSOpenGLPFAColorSize: when unspecified, a format that matches the screen is preferred
+    // NSOpenGLPFAColorSize: 未指定时，优先选择与屏幕匹配的格式
     NSOpenGLPixelFormatAttribute pixelFormatAttributes[] = {
-            NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,
-            NSOpenGLPFADepthSize,    (NSOpenGLPixelFormatAttribute) 24,
-            NSOpenGLPFADoubleBuffer, (NSOpenGLPixelFormatAttribute) true,
-            NSOpenGLPFAAccelerated,  (NSOpenGLPixelFormatAttribute) true,
+            NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,  // OpenGL 3.2 Core Profile
+            NSOpenGLPFADepthSize,    (NSOpenGLPixelFormatAttribute) 24,  // 24 位深度缓冲区
+            NSOpenGLPFADoubleBuffer, (NSOpenGLPixelFormatAttribute) true,  // 双缓冲
+            NSOpenGLPFAAccelerated,  (NSOpenGLPixelFormatAttribute) true,  // 硬件加速
             0, 0,
     };
 
@@ -162,15 +226,18 @@ Driver* PlatformCocoaGL::createDriver(void* sharedContext, const Platform::Drive
     NSOpenGLPixelFormat* pixelFormat = [[NSOpenGLPixelFormat alloc] initWithAttributes:pixelFormatAttributes];
     NSOpenGLContext* nsOpenGLContext = [[NSOpenGLContext alloc] initWithFormat:pixelFormat shareContext:shareContext];
 
+    // 设置交换间隔为 0（禁用垂直同步）
     GLint interval = 0;
     [nsOpenGLContext makeCurrentContext];
     [nsOpenGLContext setValues:&interval forParameter:NSOpenGLCPSwapInterval];
 
     pImpl->mGLContext = nsOpenGLContext;
 
+    // 绑定 BlueGL（加载 OpenGL 入口点）
     int result = bluegl::bind();
     FILAMENT_CHECK_POSTCONDITION(!result) << "Unable to load OpenGL entry points.";
 
+    // 创建 CoreVideo 纹理缓存（用于外部图像）
     UTILS_UNUSED_IN_RELEASE CVReturn success = CVOpenGLTextureCacheCreate(kCFAllocatorDefault, nullptr,
             [pImpl->mGLContext CGLContextObj], [pImpl->mGLContext.pixelFormat CGLPixelFormatObj], nullptr,
             &pImpl->mTextureCache);
@@ -179,17 +246,31 @@ Driver* PlatformCocoaGL::createDriver(void* sharedContext, const Platform::Drive
     return OpenGLPlatform::createDefaultDriver(this, sharedContext, driverConfig);
 }
 
+/**
+ * 检查是否支持额外上下文
+ * 
+ * macOS 支持共享上下文，但实现看起来在所有 GL API 周围使用全局锁。
+ * 这对于需要长时间执行的 API 调用是个问题，例如：glCompileProgram。
+ * 
+ * @return 总是返回 true（macOS 支持共享上下文）
+ */
 bool PlatformCocoaGL::isExtraContextSupported() const noexcept {
-    // macOS supports shared contexts however, it looks like the implementation uses a global
-    // lock around all GL APIs. It's a problem for API calls that take a long time to execute,
-    // one such call is e.g.: glCompileProgram.
+    // macOS 支持共享上下文，但实现看起来在所有 GL API 周围使用全局锁。
+    // 这对于需要长时间执行的 API 调用是个问题，例如：glCompileProgram。
     return true;
 }
 
+/**
+ * 创建额外上下文
+ * 
+ * 创建额外的 OpenGL 上下文（用于多线程编译）。
+ * 
+ * @param shared 是否与主上下文共享
+ */
 void PlatformCocoaGL::createContext(bool shared) {
     NSOpenGLPixelFormatAttribute pixelFormatAttributes[] = {
-            NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,
-            NSOpenGLPFAAccelerated,  (NSOpenGLPixelFormatAttribute) true,
+            NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,  // OpenGL 3.2 Core Profile
+            NSOpenGLPFAAccelerated,  (NSOpenGLPixelFormatAttribute) true,  // 硬件加速
             0, 0,
     };
     NSOpenGLContext* const sharedContext = shared ? pImpl->mGLContext : nil;
@@ -199,10 +280,22 @@ void PlatformCocoaGL::createContext(bool shared) {
     pImpl->mAdditionalContexts.push_back(nsOpenGLContext);
 }
 
+/**
+ * 获取操作系统版本
+ * 
+ * macOS 平台返回 0（无操作系统版本概念）。
+ * 
+ * @return 操作系统版本（macOS 返回 0）
+ */
 int PlatformCocoaGL::getOSVersion() const noexcept {
     return 0;
 }
 
+/**
+ * 终止平台
+ * 
+ * 清理所有资源，包括纹理缓存、外部图像共享 GL 对象、上下文和 BlueGL。
+ */
 void PlatformCocoaGL::terminate() noexcept {
     CFRelease(pImpl->mTextureCache);
     pImpl->mExternalImageSharedGl.reset();
@@ -213,14 +306,25 @@ void PlatformCocoaGL::terminate() noexcept {
     bluegl::unbind();
 }
 
+/**
+ * 创建交换链（从原生窗口）
+ * 
+ * @param nativewindow NSView 指针
+ * @param flags 交换链标志
+ * @return 交换链指针
+ * 
+ * 注意：如果交换链正在重新创建（例如底层表面已调整大小），
+ * 我们需要在后续的 makeCurrent 中强制更新，这可以通过简单地重置当前视图来完成。
+ * 在多窗口情况下，这会自动发生。
+ */
 Platform::SwapChain* PlatformCocoaGL::createSwapChain(void* nativewindow, uint64_t flags) noexcept {
     NSView* nsView = (__bridge NSView*)nativewindow;
 
     CocoaGLSwapChain* swapChain = new CocoaGLSwapChain( nsView );
 
-    // If the SwapChain is being recreated (e.g. if the underlying surface has been resized),
-    // then we need to force an update to occur in the subsequent makeCurrent, which can be done by
-    // simply resetting the current view. In multi-window situations, this happens automatically.
+    // 如果交换链正在重新创建（例如底层表面已调整大小），
+    // 我们需要在后续的 makeCurrent 中强制更新，这可以通过简单地重置当前视图来完成。
+    // 在多窗口情况下，这会自动发生。
     if (pImpl->mCurrentSwapChain && pImpl->mCurrentSwapChain->view == nsView) {
         pImpl->mCurrentSwapChain = nullptr;
     }
@@ -228,10 +332,18 @@ Platform::SwapChain* PlatformCocoaGL::createSwapChain(void* nativewindow, uint64
     return swapChain;
 }
 
+/**
+ * 创建交换链（无头模式）
+ * 
+ * @param width 宽度
+ * @param height 高度
+ * @param flags 交换链标志
+ * @return 交换链指针
+ */
 Platform::SwapChain* PlatformCocoaGL::createSwapChain(uint32_t width, uint32_t height, uint64_t flags) noexcept {
     NSView* nsView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, width, height)];
 
-    // adding the pointer to the array retains the NSView
+    // 将指针添加到数组会保留 NSView
     pImpl->mHeadlessSwapChains.push_back(nsView);
 
     CocoaGLSwapChain* swapChain = new CocoaGLSwapChain( nsView );
@@ -239,6 +351,11 @@ Platform::SwapChain* PlatformCocoaGL::createSwapChain(uint32_t width, uint32_t h
     return swapChain;
 }
 
+/**
+ * 销毁交换链
+ * 
+ * @param swapChain 交换链指针
+ */
 void PlatformCocoaGL::destroySwapChain(Platform::SwapChain* swapChain) noexcept {
     CocoaGLSwapChain* cocoaSwapChain = static_cast<CocoaGLSwapChain*>(swapChain);
     if (pImpl->mCurrentSwapChain == cocoaSwapChain) {
@@ -248,7 +365,7 @@ void PlatformCocoaGL::destroySwapChain(Platform::SwapChain* swapChain) noexcept 
     auto& v = pImpl->mHeadlessSwapChains;
     auto it = std::find(v.begin(), v.end(), cocoaSwapChain->view);
     if (it != v.end()) {
-        // removing the pointer from the array releases the NSView
+        // 从数组中移除指针会释放 NSView
         v.erase(it);
     }
     delete cocoaSwapChain;
@@ -297,13 +414,27 @@ bool PlatformCocoaGL::makeCurrent(ContextType type, SwapChain* drawSwapChain,
     return true;
 }
 
+/**
+ * 提交交换链
+ * 
+ * 刷新 OpenGL 缓冲区并刷新 CoreVideo 纹理缓存。
+ * 
+ * @param swapChain 交换链指针
+ */
 void PlatformCocoaGL::commit(Platform::SwapChain* swapChain) noexcept {
     [pImpl->mGLContext flushBuffer];
 
-    // This needs to be done periodically.
+    // 这需要定期执行
     CVOpenGLTextureCacheFlush(pImpl->mTextureCache, 0);
 }
 
+/**
+ * 处理事件
+ * 
+ * 在主线程上处理 Cocoa 事件循环。
+ * 
+ * @return 如果成功返回 true，否则返回 false
+ */
 bool PlatformCocoaGL::pumpEvents() noexcept {
     if (![NSThread isMainThread]) {
         return false;
@@ -312,6 +443,13 @@ bool PlatformCocoaGL::pumpEvents() noexcept {
     return true;
 }
 
+/**
+ * 创建外部图像纹理
+ * 
+ * 创建用于外部图像（CVPixelBuffer）的纹理对象。
+ * 
+ * @return 外部纹理指针
+ */
 OpenGLPlatform::ExternalTexture* PlatformCocoaGL::createExternalImageTexture() noexcept {
     if (!pImpl->mExternalImageSharedGl) {
         pImpl->mExternalImageSharedGl = std::make_unique<CocoaExternalImage::SharedGl>();
@@ -321,18 +459,38 @@ OpenGLPlatform::ExternalTexture* PlatformCocoaGL::createExternalImageTexture() n
     return outTexture;
 }
 
+/**
+ * 销毁外部图像纹理
+ * 
+ * @param texture 外部纹理指针
+ */
 void PlatformCocoaGL::destroyExternalImageTexture(ExternalTexture* texture) noexcept {
     auto* p = static_cast<CocoaExternalImage*>(texture);
     delete p;
 }
 
+/**
+ * 保留外部图像
+ * 
+ * 获取传入缓冲区的所有权。它将在下次调用 setExternalImage 时或纹理销毁时释放。
+ * 
+ * @param externalImage CVPixelBuffer 指针
+ */
 void PlatformCocoaGL::retainExternalImage(void* externalImage) noexcept {
-    // Take ownership of the passed in buffer. It will be released the next time
-    // setExternalImage is called, or when the texture is destroyed.
+    // 获取传入缓冲区的所有权。它将在下次调用 setExternalImage 时或纹理销毁时释放。
     CVPixelBufferRef pixelBuffer = (CVPixelBufferRef) externalImage;
     CVPixelBufferRetain(pixelBuffer);
 }
 
+/**
+ * 设置外部图像
+ * 
+ * 将 CVPixelBuffer 附加到纹理。
+ * 
+ * @param externalImage CVPixelBuffer 指针
+ * @param texture 外部纹理指针
+ * @return 如果成功返回 true
+ */
 bool PlatformCocoaGL::setExternalImage(void* externalImage, ExternalTexture* texture) noexcept {
     CVPixelBufferRef cvPixelBuffer = (CVPixelBufferRef) externalImage;
     CocoaExternalImage* cocoaExternalImage = static_cast<CocoaExternalImage*>(texture);
@@ -341,26 +499,49 @@ bool PlatformCocoaGL::setExternalImage(void* externalImage, ExternalTexture* tex
     }
     texture->target = cocoaExternalImage->getTarget();
     texture->id = cocoaExternalImage->getGlTexture();
-    // we used to set the internalFormat, but it's not used anywhere on the gl backend side
+    // 我们过去设置 internalFormat，但它在 gl 后端侧的任何地方都不使用
     // cocoaExternalImage->getInternalFormat();
     return true;
 }
 
+/**
+ * 创建外部图像
+ * 
+ * 从 CVPixelBuffer 创建外部图像句柄。
+ * 
+ * @param cvPixelBuffer CVPixelBuffer 指针
+ * @return 外部图像句柄
+ */
 Platform::ExternalImageHandle PlatformCocoaGL::createExternalImage(void* cvPixelBuffer) noexcept {
     auto* p = new(std::nothrow) PlatformCocoaGLImpl::ExternalImageCocoaGL;
     p->cvBuffer = (CVPixelBufferRef) cvPixelBuffer;
     return ExternalImageHandle{ p };
 }
 
+/**
+ * 保留外部图像（从句柄）
+ * 
+ * 从外部图像句柄保留外部图像。
+ * 
+ * @param externalImage 外部图像句柄引用
+ */
 void PlatformCocoaGL::retainExternalImage(ExternalImageHandleRef externalImage) noexcept {
     auto const* const cocoaGlExternalImage
             = static_cast<PlatformCocoaGLImpl::ExternalImageCocoaGL const*>(externalImage.get());
-    // Take ownership of the passed in buffer. It will be released the next time
-    // setExternalImage is called, or when the texture is destroyed.
+    // 获取传入缓冲区的所有权。它将在下次调用 setExternalImage 时或纹理销毁时释放。
     CVPixelBufferRef pixelBuffer = cocoaGlExternalImage->cvBuffer;
     CVPixelBufferRetain(pixelBuffer);
 }
 
+/**
+ * 设置外部图像（从句柄）
+ * 
+ * 从外部图像句柄设置外部图像。
+ * 
+ * @param externalImage 外部图像句柄引用
+ * @param texture 外部纹理指针
+ * @return 如果成功返回 true
+ */
 bool PlatformCocoaGL::setExternalImage(ExternalImageHandleRef externalImage, ExternalTexture* texture) noexcept {
     auto const* const cocoaGlExternalImage
             = static_cast<PlatformCocoaGLImpl::ExternalImageCocoaGL const*>(externalImage.get());
@@ -371,19 +552,31 @@ bool PlatformCocoaGL::setExternalImage(ExternalImageHandleRef externalImage, Ext
     }
     texture->target = cocoaExternalImage->getTarget();
     texture->id = cocoaExternalImage->getGlTexture();
-    // we used to set the internalFormat, but it's not used anywhere on the gl backend side
+    // 我们过去设置 internalFormat，但它在 gl 后端侧的任何地方都不使用
     // cocoaExternalImage->getInternalFormat();
     return true;
 }
 
+/**
+ * 更新 OpenGL 上下文
+ * 
+ * 更新 OpenGL 上下文与 NSView 的关联。
+ * 
+ * @param nsView NSView 指针
+ * @param resetView 是否重置视图
+ * @param clearView 是否清除可绘制对象
+ * 
+ * 注意：NSOpenGLContext 要求 "setView" 和 "update" 从 UI 线程调用。
+ * 这在 macOS 10.15 (Catalina) 中成为硬性要求。
+ * 如果从 GL 线程调用这些方法，我们会看到 EXC_BAD_INSTRUCTION。
+ */
 void PlatformCocoaGLImpl::updateOpenGLContext(NSView *nsView, bool resetView,
                                               bool clearView) {
     NSOpenGLContext* glContext = mGLContext;
 
-    // NOTE: This is not documented well (if at all) but NSOpenGLContext requires "setView" and
-    // "update" to be called from the UI thread. This became a hard requirement with the arrival
-    // of macOS 10.15 (Catalina). If we were to call these methods from the GL thread, we would
-    // see EXC_BAD_INSTRUCTION.
+    // 注意：这没有很好的文档记录（如果有的话），但 NSOpenGLContext 要求 "setView" 和
+    // "update" 从 UI 线程调用。这在 macOS 10.15 (Catalina) 中成为硬性要求。
+    // 如果从 GL 线程调用这些方法，我们会看到 EXC_BAD_INSTRUCTION。
     if (![NSThread isMainThread]) {
         dispatch_sync(dispatch_get_main_queue(), ^(void) {
             if (resetView) {

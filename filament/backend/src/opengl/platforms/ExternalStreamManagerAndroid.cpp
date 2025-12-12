@@ -47,15 +47,34 @@ namespace filament::backend {
 using namespace backend;
 using Stream = Platform::Stream;
 
-
+/**
+ * 创建外部流管理器
+ * 
+ * 必须在 GLES 线程上调用。
+ * 
+ * @return 管理器引用
+ */
 ExternalStreamManagerAndroid& ExternalStreamManagerAndroid::create() noexcept {
     return *(new(std::nothrow) ExternalStreamManagerAndroid{});
 }
 
+/**
+ * 销毁外部流管理器
+ * 
+ * 必须在 GLES 线程上调用。
+ * 
+ * @param pExternalStreamManagerAndroid 管理器指针
+ */
 void ExternalStreamManagerAndroid::destroy(ExternalStreamManagerAndroid* pExternalStreamManagerAndroid) noexcept {
     delete pExternalStreamManagerAndroid;
 }
 
+/**
+ * 构造函数
+ * 
+ * 初始化 Java 虚拟机环境。
+ * 在 Android 28+ 上，使用 ASurfaceTexture（原生 API）。
+ */
 ExternalStreamManagerAndroid::ExternalStreamManagerAndroid() noexcept
         : mVm(VirtualMachineEnv::get()) {
     if (__builtin_available(android 28, *)) {
@@ -63,32 +82,66 @@ ExternalStreamManagerAndroid::ExternalStreamManagerAndroid() noexcept
     }
 }
 
+/**
+ * 析构函数
+ * 
+ * 默认析构函数。
+ */
 ExternalStreamManagerAndroid::~ExternalStreamManagerAndroid() noexcept = default;
 
+/**
+ * 获取 JNI 环境（慢速路径）
+ * 
+ * 从虚拟机获取 JNI 环境并缓存 SurfaceTexture 类的方法 ID。
+ * 
+ * @return JNI 环境指针
+ */
 UTILS_NOINLINE
 JNIEnv* ExternalStreamManagerAndroid::getEnvironmentSlow() noexcept {
     JNIEnv* const env = mVm.getEnvironment();
-    mJniEnv = env;
+    mJniEnv = env;  // 缓存 JNI 环境
+    
+    // 查找 SurfaceTexture 类
     jclass SurfaceTextureClass = env->FindClass("android/graphics/SurfaceTexture");
+    
+    // 获取并缓存方法 ID
     mSurfaceTextureClass_updateTexImage = env->GetMethodID(SurfaceTextureClass, "updateTexImage", "()V");
     mSurfaceTextureClass_attachToGLContext = env->GetMethodID(SurfaceTextureClass, "attachToGLContext", "(I)V");
     mSurfaceTextureClass_detachFromGLContext = env->GetMethodID(SurfaceTextureClass, "detachFromGLContext", "()V");
     mSurfaceTextureClass_getTimestamp = env->GetMethodID(SurfaceTextureClass, "getTimestamp", "()J");
     mSurfaceTextureClass_getTransformMatrix = env->GetMethodID(SurfaceTextureClass, "getTransformMatrix", "([F)V");
+    
     return env;
 }
 
+/**
+ * 获取流
+ * 
+ * 从 SurfaceTexture 对象创建流。
+ * 
+ * 注意：此函数在应用程序线程上调用（不是 GL 线程）。
+ * 
+ * @param surfaceTexture Java SurfaceTexture 对象
+ * @return 流指针，失败返回 nullptr
+ */
 Stream* ExternalStreamManagerAndroid::acquire(jobject surfaceTexture) noexcept {
-    // note: This is called on the application thread (not the GL thread)
+    // 注意：此函数在应用程序线程上调用（不是 GL 线程）
     JNIEnv* env = VirtualMachineEnv::getThreadEnvironment();
     if (!env) {
-        return nullptr; // this should not happen
+        return nullptr; // 这不应该发生
     }
+    
+    // 创建流对象
     EGLStream* stream = new(std::nothrow) EGLStream();
+    
+    // 创建全局引用（防止被垃圾回收）
     stream->jSurfaceTexture = env->NewGlobalRef(surfaceTexture);
+    
+    // 在 Android 28+ 上，使用原生 ASurfaceTexture API
     if (__builtin_available(android 28, *)) {
         stream->nSurfaceTexture = ASurfaceTexture_fromSurfaceTexture(env, surfaceTexture);
     }
+    
     return stream;
 }
 

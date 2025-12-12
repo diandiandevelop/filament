@@ -76,15 +76,22 @@ using namespace utils;
 namespace filament::backend {
 using namespace backend;
 
-// The Android NDK doesn't expose extensions, fake it with eglGetProcAddress
+/**
+ * Android EGL 扩展函数指针命名空间
+ * 
+ * Android NDK 不暴露扩展函数，使用 eglGetProcAddress 获取。
+ * 这些函数指针在初始化时通过 eglGetProcAddress 填充。
+ */
 namespace glext {
 
+// 从基类继承的 EGL 扩展函数指针（在 PlatformEGL.cpp 中定义）
 extern PFNEGLCREATESYNCKHRPROC eglCreateSyncKHR;
 extern PFNEGLDESTROYSYNCKHRPROC eglDestroySyncKHR;
 extern PFNEGLCLIENTWAITSYNCKHRPROC eglClientWaitSyncKHR;
 extern PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR;
 extern PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR;
 
+// Android 特定的 EGL 扩展函数指针
 UTILS_PRIVATE PFNEGLGETNATIVECLIENTBUFFERANDROIDPROC eglGetNativeClientBufferANDROID{}; // NOLINT(*-use-internal-linkage)
 UTILS_PRIVATE PFNEGLPRESENTATIONTIMEANDROIDPROC eglPresentationTimeANDROID{}; // NOLINT(*-use-internal-linkage)
 UTILS_PRIVATE PFNEGLGETCOMPOSITORTIMINGSUPPORTEDANDROIDPROC eglGetCompositorTimingSupportedANDROID{}; // NOLINT(*-use-internal-linkage)
@@ -98,23 +105,73 @@ using namespace glext;
 
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Android EGL 交换链结构
+ * 
+ * 扩展基类 SwapChainEGL，添加 Android 特定的功能。
+ * 支持合成器时序和帧时间戳查询。
+ */
 struct PlatformEGLAndroid::SwapChainEGLAndroid : public SwapChainEGL {
+    /**
+     * 构造函数（从原生窗口）
+     * 
+     * @param platform 平台引用
+     * @param nativeWindow 原生窗口指针（ANativeWindow）
+     * @param flags 交换链标志
+     */
     SwapChainEGLAndroid(PlatformEGLAndroid const& platform,
             void* nativeWindow, uint64_t flags);
+    
+    /**
+     * 构造函数（无头模式）
+     * 
+     * @param platform 平台引用
+     * @param width 宽度
+     * @param height 高度
+     * @param flags 交换链标志
+     */
     SwapChainEGLAndroid(PlatformEGLAndroid const& platform,
             uint32_t width, uint32_t height, uint64_t flags);
+    
+    /**
+     * 终止交换链
+     * 
+     * 清理交换链资源。
+     * 
+     * @param platform 平台引用
+     */
     void terminate(PlatformEGLAndroid& platform);
+    
+    /**
+     * 设置呈现帧 ID
+     * 
+     * @param frameId 帧 ID
+     * @return 如果成功返回 true
+     */
     bool setPresentFrameId(uint64_t frameId) const noexcept;
+    
+    /**
+     * 获取帧 ID
+     * 
+     * @param frameId 帧 ID
+     * @return 帧 ID
+     */
     uint64_t getFrameId(uint64_t frameId) const noexcept;
-    bool compositorTimingSupported = false;
-    bool frameTimestampsSupported = false;
+    
+    bool compositorTimingSupported = false;  // 是否支持合成器时序
+    bool frameTimestampsSupported = false;    // 是否支持帧时间戳
 private:
-    AndroidSwapChainHelper mImpl{};
+    AndroidSwapChainHelper mImpl{};  // Android 交换链辅助实现
 };
 
+/**
+ * Android 平台详情结构
+ * 
+ * 存储 Android 特定的平台功能。
+ */
 struct PlatformEGLAndroid::AndroidDetails {
-    AndroidProducerThrottling producerThrottling;
-    AndroidFrameCallback androidFrameCallback;
+    AndroidProducerThrottling producerThrottling;  // 生产者节流
+    AndroidFrameCallback androidFrameCallback;    // Android 帧回调
 };
 
 // ---------------------------------------------------------------------------------------------

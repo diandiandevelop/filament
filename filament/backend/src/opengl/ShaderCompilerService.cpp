@@ -59,21 +59,29 @@ namespace filament::backend {
 
 using namespace utils;
 
-// How many ticks do we wait in between compiling non-IMMEDIATE programs synchronously?
+/**
+ * 同步编译非 IMMEDIATE 程序之间等待的 tick 数
+ */
 constexpr uint32_t NUM_TICKS_BETWEEN_PROGRAMS = 16;
-// How many non-IMMEDIATE synchronous programs are we allowed to compile on the same tick?
+
+/**
+ * 在同一 tick 上允许编译的非 IMMEDIATE 同步程序数量
+ */
 constexpr uint32_t MAX_NUM_SYNCHRONOUS_PROGRAMS_PER_FRAME = 1;
 
 // ------------------------------------------------------------------------------------------------
 
+// 辅助函数：将值转换为字符串
 static CString to_string(bool const b) { return CString{ b ? "true" : "false" }; }
 static CString to_string(int const i) { return utils::to_string(i); }
 static CString to_string(float const f) { return "float(" + utils::to_string(f) + ")"; }
 
+// 前向声明：错误日志函数
 static void logCompilationError(ShaderStage shaderType, const char* name, GLuint shaderId,
         Program::ShaderBlob const& sourceCode);
 static void logProgramLinkError(char const* name, GLuint program) noexcept;
 
+// 前向声明：着色器源代码处理函数
 static void process_GOOGLE_cpp_style_line_directive(OpenGLContext const& context, char* source,
         size_t len) noexcept;
 static void process_OVR_multiview2(OpenGLContext const& context, int32_t eyeCount, char* source,
@@ -83,42 +91,72 @@ static std::array<std::string_view, 3> splitShaderSource(std::string_view source
 
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * OpenGL 程序 Token 结构
+ * 
+ * 表示一个正在编译的程序。
+ * 用于跟踪编译状态和结果。
+ */
 struct ShaderCompilerService::OpenGLProgramToken : ProgramToken {
     ~OpenGLProgramToken() override;
 
+    /**
+     * 构造函数
+     * 
+     * @param compiler 着色器编译服务引用
+     * @param name 程序名称
+     */
     OpenGLProgramToken(ShaderCompilerService& compiler, CString const& name) noexcept
             : compiler(compiler), name(name), handle(compiler.issueCallbackHandle()) {
     }
 
-    ShaderCompilerService& compiler;
-    CString const& name;
-    FixedCapacityVector<std::pair<CString, uint8_t>> attributes;
-    Program::ShaderSource shaderSourceCode;
-    void* user = nullptr;
+    ShaderCompilerService& compiler;  // 着色器编译服务引用
+    CString const& name;               // 程序名称
+    FixedCapacityVector<std::pair<CString, uint8_t>> attributes;  // 属性列表（ES2 使用）
+    Program::ShaderSource shaderSourceCode;  // 着色器源代码（用于调试）
+    void* user = nullptr;             // 用户数据指针
+    
+    /**
+     * OpenGL 相关状态
+     * 
+     * 存储着色器和程序 ID。
+     */
     struct {
-        shaders_t shaders{};
-        GLuint program = 0;
+        shaders_t shaders{};  // 着色器数组
+        GLuint program = 0;   // 程序 ID
     } gl; // 12 bytes
 
-    // Used in THREAD_POOL mode. The job from ThreadPool should call this when the token is ready to
-    // be used. It sends a signal to the engine thread being blocked upon the `wait` call, so that
-    // the engine thread resumes its processing with the token.
+    /**
+     * 发出信号（THREAD_POOL 模式）
+     * 
+     * 线程池中的任务应在 Token 准备好使用时调用此方法。
+     * 它向在 `wait` 调用上被阻塞的引擎线程发送信号，
+     * 以便引擎线程恢复处理 Token。
+     */
     void signal() noexcept {
         std::unique_lock const l(lock);
         signaled = true;
         cond.notify_one();
     }
 
-    // Used in THREAD_POOL mode. The engine thread should call this before accessing token's fields.
-    // This may block until the token is ready to be used.
+    /**
+     * 等待（THREAD_POOL 模式）
+     * 
+     * 引擎线程应在访问 Token 的字段之前调用此方法。
+     * 这可能会阻塞，直到 Token 准备好使用。
+     */
     void wait() const noexcept {
         std::unique_lock l(lock);
         cond.wait(l, [this] { return signaled; });
     }
 
-    // This is invoked upon token completion, which occurs after a successful `gl.program`
-    // population or upon cancellation. In either scenario, the callback handle must be submitted
-    // to notify the caller that resource loading has concluded.
+    /**
+     * 尝试提交回调
+     * 
+     * 在 Token 完成时调用，这发生在成功填充 `gl.program`
+     * 或取消时。无论哪种情况，都必须提交回调句柄
+     * 以通知调用者资源加载已结束。
+     */
     void trySubmittingCallback() noexcept {
         if (handle) {
             compiler.submitCallbackHandle(*handle);
@@ -126,106 +164,170 @@ struct ShaderCompilerService::OpenGLProgramToken : ProgramToken {
         }
     }
 
-    std::optional<CallbackManager::Handle> handle{};
+    std::optional<CallbackManager::Handle> handle{};  // 回调句柄
 
-    // Only valid when the blob functions are provided by users. The validity of this variable
-    // doesn't guarantee that the program was created from the cache blob.
+    /**
+     * Blob 缓存键
+     * 
+     * 仅在用户提供 blob 函数时有效。
+     * 此变量的有效性不保证程序是从缓存 blob 创建的。
+     */
     BlobCacheKey key;
 
-    // Used for the `THREAD_POOL` mode.
-    mutable Mutex lock;
-    mutable Condition cond;
-    bool signaled = false;
+    // THREAD_POOL 模式使用的同步原语
+    mutable Mutex lock;        // 互斥锁
+    mutable Condition cond;    // 条件变量
+    bool signaled = false;      // 是否已发出信号
 
-    // Indicate this program was created from the cache blob.
+    /**
+     * 指示此程序是否从缓存 blob 创建
+     */
     bool retrievedFromBlobCache = false;
 
-    // The current state of token. Used for THREAD_POOL mode.
+    /**
+     * Token 的当前状态（THREAD_POOL 模式使用）
+     */
     enum class State : uint8_t {
-        // The token is currently in the queue, awaiting the start of shader compilation.
-        // From this state, the token can transition to either LOADING or CANCELED.
+        /**
+         * Token 当前在队列中，等待着色器编译开始。
+         * 从此状态，Token 可以转换到 LOADING 或 CANCELED。
+         */
         WAITING,
-        // This state indicates that shader compilation is currently underway for the token.
-        // From this state, the token can only transition to COMPLETED.
+        /**
+         * 此状态表示 Token 的着色器编译正在进行中。
+         * 从此状态，Token 只能转换到 COMPLETED。
+         */
         LOADING,
-        // This state indicates that shader compilation for the token has finished.
-        // No state transitions can occur from this state.
+        /**
+         * 此状态表示 Token 的着色器编译已完成。
+         * 从此状态不能发生状态转换。
+         */
         COMPLETED,
-        // This state indicates that shader compilation for the token has been canceled.
-        // No state transitions can occur from this state.
+        /**
+         * 此状态表示 Token 的着色器编译已取消。
+         * 从此状态不能发生状态转换。
+         */
         CANCELED,
     };
-    std::atomic<State> state = State::WAITING;
+    std::atomic<State> state = State::WAITING;  // 原子状态
 };
 
+/**
+ * 析构函数
+ * 
+ * 通知调用者资源加载已结束。
+ */
 ShaderCompilerService::OpenGLProgramToken::~OpenGLProgramToken() {
-    // Notify the caller that the resource loading has concluded.
+    // 通知调用者资源加载已结束
     trySubmittingCallback();
 }
 
+/**
+ * 设置用户数据
+ * 
+ * @param token 程序 Token
+ * @param user 用户数据指针
+ */
 /* static */ void ShaderCompilerService::setUserData(const program_token_t& token,
         void* user) noexcept {
     token->user = user;
 }
 
+/**
+ * 获取用户数据
+ * 
+ * @param token 程序 Token
+ * @return 用户数据指针
+ */
 /* static */ void* ShaderCompilerService::getUserData(const program_token_t& token) noexcept {
     return token->user;
 }
 
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 构造函数
+ * 
+ * @param driver OpenGLDriver 引用
+ */
 ShaderCompilerService::ShaderCompilerService(OpenGLDriver& driver)
         : mDriver(driver),
           mBlobCache(driver.getContext()),
           mCallbackManager(driver) {
 }
 
+/**
+ * 析构函数
+ * 
+ * 默认析构函数。
+ */
 ShaderCompilerService::~ShaderCompilerService() noexcept = default;
 
+/**
+ * 检查是否支持并行着色器编译
+ * 
+ * @return 如果支持并行编译返回 true，否则返回 false
+ */
 bool ShaderCompilerService::isParallelShaderCompileSupported() const noexcept {
     assert_invariant(mMode != Mode::UNDEFINED);
     return mMode != Mode::SYNCHRONOUS;
 }
 
+/**
+ * 初始化编译服务
+ * 
+ * 根据硬件支持和配置选择最佳编译模式。
+ * 
+ * 选择策略：
+ * 1. 如果用户禁用了并行着色器编译，使用 SYNCHRONOUS
+ * 2. 如果支持额外上下文，使用 THREAD_POOL（首选，因为我们对编译队列有完全控制）
+ * 3. 如果支持 KHR_parallel_shader_compile，使用 ASYNCHRONOUS
+ * 4. 否则，回退到 SYNCHRONOUS
+ * 
+ * 注意：
+ * - 理论上，ASYNCHRONOUS 模式可能更高效（不需要共享上下文）
+ * - 但实际上，在 ANGLE 上，ASYNCHRONOUS 模式可能导致 glDraw() 时出现很长的暂停
+ * - 因此我们优先使用 THREAD_POOL 模式
+ */
 void ShaderCompilerService::init() noexcept {
     if (UTILS_UNLIKELY(mDriver.getDriverConfig().disableParallelShaderCompile)) {
-        // user disabled parallel shader compile
+        // 用户禁用了并行着色器编译
         mMode = Mode::SYNCHRONOUS;
         return;
     }
 
-    // Here we decide which mode we'll be using. We always prefer our own thread-pool if
-    // that mode is available because, we have no control on how the compilation queues are
-    // handled if done by the driver (so at the very least we'd need to decode this per-driver).
-    // In theory, using Mode::ASYNCHRONOUS (a.k.a. KHR_parallel_shader_compile) could be more
-    // efficient, since it doesn't require shared contexts.
-    // In practice, we already know that with ANGLE, Mode::ASYNCHRONOUS can cause very long
-    // pauses at glDraw() time in the situation where glLinkProgram() has been emitted, but has
-    // other programs ahead of it in ANGLE's queue.
+    // 这里我们决定将使用哪种模式。如果可用，我们总是优先使用我们自己的线程池，
+    // 因为如果由驱动程序完成，我们无法控制编译队列的处理方式
+    // （所以至少我们需要按驱动程序解码）。
+    // 理论上，使用 Mode::ASYNCHRONOUS（即 KHR_parallel_shader_compile）可能更高效，
+    // 因为它不需要共享上下文。
+    // 实际上，我们已经知道在 ANGLE 上，Mode::ASYNCHRONOUS 可能导致在 glDraw() 时出现很长的暂停，
+    // 在 glLinkProgram() 已发出但 ANGLE 的队列中有其他程序在其前面的情况下。
     if (mDriver.mPlatform.isExtraContextSupported()) {
-        // our thread-pool if possible
+        // 如果可能，使用我们的线程池
         mMode = Mode::THREAD_POOL;
     } else if (mDriver.getContext().ext.KHR_parallel_shader_compile) {
-        // if not, async shader compilation and link if the driver supports it
+        // 如果不行，如果驱动程序支持，使用异步着色器编译和链接
         mMode = Mode::ASYNCHRONOUS;
     } else {
-        // fallback to synchronous shader compilation
+        // 回退到同步着色器编译
         mMode = Mode::SYNCHRONOUS;
     }
 
     if (mMode == Mode::THREAD_POOL) {
-        // - on Adreno there is a single compiler object. We can't use a pool > 1
-        //   also glProgramBinary blocks if other threads are compiling.
-        // - on Mali shader compilation can be multithreaded, but program linking happens on
-        //   a single service thread, so we don't bother using more than one thread either.
-        // - on PowerVR shader compilation and linking can be multithreaded.
-        //   How many threads should we use?
-        // - on macOS (M1 MacBook Pro/Ventura) there is global lock around all GL APIs when using
-        //   a shared context, so parallel shader compilation yields no benefit.
-        // - on windows/linux we could use more threads, tbd.
+        // 线程池大小和优先级的选择：
+        // - 在 Adreno 上只有一个编译器对象。我们不能使用 > 1 的池
+        //   另外，如果其他线程正在编译，glProgramBinary 会阻塞。
+        // - 在 Mali 上，着色器编译可以是多线程的，但程序链接发生在
+        //   单个服务线程上，所以我们也不使用超过一个线程。
+        // - 在 PowerVR 上，着色器编译和链接可以是多线程的。
+        //   我们应该使用多少个线程？
+        // - 在 macOS（M1 MacBook Pro/Ventura）上，使用共享上下文时，
+        //   所有 GL API 周围都有全局锁，因此并行着色器编译没有好处。
+        // - 在 windows/linux 上，我们可以使用更多线程，待定。
 
-        // By default, we use one thread at the same priority as the gl thread. This is the
-        // safest choice that avoids priority inversions.
+        // 默认情况下，我们使用一个与 gl 线程相同优先级的线程。
+        // 这是避免优先级反转的最安全选择。
         uint32_t poolSize = 1;
         JobSystem::Priority priority = JobSystem::Priority::DISPLAY;
 

@@ -37,13 +37,22 @@
 #include <stdio.h>
 #include <string.h>
 
-// change to true to display all GL extensions in the console on start-up
+// 设置为 true 以在启动时在控制台显示所有 GL 扩展
 #define DEBUG_PRINT_EXTENSIONS false
 
 using namespace utils;
 
 namespace filament::backend {
 
+/**
+ * 查询 OpenGL 版本
+ * 
+ * 查询当前 OpenGL/GLES 上下文的主版本号和次版本号。
+ * 
+ * @param major 输出参数：主版本号
+ * @param minor 输出参数：次版本号
+ * @return 成功返回 true，失败返回 false
+ */
 bool OpenGLContext::queryOpenGLVersion(GLint* major, GLint* minor) noexcept {
 #ifdef BACKEND_OPENGL_VERSION_GLES
 #   ifdef BACKEND_OPENGL_LEVEL_GLES30
@@ -65,15 +74,24 @@ bool OpenGLContext::queryOpenGLVersion(GLint* major, GLint* minor) noexcept {
 #endif
 }
 
+/**
+ * 构造函数
+ * 
+ * 初始化 OpenGL 上下文，检测版本、扩展、功能和 Bug。
+ * 
+ * @param platform OpenGL 平台引用
+ * @param driverConfig 驱动配置参数
+ */
 OpenGLContext::OpenGLContext(OpenGLPlatform& platform,
         Platform::DriverConfig const& driverConfig) noexcept
         : mPlatform(platform),
           mSamplerMap(32),
           mDriverConfig(driverConfig) {
 
+    // 初始化默认 VAO
     state.vao.p = &mDefaultVAO;
 
-    // These queries work with all GL/GLES versions!
+    // 这些查询适用于所有 GL/GLES 版本！
     state.vendor   = (char const*)glGetString(GL_VENDOR);
     state.renderer = (char const*)glGetString(GL_RENDERER);
     state.version  = (char const*)glGetString(GL_VERSION);
@@ -83,12 +101,13 @@ OpenGLContext::OpenGLContext(OpenGLPlatform& platform,
                  "[" << state.version << "], [" << state.shader << "]";
 
     /*
-     * Figure out GL / GLES version, extensions and capabilities we need to
-     * determine the feature level
+     * 确定 GL / GLES 版本、扩展和功能，以确定功能级别
      */
 
+    // 查询 OpenGL 版本
     queryOpenGLVersion(&state.major, &state.minor);
 
+    // 如果强制使用 GLES2 上下文，覆盖版本号
     #if defined(BACKEND_OPENGL_VERSION_GLES)
     if (UTILS_UNLIKELY(driverConfig.forceGLES2Context)) {
         state.major = 2;
@@ -96,15 +115,20 @@ OpenGLContext::OpenGLContext(OpenGLPlatform& platform,
     }
     #endif
 
+    // 初始化扩展支持
     initExtensions(&ext, state.major, state.minor);
 
+    // 初始化函数指针
     initProcs(&procs, ext, state.major, state.minor);
 
+    // 初始化 Bug 工作区
     initBugs(&bugs, ext, state.major, state.minor,
             state.vendor, state.renderer, state.version, state.shader);
 
+    // 应用工作区（可能会禁用某些扩展）
     initWorkarounds(bugs, &ext);
 
+    // 查询 OpenGL 限制值（这些在所有 GL/GLES 版本中都可用）
     glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE,             &gets.max_renderbuffer_size);
     glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS,           &gets.max_texture_image_units);
     glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS,  &gets.max_combined_texture_image_units);
@@ -113,6 +137,7 @@ OpenGLContext::OpenGLContext(OpenGLPlatform& platform,
     glGetIntegerv(GL_MAX_3D_TEXTURE_SIZE,               &gets.max_3d_texture_size);
     glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS,          &gets.max_array_texture_layers);
 
+    // 根据版本、扩展、限制和 Bug 确定功能级别
     mFeatureLevel = resolveFeatureLevel(state.major, state.minor, ext, gets, bugs);
 
 #ifdef BACKEND_OPENGL_VERSION_GLES
@@ -131,9 +156,11 @@ OpenGLContext::OpenGLContext(OpenGLPlatform& platform,
     }
 #endif
 
+    // 查询 ES 3.0+ / GL 4.1+ 的限制值
     if (mFeatureLevel >= FeatureLevel::FEATURE_LEVEL_1) {
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
 #ifdef GL_EXT_texture_filter_anisotropic
+        // 查询最大各向异性过滤级别
         if (ext.EXT_texture_filter_anisotropic) {
             glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &gets.max_anisotropy);
         }
@@ -258,15 +285,28 @@ OpenGLContext::OpenGLContext(OpenGLPlatform& platform,
     mTimerQueryFactory = TimerQueryFactory::init(platform, *this);
 }
 
+/**
+ * 析构函数
+ * 
+ * 清理 OpenGL 上下文资源。
+ * 注意：此方法从主线程调用，不能执行任何 GL 调用。
+ */
 OpenGLContext::~OpenGLContext() noexcept {
-    // note: this is called from the main thread. Can't do any GL calls.
+    // 注意：此方法从主线程调用，不能执行任何 GL 调用
     delete mTimerQueryFactory;
 }
 
+/**
+ * 终止上下文
+ * 
+ * 清理上下文相关的资源（如采样器对象）。
+ * 注意：此方法从后端线程调用。
+ */
 void OpenGLContext::terminate() noexcept {
-    // note: this is called from the backend thread
+    // 注意：此方法从后端线程调用
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
     if (!isES2()) {
+        // 解绑并删除所有采样器对象
         for (auto& item: mSamplerMap) {
             unbindSampler(item.second);
             glDeleteSamplers(1, &item.second);
@@ -276,29 +316,50 @@ void OpenGLContext::terminate() noexcept {
 #endif
 }
 
+/**
+ * 在指定上下文中销毁对象
+ * 
+ * 延迟对象的销毁，直到切换到指定上下文。
+ * 
+ * @param index 上下文索引（0=常规，1=保护）
+ * @param closure 销毁闭包
+ */
 void OpenGLContext::destroyWithContext(
         size_t index, std::function<void(OpenGLContext&)> const& closure) {
     if (index == 0) {
-        // Note: we only need to delay the destruction of objects on the unprotected context
-        // (index 0) because the protected context is always immediately destroyed and all its
-        // active objects and bindings are then automatically destroyed.
-        // TODO: this is only guaranteed for EGLPlatform, but that's the only one we care about.
+        // 注意：我们只需要延迟未保护上下文（索引 0）中对象的销毁，
+        // 因为保护上下文总是立即销毁，其所有活动对象和绑定都会自动销毁。
+        // TODO: 这仅对 EGLPlatform 有保证，但这是我们唯一关心的平台。
         mDestroyWithNormalContext.push_back(closure);
     }
 }
 
+/**
+ * 解绑所有对象
+ * 
+ * 解绑所有绑定的对象，以便资源不会在销毁时卡在此上下文中。
+ * TODO: 我们应该在这里解绑所有内容，以便资源在另一个上下文中销毁时不会卡在此上下文（contextIndex）中。
+ *       但是，由于 EGLPlatform 总是立即销毁保护上下文（1），
+ *       当我们切换回默认上下文时，绑定会自动断开。
+ *       由于绑定现在只存在于一个上下文中，我们不需要担心引用计数问题。
+ */
 void OpenGLContext::unbindEverything() noexcept {
-    // TODO:  we're supposed to unbind everything here so that resources don't get
-    //        stuck in this context (contextIndex) when destroyed in the other context.
-    //        However, because EGLPlatform always immediately destroys the protected context (1),
-    //        the bindings will automatically be severed when we switch back to the default context.
-    //        Since bindings now only exist in one context, we don't have a ref-counting issue to
-    //        worry about.
+    // TODO: 我们应该在这里解绑所有内容，以便资源在另一个上下文中销毁时不会卡在此上下文（contextIndex）中。
+    //       但是，由于 EGLPlatform 总是立即销毁保护上下文（1），
+    //       当我们切换回默认上下文时，绑定会自动断开。
+    //       由于绑定现在只存在于一个上下文中，我们不需要担心引用计数问题。
 }
 
+/**
+ * 同步状态和缓存
+ * 
+ * 在切换到新上下文时同步状态和缓存。
+ * 
+ * @param index 上下文索引（0=常规，1=保护）
+ */
 void OpenGLContext::synchronizeStateAndCache(size_t index) {
 
-    // if we're just switching back to context 0, run all the pending destructors
+    // 如果刚切换回上下文 0，运行所有待处理的析构函数
     if (index == 0) {
         auto list = std::move(mDestroyWithNormalContext);
         for (auto&& fn: list) {
@@ -306,9 +367,10 @@ void OpenGLContext::synchronizeStateAndCache(size_t index) {
         }
     }
 
-    // the default FBO could be invalid
+    // 默认 FBO 可能无效，重置它
     mDefaultFbo[index].reset();
 
+    // 更新上下文索引并重置状态
     contextIndex = index;
     resetState();
 }

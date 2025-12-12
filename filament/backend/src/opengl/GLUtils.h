@@ -17,42 +17,125 @@
 #ifndef TNT_FILAMENT_BACKEND_OPENGL_GLUTILS_H
 #define TNT_FILAMENT_BACKEND_OPENGL_GLUTILS_H
 
-#include <utils/debug.h>
-#include <utils/ostream.h>
+// Utils 工具库
+#include <utils/debug.h>    // 调试工具
+#include <utils/ostream.h>  // 输出流
 
+// 后端枚举
 #include <backend/DriverEnums.h>
 
-#include <string_view>
-#include <unordered_set>
+// 标准库
+#include <string_view>      // 字符串视图
+#include <unordered_set>    // 无序集合
 
-#include <stddef.h>
-#include <stdint.h>
+#include <stddef.h>         // 标准定义
+#include <stdint.h>         // 标准整数类型
 
+// OpenGL 头文件
 #include "gl_headers.h"
 
+/**
+ * OpenGL 工具命名空间
+ * 
+ * 提供 OpenGL 相关的工具函数，包括：
+ * 1. 错误检查和报告
+ * 2. Filament 枚举到 OpenGL 枚举的转换
+ * 3. 扩展字符串解析
+ */
 namespace filament::backend::GLUtils {
 
+/**
+ * 获取 OpenGL 错误字符串
+ * 
+ * 将 OpenGL 错误代码转换为可读的字符串。
+ * 
+ * @param error OpenGL 错误代码
+ * @return 错误字符串视图
+ */
 std::string_view getGLErrorString(GLenum error) noexcept;
+
+/**
+ * 检查 OpenGL 错误（非致命）
+ * 
+ * 检查是否有 OpenGL 错误，如果有则记录日志但不中断执行。
+ * 
+ * @param function 函数名（用于日志）
+ * @param line 行号（用于日志）
+ * @return OpenGL 错误代码（GL_NO_ERROR 表示无错误）
+ */
 GLenum checkGLError(const char* function, size_t line) noexcept;
+
+/**
+ * 断言 OpenGL 错误（致命）
+ * 
+ * 检查是否有 OpenGL 错误，如果有则记录日志并触发调试陷阱。
+ * 
+ * @param function 函数名（用于日志）
+ * @param line 行号（用于日志）
+ */
 void assertGLError(const char* function, size_t line) noexcept;
 
+/**
+ * 获取帧缓冲区状态字符串
+ * 
+ * 将帧缓冲区状态代码转换为可读的字符串。
+ * 
+ * @param err 帧缓冲区状态代码
+ * @return 状态字符串视图
+ */
 std::string_view getFramebufferStatusString(GLenum err) noexcept;
+
+/**
+ * 检查帧缓冲区状态（非致命）
+ * 
+ * 检查帧缓冲区状态，如果不完整则记录日志但不中断执行。
+ * 
+ * @param target 帧缓冲区目标（GL_FRAMEBUFFER、GL_DRAW_FRAMEBUFFER 等）
+ * @param function 函数名（用于日志）
+ * @param line 行号（用于日志）
+ * @return 帧缓冲区状态代码
+ */
 GLenum checkFramebufferStatus(GLenum target, const char* function, size_t line) noexcept;
+
+/**
+ * 断言帧缓冲区状态（致命）
+ * 
+ * 检查帧缓冲区状态，如果不完整则记录日志并触发调试陷阱。
+ * 
+ * @param target 帧缓冲区目标
+ * @param function 函数名（用于日志）
+ * @param line 行号（用于日志）
+ */
 void assertFramebufferStatus(GLenum target, const char* function, size_t line) noexcept;
 
+/**
+ * OpenGL 错误检查宏
+ * 
+ * 在调试模式下检查 OpenGL 错误和帧缓冲区状态。
+ * 在发布模式下这些宏为空操作。
+ */
 #ifdef NDEBUG
-#   define CHECK_GL_ERROR()
-#   define CHECK_GL_ERROR_NON_FATAL()
-#   define CHECK_GL_FRAMEBUFFER_STATUS(target)
+#   define CHECK_GL_ERROR()                    // 发布模式：空操作
+#   define CHECK_GL_ERROR_NON_FATAL()          // 发布模式：空操作
+#   define CHECK_GL_FRAMEBUFFER_STATUS(target)  // 发布模式：空操作
 #else
-#   define CHECK_GL_ERROR() { GLUtils::assertGLError(__func__, __LINE__); }
-#   define CHECK_GL_ERROR_NON_FATAL() { GLUtils::checkGLError(__func__, __LINE__); }
-#   define CHECK_GL_FRAMEBUFFER_STATUS(target) { GLUtils::checkFramebufferStatus( target, __func__, __LINE__); }
+#   define CHECK_GL_ERROR() { GLUtils::assertGLError(__func__, __LINE__); }  // 调试模式：断言错误（致命）
+#   define CHECK_GL_ERROR_NON_FATAL() { GLUtils::checkGLError(__func__, __LINE__); }  // 调试模式：检查错误（非致命）
+#   define CHECK_GL_FRAMEBUFFER_STATUS(target) { GLUtils::checkFramebufferStatus( target, __func__, __LINE__); }  // 调试模式：检查帧缓冲区状态
 #endif
 
+/**
+ * 获取元素类型的组件数量
+ * 
+ * 返回指定元素类型的组件数量（1、2、3 或 4）。
+ * 
+ * @param type 元素类型
+ * @return 组件数量（1-4）
+ */
 constexpr GLuint getComponentCount(ElementType const type) noexcept {
     using ElementType = ElementType;
     switch (type) {
+        // 单组件类型
         case ElementType::BYTE:
         case ElementType::UBYTE:
         case ElementType::SHORT:
@@ -62,6 +145,7 @@ constexpr GLuint getComponentCount(ElementType const type) noexcept {
         case ElementType::FLOAT:
         case ElementType::HALF:
             return 1;
+        // 双组件类型
         case ElementType::FLOAT2:
         case ElementType::HALF2:
         case ElementType::BYTE2:
@@ -69,6 +153,7 @@ constexpr GLuint getComponentCount(ElementType const type) noexcept {
         case ElementType::SHORT2:
         case ElementType::USHORT2:
             return 2;
+        // 三组件类型
         case ElementType::FLOAT3:
         case ElementType::HALF3:
         case ElementType::BYTE3:
@@ -76,6 +161,7 @@ constexpr GLuint getComponentCount(ElementType const type) noexcept {
         case ElementType::SHORT3:
         case ElementType::USHORT3:
             return 3;
+        // 四组件类型
         case ElementType::FLOAT4:
         case ElementType::HALF4:
         case ElementType::BYTE4:
@@ -84,14 +170,22 @@ constexpr GLuint getComponentCount(ElementType const type) noexcept {
         case ElementType::USHORT4:
             return 4;
     }
-    // should never happen
+    // 不应该发生
     return 1;
 }
 
 // ------------------------------------------------------------------------------------------------
-// Our enums to GLenum conversions
+// Filament 枚举到 GLenum 的转换函数
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 获取附件位字段
+ * 
+ * 将 TargetBufferFlags 转换为 OpenGL 清除掩码位字段。
+ * 
+ * @param flags 目标缓冲区标志
+ * @return OpenGL 清除掩码位字段（GL_COLOR_BUFFER_BIT、GL_DEPTH_BUFFER_BIT、GL_STENCIL_BUFFER_BIT 的组合）
+ */
 constexpr GLbitfield getAttachmentBitfield(TargetBufferFlags const flags) noexcept {
     GLbitfield mask = 0;
     if (any(flags & TargetBufferFlags::COLOR_ALL)) {
@@ -106,6 +200,14 @@ constexpr GLbitfield getAttachmentBitfield(TargetBufferFlags const flags) noexce
     return mask;
 }
 
+/**
+ * 获取缓冲区使用方式
+ * 
+ * 将 BufferUsage 转换为 OpenGL 缓冲区使用方式。
+ * 
+ * @param usage 缓冲区使用方式
+ * @return OpenGL 缓冲区使用方式（GL_STATIC_DRAW 或 GL_DYNAMIC_DRAW）
+ */
 constexpr GLenum getBufferUsage(BufferUsage const usage) noexcept {
     switch (usage) {
         case BufferUsage::STATIC:
@@ -115,6 +217,14 @@ constexpr GLenum getBufferUsage(BufferUsage const usage) noexcept {
     }
 }
 
+/**
+ * 获取缓冲区绑定类型
+ * 
+ * 将 BufferObjectBinding 转换为 OpenGL 缓冲区目标。
+ * 
+ * @param bindingType 缓冲区对象绑定类型
+ * @return OpenGL 缓冲区目标（GL_ARRAY_BUFFER、GL_UNIFORM_BUFFER、GL_SHADER_STORAGE_BUFFER 等）
+ */
 constexpr GLenum getBufferBindingType(BufferObjectBinding const bindingType) noexcept {
     switch (bindingType) {
         case BufferObjectBinding::VERTEX:
@@ -131,17 +241,33 @@ constexpr GLenum getBufferBindingType(BufferObjectBinding const bindingType) noe
             return GL_SHADER_STORAGE_BUFFER;
 #else
             utils::panic(__func__, __FILE__, __LINE__, "SHADER_STORAGE not supported");
-            return 0x90D2; // just to return something
+            return 0x90D2; // 仅为了返回某个值
 #endif
     }
-    // should never happen
+    // 不应该发生
     return GL_ARRAY_BUFFER;
 }
 
+/**
+ * 获取归一化标志
+ * 
+ * 将布尔值转换为 OpenGL 归一化标志。
+ * 
+ * @param normalized 是否归一化
+ * @return OpenGL 归一化标志（GL_TRUE 或 GL_FALSE）
+ */
 constexpr GLboolean getNormalization(bool const normalized) noexcept {
     return GLboolean(normalized ? GL_TRUE : GL_FALSE);
 }
 
+/**
+ * 获取组件类型
+ * 
+ * 将 ElementType 转换为 OpenGL 组件类型。
+ * 
+ * @param type 元素类型
+ * @return OpenGL 组件类型（GL_BYTE、GL_UNSIGNED_BYTE、GL_SHORT、GL_FLOAT 等）
+ */
 constexpr GLenum getComponentType(ElementType const type) noexcept {
     using ElementType = ElementType;
     switch (type) {
@@ -178,17 +304,26 @@ constexpr GLenum getComponentType(ElementType const type) noexcept {
         case ElementType::HALF2:
         case ElementType::HALF3:
         case ElementType::HALF4:
-            // on ES2 we should never end-up here
+            // 在 ES2 上不应该到达这里
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
             return GL_HALF_FLOAT;
 #else
             return GL_HALF_FLOAT_OES;
 #endif
     }
-    // should never happen
+    // 不应该发生
     return GL_INT;
 }
 
+/**
+ * 获取纹理目标（非外部纹理）
+ * 
+ * 将 SamplerType 转换为 OpenGL 纹理目标。
+ * 注意：此函数不处理外部纹理（SAMPLER_EXTERNAL）。
+ * 
+ * @param target 采样器类型
+ * @return OpenGL 纹理目标（GL_TEXTURE_2D、GL_TEXTURE_3D、GL_TEXTURE_CUBE_MAP 等）
+ */
 constexpr GLenum getTextureTargetNotExternal(SamplerType const target) noexcept {
     switch (target) {
         case SamplerType::SAMPLER_2D:
@@ -202,18 +337,34 @@ constexpr GLenum getTextureTargetNotExternal(SamplerType const target) noexcept 
         case SamplerType::SAMPLER_CUBEMAP_ARRAY:
             return GL_TEXTURE_CUBE_MAP_ARRAY;
         case SamplerType::SAMPLER_EXTERNAL:
-            // we should never be here
+            // 不应该到达这里
             return GL_TEXTURE_2D;
     }
-    // should never happen
+    // 不应该发生
     return GL_TEXTURE_2D;
 }
 
+/**
+ * 获取立方体贴图面目标
+ * 
+ * 将立方体贴图层索引（0-5）转换为对应的 OpenGL 纹理目标。
+ * 
+ * @param layer 立方体贴图层索引（0=+X, 1=-X, 2=+Y, 3=-Y, 4=+Z, 5=-Z）
+ * @return OpenGL 立方体贴图面目标（GL_TEXTURE_CUBE_MAP_POSITIVE_X + layer）
+ */
 constexpr GLenum getCubemapTarget(uint16_t const layer) noexcept {
     assert_invariant(layer <= 5);
     return GL_TEXTURE_CUBE_MAP_POSITIVE_X + layer;
 }
 
+/**
+ * 获取纹理环绕模式
+ * 
+ * 将 SamplerWrapMode 转换为 OpenGL 纹理环绕模式。
+ * 
+ * @param mode 采样器环绕模式
+ * @return OpenGL 纹理环绕模式（GL_REPEAT、GL_CLAMP_TO_EDGE、GL_MIRRORED_REPEAT）
+ */
 constexpr GLenum getWrapMode(SamplerWrapMode const mode) noexcept {
     using SamplerWrapMode = SamplerWrapMode;
     switch (mode) {
@@ -224,10 +375,18 @@ constexpr GLenum getWrapMode(SamplerWrapMode const mode) noexcept {
         case SamplerWrapMode::MIRRORED_REPEAT:
             return GL_MIRRORED_REPEAT;
     }
-    // should never happen
+    // 不应该发生
     return GL_CLAMP_TO_EDGE;
 }
 
+/**
+ * 获取纹理最小过滤模式
+ * 
+ * 将 SamplerMinFilter 转换为 OpenGL 纹理最小过滤模式。
+ * 
+ * @param filter 采样器最小过滤器
+ * @return OpenGL 纹理过滤模式（GL_NEAREST、GL_LINEAR、GL_NEAREST_MIPMAP_NEAREST 等）
+ */
 constexpr GLenum getTextureFilter(SamplerMinFilter filter) noexcept {
     using SamplerMinFilter = SamplerMinFilter;
     switch (filter) {
@@ -241,15 +400,31 @@ constexpr GLenum getTextureFilter(SamplerMinFilter filter) noexcept {
             return GL_NEAREST_MIPMAP_NEAREST
                    - GLenum(SamplerMinFilter::NEAREST_MIPMAP_NEAREST) + GLenum(filter);
     }
-    // should never happen
+    // 不应该发生
     return GL_NEAREST;
 }
 
+/**
+ * 获取纹理放大过滤模式
+ * 
+ * 将 SamplerMagFilter 转换为 OpenGL 纹理放大过滤模式。
+ * 
+ * @param filter 采样器放大过滤器
+ * @return OpenGL 纹理过滤模式（GL_NEAREST 或 GL_LINEAR）
+ */
 constexpr GLenum getTextureFilter(SamplerMagFilter filter) noexcept {
     return GL_NEAREST + GLenum(filter);
 }
 
 
+/**
+ * 获取混合方程模式
+ * 
+ * 将 BlendEquation 转换为 OpenGL 混合方程模式。
+ * 
+ * @param mode 混合方程
+ * @return OpenGL 混合方程模式（GL_FUNC_ADD、GL_FUNC_SUBTRACT、GL_MIN 等）
+ */
 constexpr GLenum getBlendEquationMode(BlendEquation const mode) noexcept {
     using BlendEquation = BlendEquation;
     switch (mode) {
@@ -259,10 +434,18 @@ constexpr GLenum getBlendEquationMode(BlendEquation const mode) noexcept {
         case BlendEquation::MIN:               return GL_MIN;
         case BlendEquation::MAX:               return GL_MAX;
     }
-    // should never happen
+    // 不应该发生
     return GL_FUNC_ADD;
 }
 
+/**
+ * 获取混合函数模式
+ * 
+ * 将 BlendFunction 转换为 OpenGL 混合函数模式。
+ * 
+ * @param mode 混合函数
+ * @return OpenGL 混合函数模式（GL_ZERO、GL_ONE、GL_SRC_ALPHA 等）
+ */
 constexpr GLenum getBlendFunctionMode(BlendFunction const mode) noexcept {
     using BlendFunction = BlendFunction;
     switch (mode) {
@@ -278,31 +461,58 @@ constexpr GLenum getBlendFunctionMode(BlendFunction const mode) noexcept {
         case BlendFunction::ONE_MINUS_DST_ALPHA:   return GL_ONE_MINUS_DST_ALPHA;
         case BlendFunction::SRC_ALPHA_SATURATE:    return GL_SRC_ALPHA_SATURATE;
     }
-    // should never happen
+    // 不应该发生
     return GL_ONE;
 }
 
+/**
+ * 获取比较函数
+ * 
+ * 将 SamplerCompareFunc 转换为 OpenGL 比较函数。
+ * 用于深度测试、模板测试和阴影贴图比较。
+ * 
+ * @param func 采样器比较函数
+ * @return OpenGL 比较函数（GL_LEQUAL、GL_GEQUAL、GL_LESS 等）
+ */
 constexpr GLenum getCompareFunc(SamplerCompareFunc const func) noexcept {
     switch (func) {
-        case SamplerCompareFunc::LE:    return GL_LEQUAL;
-        case SamplerCompareFunc::GE:    return GL_GEQUAL;
-        case SamplerCompareFunc::L:     return GL_LESS;
-        case SamplerCompareFunc::G:     return GL_GREATER;
-        case SamplerCompareFunc::E:     return GL_EQUAL;
-        case SamplerCompareFunc::NE:    return GL_NOTEQUAL;
-        case SamplerCompareFunc::A:     return GL_ALWAYS;
-        case SamplerCompareFunc::N:     return GL_NEVER;
+        case SamplerCompareFunc::LE:    return GL_LEQUAL;   // <=
+        case SamplerCompareFunc::GE:    return GL_GEQUAL;   // >=
+        case SamplerCompareFunc::L:     return GL_LESS;     // <
+        case SamplerCompareFunc::G:     return GL_GREATER;  // >
+        case SamplerCompareFunc::E:     return GL_EQUAL;    // ==
+        case SamplerCompareFunc::NE:    return GL_NOTEQUAL; // !=
+        case SamplerCompareFunc::A:     return GL_ALWAYS;   // 总是通过
+        case SamplerCompareFunc::N:     return GL_NEVER;    // 永远不通过
     }
-    // should never happen
+    // 不应该发生
     return GL_LEQUAL;
 }
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+/**
+ * 获取纹理比较模式
+ * 
+ * 将 SamplerCompareMode 转换为 OpenGL 纹理比较模式。
+ * 用于阴影贴图（Shadow Mapping）。
+ * 
+ * @param mode 采样器比较模式
+ * @return OpenGL 纹理比较模式（GL_NONE 或 GL_COMPARE_REF_TO_TEXTURE）
+ */
 constexpr GLenum getTextureCompareMode(SamplerCompareMode const mode) noexcept {
     return mode == SamplerCompareMode::NONE ?
            GL_NONE : GL_COMPARE_REF_TO_TEXTURE;
 }
 
+/**
+ * 获取纹理比较函数
+ * 
+ * 将 SamplerCompareFunc 转换为 OpenGL 纹理比较函数。
+ * 用于阴影贴图（Shadow Mapping）。
+ * 
+ * @param func 采样器比较函数
+ * @return OpenGL 纹理比较函数
+ */
 constexpr GLenum getTextureCompareFunc(SamplerCompareFunc const func) noexcept {
     return getCompareFunc(func);
 }
@@ -312,10 +522,38 @@ constexpr GLenum getDepthFunc(SamplerCompareFunc const func) noexcept {
     return getCompareFunc(func);
 }
 
+/**
+ * 获取深度测试函数
+ * 
+ * 将 SamplerCompareFunc 转换为 OpenGL 深度测试函数。
+ * 
+ * @param func 采样器比较函数
+ * @return OpenGL 深度测试函数
+ */
+constexpr GLenum getDepthFunc(SamplerCompareFunc const func) noexcept {
+    return getCompareFunc(func);
+}
+
+/**
+ * 获取模板测试函数
+ * 
+ * 将 SamplerCompareFunc 转换为 OpenGL 模板测试函数。
+ * 
+ * @param func 采样器比较函数
+ * @return OpenGL 模板测试函数
+ */
 constexpr GLenum getStencilFunc(SamplerCompareFunc const func) noexcept {
     return getCompareFunc(func);
 }
 
+/**
+ * 获取模板操作
+ * 
+ * 将 StencilOperation 转换为 OpenGL 模板操作。
+ * 
+ * @param op 模板操作
+ * @return OpenGL 模板操作（GL_KEEP、GL_ZERO、GL_REPLACE、GL_INCR 等）
+ */
 constexpr GLenum getStencilOp(StencilOperation const op) noexcept {
     switch (op) {
         case StencilOperation::KEEP:        return GL_KEEP;
@@ -327,10 +565,18 @@ constexpr GLenum getStencilOp(StencilOperation const op) noexcept {
         case StencilOperation::DECR_WRAP:   return GL_DECR_WRAP;
         case StencilOperation::INVERT:      return GL_INVERT;
     }
-    // should never happen
+    // 不应该发生
     return GL_KEEP;
 }
 
+/**
+ * 获取像素数据格式
+ * 
+ * 将 PixelDataFormat 转换为 OpenGL 像素数据格式。
+ * 
+ * @param format 像素数据格式
+ * @return OpenGL 像素数据格式（GL_RGB、GL_RGBA、GL_DEPTH_COMPONENT 等）
+ */
 constexpr GLenum getFormat(PixelDataFormat const format) noexcept {
     using PixelDataFormat = PixelDataFormat;
     switch (format) {
@@ -357,6 +603,14 @@ constexpr GLenum getFormat(PixelDataFormat const format) noexcept {
     return GL_RGBA;
 }
 
+/**
+ * 获取像素数据类型
+ * 
+ * 将 PixelDataType 转换为 OpenGL 像素数据类型。
+ * 
+ * @param type 像素数据类型
+ * @return OpenGL 像素数据类型（GL_UNSIGNED_BYTE、GL_FLOAT、GL_UNSIGNED_SHORT_5_6_5 等）
+ */
 constexpr GLenum getType(PixelDataType const type) noexcept {
     using PixelDataType = PixelDataType;
     switch (type) {
@@ -369,21 +623,30 @@ constexpr GLenum getType(PixelDataType const type) noexcept {
         case PixelDataType::FLOAT:                return GL_FLOAT;
         case PixelDataType::USHORT_565:           return GL_UNSIGNED_SHORT_5_6_5;
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
-        // when context is ES2 we should never end-up here
+        // 当上下文是 ES2 时不应该到达这里
         case PixelDataType::HALF:                 return GL_HALF_FLOAT;
         case PixelDataType::UINT_10F_11F_11F_REV: return GL_UNSIGNED_INT_10F_11F_11F_REV;
         case PixelDataType::UINT_2_10_10_10_REV:  return GL_UNSIGNED_INT_2_10_10_10_REV;
-        case PixelDataType::COMPRESSED:           return 0; // should never happen
+        case PixelDataType::COMPRESSED:           return 0; // 不应该发生
 #else
-        // silence compiler warning in ES2 headers mode
+        // 在 ES2 头文件模式下静默编译器警告
         default: return GL_NONE;
 #endif
     }
-    // should never happen
+    // 不应该发生
     return GL_UNSIGNED_INT;
 }
 
 #if !defined(__EMSCRIPTEN__)  && !defined(FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2)
+/**
+ * 获取纹理通道重映射
+ * 
+ * 将 TextureSwizzle 转换为 OpenGL 纹理通道重映射值。
+ * 用于纹理通道重映射（Texture Swizzle），允许重新映射纹理通道。
+ * 
+ * @param c 纹理通道重映射
+ * @return OpenGL 纹理通道重映射值（GL_ZERO、GL_ONE、GL_RED、GL_GREEN、GL_BLUE、GL_ALPHA）
+ */
 constexpr GLenum getSwizzleChannel(TextureSwizzle const c) noexcept {
     using TextureSwizzle = TextureSwizzle;
     switch (c) {
@@ -394,15 +657,23 @@ constexpr GLenum getSwizzleChannel(TextureSwizzle const c) noexcept {
         case TextureSwizzle::CHANNEL_2:         return GL_BLUE;
         case TextureSwizzle::CHANNEL_3:         return GL_ALPHA;
     }
-    // should never happen
+    // 不应该发生
     return GL_RED;
 }
 #endif
 
+/**
+ * 获取剔除模式
+ * 
+ * 将 CullingMode 转换为 OpenGL 剔除模式。
+ * 
+ * @param mode 剔除模式
+ * @return OpenGL 剔除模式（GL_FRONT、GL_BACK、GL_FRONT_AND_BACK）
+ */
 constexpr GLenum getCullingMode(CullingMode const mode) noexcept {
     switch (mode) {
         case CullingMode::NONE:
-            // should never happen
+            // 不应该发生（NONE 应该在调用此函数前被过滤）
             return GL_FRONT_AND_BACK;
         case CullingMode::FRONT:
             return GL_FRONT;
@@ -411,11 +682,19 @@ constexpr GLenum getCullingMode(CullingMode const mode) noexcept {
         case CullingMode::FRONT_AND_BACK:
             return GL_FRONT_AND_BACK;
     }
-    // should never happen
+    // 不应该发生
     return GL_FRONT_AND_BACK;
 }
 
-// ES2 supported internal formats for texturing and how they  map to a format/type
+/**
+ * 纹理格式转换为格式和类型（ES2 支持）
+ * 
+ * 将 TextureFormat 转换为 ES2 支持的格式/类型对。
+ * 用于 ES2 上下文中，因为 ES2 不支持所有内部格式。
+ * 
+ * @param format 纹理格式
+ * @return 格式和类型对（format, type）
+ */
 constexpr std::pair<GLenum, GLenum> textureFormatToFormatAndType(
         TextureFormat const format) noexcept {
     switch (format) {
@@ -435,9 +714,18 @@ constexpr std::pair<GLenum, GLenum> textureFormatToFormatAndType(
     }
 }
 
-// clang loses it on this one, and generates a huge jump table when
-// inlined. So we don't  mark it as inline (only constexpr) which solves the problem,
-// strangely, when not inlined, clang simply generates an array lookup.
+/**
+ * 获取内部格式
+ * 
+ * 将 TextureFormat 转换为 OpenGL 内部格式。
+ * 
+ * 注意：clang 在将此函数内联时会生成巨大的跳转表。
+ * 因此我们不将其标记为 inline（仅 constexpr），这解决了问题。
+ * 奇怪的是，当不内联时，clang 简单地生成数组查找。
+ * 
+ * @param format 纹理格式
+ * @return OpenGL 内部格式（GL_RGB8、GL_RGBA8、GL_COMPRESSED_RGB8_ETC2 等）
+ */
 constexpr /* inline */ GLenum getInternalFormat(TextureFormat const format) noexcept {
     switch (format) {
 
@@ -679,11 +967,32 @@ constexpr /* inline */ GLenum getInternalFormat(TextureFormat const format) noex
     }
 }
 
+/**
+ * 无序字符串集合
+ * 
+ * 扩展 std::unordered_set<std::string_view>，提供便捷的 has() 方法。
+ * 用于存储和查询 OpenGL 扩展名称。
+ */
 class unordered_string_set : public std::unordered_set<std::string_view> {
 public:
+    /**
+     * 检查是否包含字符串
+     * 
+     * @param str 要查找的字符串视图
+     * @return 如果包含返回 true，否则返回 false
+     */
     bool has(std::string_view str) const noexcept;
 };
 
+/**
+ * 分割扩展字符串
+ * 
+ * 将 OpenGL 扩展字符串（空格分隔）分割为字符串集合。
+ * 用于解析 glGetString(GL_EXTENSIONS) 返回的扩展列表。
+ * 
+ * @param extensions 扩展字符串（空格分隔，如 "GL_EXT_texture_filter_anisotropic GL_EXT_debug_marker"）
+ * @return 包含所有扩展名称的无序字符串集合
+ */
 unordered_string_set split(const char* extensions) noexcept;
 
 } // namespace filament::backend::GLUtils

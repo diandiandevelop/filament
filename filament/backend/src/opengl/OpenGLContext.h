@@ -17,101 +17,199 @@
 #ifndef TNT_FILAMENT_BACKEND_OPENGLCONTEXT_H
 #define TNT_FILAMENT_BACKEND_OPENGLCONTEXT_H
 
-
+// OpenGL 定时查询接口
 #include "OpenGLTimerQuery.h"
 
+// 平台接口
 #include <backend/platforms/OpenGLPlatform.h>
 
+// 后端枚举和句柄
 #include <backend/DriverEnums.h>
 #include <backend/Handle.h>
 
+// OpenGL 头文件
 #include "gl_headers.h"
 
-#include <utils/compiler.h>
-#include <utils/bitset.h>
-#include <utils/debug.h>
+// Utils 工具库
+#include <utils/compiler.h>          // 编译器工具
+#include <utils/bitset.h>            // 位集合
+#include <utils/debug.h>             // 调试工具
 
-#include <math/vec2.h>
-#include <math/vec4.h>
+// 数学库
+#include <math/vec2.h>               // 2D 向量
+#include <math/vec4.h>               // 4D 向量
 
-#include <tsl/robin_map.h>
+// 第三方库
+#include <tsl/robin_map.h>           // Robin Hood 哈希映射
 
-#include <array>
-#include <functional>
-#include <optional>
-#include <tuple>
-#include <vector>
+// 标准库
+#include <array>                     // 数组
+#include <functional>               // 函数对象
+#include <optional>                  // 可选值
+#include <tuple>                     // 元组
+#include <vector>                    // 向量
 
-#include <stddef.h>
-#include <stdint.h>
+#include <stddef.h>                  // 标准定义
+#include <stdint.h>                  // 标准整数类型
 
 namespace filament::backend {
 
 class OpenGLPlatform;
 
+/**
+ * OpenGL 上下文类
+ * 
+ * 管理 OpenGL 状态缓存，减少冗余的 OpenGL API 调用。
+ * 通过跟踪当前 OpenGL 状态，只在状态改变时才调用相应的 OpenGL 函数。
+ * 
+ * 主要功能：
+ * 1. 状态缓存：缓存所有 OpenGL 状态，避免冗余调用
+ * 2. 版本检测：检测 OpenGL/GLES 版本和扩展
+ * 3. Bug 检测：检测并应用特定驱动的工作区
+ * 4. 功能级别：根据硬件能力确定功能级别
+ * 5. 定时查询：管理 GPU 定时查询
+ * 
+ * 设计原则：
+ * - 所有状态改变都通过此类的方法进行，确保状态同步
+ * - 使用 update_state 模板函数只在状态改变时调用 OpenGL API
+ * - 支持多上下文（常规和保护上下文）
+ */
 class OpenGLContext final : public TimerQueryFactoryInterface {
 public:
-    static constexpr const size_t MAX_TEXTURE_UNIT_COUNT = MAX_SAMPLER_COUNT;
-    static constexpr const size_t DUMMY_TEXTURE_BINDING = 7; // highest binding guaranteed to work with ES2
-    static constexpr const size_t MAX_BUFFER_BINDINGS = 32;
-    typedef math::details::TVec4<GLint> vec4gli;
-    typedef math::details::TVec2<GLclampf> vec2glf;
+    static constexpr const size_t MAX_TEXTURE_UNIT_COUNT = MAX_SAMPLER_COUNT;  // 最大纹理单元数
+    static constexpr const size_t DUMMY_TEXTURE_BINDING = 7;  // 虚拟纹理绑定（ES2 保证可用的最高绑定）
+    static constexpr const size_t MAX_BUFFER_BINDINGS = 32;    // 最大缓冲区绑定数
+    
+    typedef math::details::TVec4<GLint> vec4gli;      // GLint 4D 向量类型（用于视口、裁剪等）
+    typedef math::details::TVec2<GLclampf> vec2glf;   // GLclampf 2D 向量类型（用于深度范围等）
 
+    /**
+     * 渲染图元结构
+     * 
+     * 存储与渲染图元相关的 OpenGL 状态，包括 VAO、索引缓冲区等。
+     * 支持多上下文（常规和保护上下文），每个上下文有独立的 VAO 名称。
+     */
     struct RenderPrimitive {
-        static_assert(MAX_VERTEX_ATTRIBUTE_COUNT <= 16);
+        static_assert(MAX_VERTEX_ATTRIBUTE_COUNT <= 16);  // 确保顶点属性数量不超过 16
 
-        GLuint vao[2] = {};                                     // 8
-        GLuint elementArray = 0;                                // 4
-        GLenum indicesType = 0;                                 // 4
+        GLuint vao[2] = {};                                     // VAO 对象 ID（每个上下文一个）：8 字节
+        GLuint elementArray = 0;                                // 元素数组缓冲区 ID：4 字节
+        GLenum indicesType = 0;                                 // 索引类型（GL_UNSIGNED_BYTE/SHORT/INT）：4 字节
 
-        // The optional 32-bit handle to a GLVertexBuffer is necessary only if the referenced
-        // VertexBuffer supports buffer objects. If this is zero, then the VBO handles array is
-        // immutable.
-        Handle<HwVertexBuffer> vertexBufferWithObjects;         // 4
+        // 可选的 32 位句柄，指向 GLVertexBuffer。
+        // 仅当引用的 VertexBuffer 支持缓冲区对象时需要。
+        // 如果为零，则 VBO 句柄数组是不可变的。
+        Handle<HwVertexBuffer> vertexBufferWithObjects;         // 4 字节
 
-        mutable utils::bitset<uint16_t> vertexAttribArray;      // 2
+        mutable utils::bitset<uint16_t> vertexAttribArray;      // 启用的顶点属性数组位集合：2 字节
 
-        uint8_t reserved[2] = {};                               // 2
+        uint8_t reserved[2] = {};                               // 保留字段：2 字节
 
-        // if this differs from vertexBufferWithObjects->bufferObjectsVersion, this VAO needs to
-        // be updated (see OpenGLDriver::updateVertexArrayObject())
-        uint8_t vertexBufferVersion = 0;                        // 1
+        // 如果此值与 vertexBufferWithObjects->bufferObjectsVersion 不同，
+        // 则此 VAO 需要更新（参见 OpenGLDriver::updateVertexArrayObject()）
+        uint8_t vertexBufferVersion = 0;                        // 1 字节
 
-        // if this differs from OpenGLContext::state.age, this VAO needs to
-        // be updated (see OpenGLDriver::updateVertexArrayObject())
-        uint8_t stateVersion = 0;                               // 1
+        // 如果此值与 OpenGLContext::state.age 不同，
+        // 则此 VAO 需要更新（参见 OpenGLDriver::updateVertexArrayObject()）
+        uint8_t stateVersion = 0;                               // 1 字节
 
-        // If this differs from OpenGLContext::state.age, this VAO's name needs to be updated.
-        // See OpenGLContext::bindVertexArray()
-        uint8_t nameVersion = 0;                                // 1
+        // 如果此值与 OpenGLContext::state.age 不同，
+        // 则此 VAO 的名称需要更新。
+        // 参见 OpenGLContext::bindVertexArray()
+        uint8_t nameVersion = 0;                                // 1 字节
 
-        // Size in bytes of indices in the index buffer (1 or 2)
-        uint8_t indicesShift = 0;                                // 1
+        // 索引缓冲区中索引的大小（字节）（1 或 2）
+        uint8_t indicesShift = 0;                                // 1 字节
 
+        /**
+         * 获取索引类型
+         * 
+         * @return 索引类型枚举值
+         */
         GLenum getIndicesType() const noexcept {
             return indicesType;
         }
     } gl;
 
+    /**
+     * 查询 OpenGL 版本
+     * 
+     * 查询当前 OpenGL/GLES 上下文的主版本号和次版本号。
+     * 
+     * @param major 输出参数：主版本号
+     * @param minor 输出参数：次版本号
+     * @return 成功返回 true，失败返回 false
+     */
     static bool queryOpenGLVersion(GLint* major, GLint* minor) noexcept;
 
+    /**
+     * 构造函数
+     * 
+     * 初始化 OpenGL 上下文，检测版本、扩展、功能和 Bug。
+     * 
+     * @param platform OpenGL 平台引用
+     * @param driverConfig 驱动配置参数
+     */
     explicit OpenGLContext(OpenGLPlatform& platform,
             Platform::DriverConfig const& driverConfig) noexcept;
 
+    /**
+     * 析构函数
+     * 
+     * 清理 OpenGL 上下文资源。
+     */
     ~OpenGLContext() noexcept final;
 
+    /**
+     * 终止上下文
+     * 
+     * 清理上下文相关的资源（如采样器对象）。
+     */
     void terminate() noexcept;
 
-    // TimerQueryInterface ------------------------------------------------------------------------
+    // --------------------------------------------------------------------------------------------
+    // TimerQueryInterface 定时查询接口
 
-    // note: OpenGLContext being final ensures (clang) these are not called through the vtable
+    // 注意：OpenGLContext 是 final 类，确保（clang）这些方法不会通过虚函数表调用
+
+    /**
+     * 创建定时查询
+     * 
+     * @param query 定时查询对象指针
+     */
     void createTimerQuery(GLTimerQuery* query) override;
+
+    /**
+     * 销毁定时查询
+     * 
+     * @param query 定时查询对象指针
+     */
     void destroyTimerQuery(GLTimerQuery* query) override;
+
+    /**
+     * 开始时间流逝查询
+     * 
+     * @param query 定时查询对象指针
+     */
     void beginTimeElapsedQuery(GLTimerQuery* query) override;
+
+    /**
+     * 结束时间流逝查询
+     * 
+     * @param driver OpenGLDriver 引用
+     * @param query 定时查询对象指针
+     */
     void endTimeElapsedQuery(OpenGLDriver& driver, GLTimerQuery* query) override;
 
     // --------------------------------------------------------------------------------------------
 
+    /**
+     * 检查是否为至少指定版本的 OpenGL
+     * 
+     * @tparam MAJOR 主版本号
+     * @tparam MINOR 次版本号
+     * @return 如果是至少指定版本的 OpenGL 返回 true，否则返回 false
+     */
     template<int MAJOR, int MINOR>
     inline bool isAtLeastGL() const noexcept {
 #ifdef BACKEND_OPENGL_VERSION_GL
@@ -121,6 +219,13 @@ public:
 #endif
     }
 
+    /**
+     * 检查是否为至少指定版本的 OpenGL ES
+     * 
+     * @tparam MAJOR 主版本号
+     * @tparam MINOR 次版本号
+     * @return 如果是至少指定版本的 OpenGL ES 返回 true，否则返回 false
+     */
     template<int MAJOR, int MINOR>
     inline bool isAtLeastGLES() const noexcept {
 #ifdef BACKEND_OPENGL_VERSION_GLES
@@ -130,6 +235,11 @@ public:
 #endif
     }
 
+    /**
+     * 检查是否为 ES2
+     * 
+     * @return 如果是 ES2 返回 true，否则返回 false
+     */
     inline bool isES2() const noexcept {
 #if defined(BACKEND_OPENGL_VERSION_GLES) && !defined(FILAMENT_IOS)
 #   ifndef BACKEND_OPENGL_LEVEL_GLES30
@@ -142,84 +252,357 @@ public:
 #endif
     }
 
+    /**
+     * 获取功能标志的索引
+     * 
+     * @param cap OpenGL 功能标志（如 GL_BLEND、GL_DEPTH_TEST 等）
+     * @return 功能标志在状态数组中的索引
+     */
     constexpr        inline size_t getIndexForCap(GLenum cap) noexcept;
+
+    /**
+     * 获取缓冲区目标的索引
+     * 
+     * @param target 缓冲区目标（如 GL_ARRAY_BUFFER、GL_UNIFORM_BUFFER 等）
+     * @return 缓冲区目标在状态数组中的索引
+     */
     constexpr static inline size_t getIndexForBufferTarget(GLenum target) noexcept;
 
+    /**
+     * 获取着色器模型
+     * 
+     * @return 着色器模型（MOBILE 或 DESKTOP）
+     */
     ShaderModel getShaderModel() const noexcept { return mShaderModel; }
 
+    /**
+     * 重置状态
+     * 
+     * 强制 OpenGL 状态与 Filament 状态匹配。
+     * 增加状态版本号，使其他部分知道需要重置。
+     */
     void resetState() noexcept;
 
+    /**
+     * 使用着色器程序
+     * 
+     * @param program 着色器程序对象 ID
+     */
     inline void useProgram(GLuint program) noexcept;
 
+    /**
+     * 设置像素存储参数
+     * 
+     * @param pname 参数名（如 GL_PACK_ALIGNMENT、GL_UNPACK_ALIGNMENT 等）
+     * @param param 参数值
+     */
           void pixelStore(GLenum, GLint) noexcept;
+
+    /**
+     * 激活纹理单元
+     * 
+     * @param unit 纹理单元索引（从 0 开始）
+     */
     inline void activeTexture(GLuint unit) noexcept;
+
+    /**
+     * 绑定纹理
+     * 
+     * @param unit 纹理单元索引
+     * @param target 纹理目标（GL_TEXTURE_2D、GL_TEXTURE_CUBE_MAP 等）
+     * @param texId 纹理对象 ID
+     * @param external 是否为外部纹理（强制更新）
+     */
     inline void bindTexture(GLuint unit, GLuint target, GLuint texId, bool external) noexcept;
 
+    /**
+     * 解绑纹理
+     * 
+     * @param target 纹理目标
+     * @param id 纹理对象 ID
+     */
            void unbindTexture(GLenum target, GLuint id) noexcept;
+
+    /**
+     * 解绑纹理单元
+     * 
+     * @param unit 纹理单元索引
+     */
            void unbindTextureUnit(GLuint unit) noexcept;
+
+    /**
+     * 绑定顶点数组对象
+     * 
+     * @param p 渲染图元指针（nullptr 表示使用默认 VAO）
+     */
     inline void bindVertexArray(RenderPrimitive const* p) noexcept;
+
+    /**
+     * 绑定采样器对象
+     * 
+     * @param unit 纹理单元索引
+     * @param sampler 采样器对象 ID
+     */
     inline void bindSampler(GLuint unit, GLuint sampler) noexcept;
+
+    /**
+     * 解绑采样器对象
+     * 
+     * @param sampler 采样器对象 ID
+     */
            void unbindSampler(GLuint sampler) noexcept;
 
+    /**
+     * 绑定缓冲区
+     * 
+     * @param target 缓冲区目标（GL_ARRAY_BUFFER、GL_ELEMENT_ARRAY_BUFFER 等）
+     * @param buffer 缓冲区对象 ID
+     */
            void bindBuffer(GLenum target, GLuint buffer) noexcept;
+
+    /**
+     * 绑定缓冲区范围
+     * 
+     * @param target 缓冲区目标（GL_UNIFORM_BUFFER、GL_TRANSFORM_FEEDBACK_BUFFER 等）
+     * @param index 绑定点索引
+     * @param buffer 缓冲区对象 ID
+     * @param offset 偏移量（字节）
+     * @param size 大小（字节）
+     */
     inline void bindBufferRange(GLenum target, GLuint index, GLuint buffer,
             GLintptr offset, GLsizeiptr size) noexcept;
 
+    /**
+     * 绑定帧缓冲区
+     * 
+     * @param target 帧缓冲区目标（GL_FRAMEBUFFER、GL_DRAW_FRAMEBUFFER、GL_READ_FRAMEBUFFER）
+     * @param buffer 帧缓冲区对象 ID（0 表示默认 FBO）
+     * @return 解析后的帧缓冲区 ID
+     */
     GLuint bindFramebuffer(GLenum target, GLuint buffer) noexcept;
+
+    /**
+     * 解绑帧缓冲区
+     * 
+     * @param target 帧缓冲区目标
+     */
     void unbindFramebuffer(GLenum target) noexcept;
 
+    /**
+     * 启用顶点属性数组
+     * 
+     * @param rp 渲染图元指针
+     * @param index 顶点属性索引
+     */
     inline void enableVertexAttribArray(RenderPrimitive const* rp, GLuint index) noexcept;
+
+    /**
+     * 禁用顶点属性数组
+     * 
+     * @param rp 渲染图元指针
+     * @param index 顶点属性索引
+     */
     inline void disableVertexAttribArray(RenderPrimitive const* rp, GLuint index) noexcept;
+
+    /**
+     * 启用功能
+     * 
+     * @param cap 功能标志（GL_BLEND、GL_DEPTH_TEST 等）
+     */
     inline void enable(GLenum cap) noexcept;
+
+    /**
+     * 禁用功能
+     * 
+     * @param cap 功能标志
+     */
     inline void disable(GLenum cap) noexcept;
+
+    /**
+     * 设置正面方向
+     * 
+     * @param mode 正面方向（GL_CW、GL_CCW）
+     */
     inline void frontFace(GLenum mode) noexcept;
+
+    /**
+     * 设置剔除面
+     * 
+     * @param mode 剔除面（GL_FRONT、GL_BACK、GL_FRONT_AND_BACK）
+     */
     inline void cullFace(GLenum mode) noexcept;
+
+    /**
+     * 设置混合方程
+     * 
+     * @param modeRGB RGB 混合方程
+     * @param modeA Alpha 混合方程
+     */
     inline void blendEquation(GLenum modeRGB, GLenum modeA) noexcept;
+
+    /**
+     * 设置混合函数
+     * 
+     * @param srcRGB RGB 源因子
+     * @param srcA Alpha 源因子
+     * @param dstRGB RGB 目标因子
+     * @param dstA Alpha 目标因子
+     */
     inline void blendFunction(GLenum srcRGB, GLenum srcA, GLenum dstRGB, GLenum dstA) noexcept;
+
+    /**
+     * 设置颜色写入掩码
+     * 
+     * @param flag 是否允许写入（GL_TRUE/GL_FALSE）
+     */
     inline void colorMask(GLboolean flag) noexcept;
+
+    /**
+     * 设置深度写入掩码
+     * 
+     * @param flag 是否允许写入（GL_TRUE/GL_FALSE）
+     */
     inline void depthMask(GLboolean flag) noexcept;
+
+    /**
+     * 设置深度测试函数
+     * 
+     * @param func 深度测试函数（GL_LESS、GL_LEQUAL 等）
+     */
     inline void depthFunc(GLenum func) noexcept;
+
+    /**
+     * 设置模板测试函数（分离前后）
+     * 
+     * @param funcFront 正面模板测试函数
+     * @param refFront 正面参考值
+     * @param maskFront 正面掩码
+     * @param funcBack 背面模板测试函数
+     * @param refBack 背面参考值
+     * @param maskBack 背面掩码
+     */
     inline void stencilFuncSeparate(GLenum funcFront, GLint refFront, GLuint maskFront,
             GLenum funcBack, GLint refBack, GLuint maskBack) noexcept;
+
+    /**
+     * 设置模板操作（分离前后）
+     * 
+     * @param sfailFront 正面模板测试失败操作
+     * @param dpfailFront 正面深度测试失败操作
+     * @param dppassFront 正面深度测试通过操作
+     * @param sfailBack 背面模板测试失败操作
+     * @param dpfailBack 背面深度测试失败操作
+     * @param dppassBack 背面深度测试通过操作
+     */
     inline void stencilOpSeparate(GLenum sfailFront, GLenum dpfailFront, GLenum dppassFront,
             GLenum sfailBack, GLenum dpfailBack, GLenum dppassBack) noexcept;
+
+    /**
+     * 设置模板写入掩码（分离前后）
+     * 
+     * @param maskFront 正面掩码
+     * @param maskBack 背面掩码
+     */
     inline void stencilMaskSeparate(GLuint maskFront, GLuint maskBack) noexcept;
+
+    /**
+     * 设置多边形偏移
+     * 
+     * @param factor 偏移因子
+     * @param units 偏移单位
+     */
     inline void polygonOffset(GLfloat factor, GLfloat units) noexcept;
 
+    /**
+     * 设置裁剪矩形
+     * 
+     * @param left 左边界
+     * @param bottom 底边界
+     * @param width 宽度
+     * @param height 高度
+     */
     inline void setScissor(GLint left, GLint bottom, GLsizei width, GLsizei height) noexcept;
+
+    /**
+     * 设置视口
+     * 
+     * @param left 左边界
+     * @param bottom 底边界
+     * @param width 宽度
+     * @param height 高度
+     */
     inline void viewport(GLint left, GLint bottom, GLsizei width, GLsizei height) noexcept;
+
+    /**
+     * 设置深度范围
+     * 
+     * @param near 近平面深度值
+     * @param far 远平面深度值
+     */
     inline void depthRange(GLclampf near, GLclampf far) noexcept;
 
+    /**
+     * 删除缓冲区
+     * 
+     * @param buffer 缓冲区对象 ID
+     * @param target 缓冲区目标
+     */
     void deleteBuffer(GLuint buffer, GLenum target) noexcept;
+
+    /**
+     * 删除顶点数组对象
+     * 
+     * @param vao VAO 对象 ID
+     */
     void deleteVertexArray(GLuint vao) noexcept;
 
+    /**
+     * 在指定上下文中销毁对象
+     * 
+     * 延迟对象的销毁，直到切换到指定上下文。
+     * 
+     * @param index 上下文索引（0=常规，1=保护）
+     * @param closure 销毁闭包
+     */
     void destroyWithContext(size_t index, std::function<void(OpenGLContext&)> const& closure);
 
-    // glGet*() values
+    /**
+     * OpenGL 查询值结构
+     * 
+     * 存储通过 glGet*() 查询得到的 OpenGL 限制值。
+     */
     struct Gets {
-        GLfloat max_anisotropy;
-        GLint max_combined_texture_image_units;
-        GLint max_draw_buffers;
-        GLint max_renderbuffer_size;
-        GLint max_samples;
-        GLint max_texture_image_units;
-        GLint max_texture_size;
-        GLint max_cubemap_texture_size;
-        GLint max_3d_texture_size;
-        GLint max_array_texture_layers;
-        GLint max_transform_feedback_separate_attribs;
-        GLint max_uniform_block_size;
-        GLint max_uniform_buffer_bindings;
-        GLint num_program_binary_formats;
-        GLint uniform_buffer_offset_alignment;
+        GLfloat max_anisotropy;                          // 最大各向异性过滤级别
+        GLint max_combined_texture_image_units;          // 最大组合纹理图像单元数
+        GLint max_draw_buffers;                          // 最大绘制缓冲区数
+        GLint max_renderbuffer_size;                     // 最大渲染缓冲区大小
+        GLint max_samples;                                // 最大采样数
+        GLint max_texture_image_units;                   // 最大纹理图像单元数（片段着色器）
+        GLint max_texture_size;                          // 最大纹理大小
+        GLint max_cubemap_texture_size;                  // 最大立方体贴图纹理大小
+        GLint max_3d_texture_size;                       // 最大 3D 纹理大小
+        GLint max_array_texture_layers;                  // 最大数组纹理层数
+        GLint max_transform_feedback_separate_attribs;   // 最大变换反馈分离属性数
+        GLint max_uniform_block_size;                    // 最大 Uniform 块大小
+        GLint max_uniform_buffer_bindings;               // 最大 Uniform 缓冲区绑定数
+        GLint num_program_binary_formats;                // 程序二进制格式数量
+        GLint uniform_buffer_offset_alignment;           // Uniform 缓冲区偏移对齐
     } gets = {};
 
-    // features supported by this version of GL or GLES
+    /**
+     * 功能支持结构
+     * 
+     * 存储此版本 GL 或 GLES 支持的功能。
+     */
     struct {
-        bool multisample_texture;
+        bool multisample_texture;  // 是否支持多重采样纹理
     } features = {};
 
-    // supported extensions detected at runtime
+    /**
+     * 扩展支持结构
+     * 
+     * 存储运行时检测到的 OpenGL 扩展支持情况。
+     */
     struct Extensions {
         bool APPLE_color_buffer_packed_float;
         bool ARB_shading_language_packing;
@@ -262,9 +645,15 @@ public:
         bool WEBGL_compressed_texture_s3tc_srgb;
     } ext = {};
 
+    /**
+     * Bug 工作区结构
+     * 
+     * 存储特定 GPU 驱动的已知 Bug 和工作区。
+     * 这些标志用于在运行时应用相应的修复。
+     */
     struct Bugs {
-        // Some drivers have issues with UBOs in the fragment shader when
-        // glFlush() is called between draw calls.
+        // 某些驱动在绘制调用之间调用 glFlush() 时，
+        // 片段着色器中的 UBO 会出现问题。
         bool disable_glFlush;
 
         // Some drivers seem to not store the GL_ELEMENT_ARRAY_BUFFER binding
@@ -365,144 +754,237 @@ public:
     // OpenGL name of ContainerObjects within each context.
     uint32_t contextIndex = 0;
 
-    // Try to keep the State structure sorted by data-access patterns
+    /**
+     * OpenGL 状态结构
+     * 
+     * 存储所有 OpenGL 状态的缓存。
+     * 尝试按数据访问模式排序，以提高缓存性能。
+     * 
+     * 注意：此结构不可复制或移动，以防止意外状态复制。
+     */
     struct State {
         State() noexcept = default;
-        // make sure we don't copy this state by accident
+        // 确保不会意外复制此状态
         State(State const& rhs) = delete;
         State(State&& rhs) noexcept = delete;
         State& operator=(State const& rhs) = delete;
         State& operator=(State&& rhs) noexcept = delete;
 
-        GLint major = 0;
-        GLint minor = 0;
+        GLint major = 0;  // OpenGL 主版本号
+        GLint minor = 0;  // OpenGL 次版本号
 
-        char const* vendor = nullptr;
-        char const* renderer = nullptr;
-        char const* version = nullptr;
-        char const* shader = nullptr;
+        char const* vendor = nullptr;    // GL_VENDOR 字符串
+        char const* renderer = nullptr;  // GL_RENDERER 字符串
+        char const* version = nullptr;   // GL_VERSION 字符串
+        char const* shader = nullptr;     // GL_SHADING_LANGUAGE_VERSION 字符串
 
-        GLuint draw_fbo = 0;
-        GLuint read_fbo = 0;
+        GLuint draw_fbo = 0;   // 绘制帧缓冲区对象 ID
+        GLuint read_fbo = 0;   // 读取帧缓冲区对象 ID
 
+        /**
+         * 着色器程序状态
+         */
         struct {
-            GLuint use = 0;
+            GLuint use = 0;  // 当前使用的着色器程序对象 ID
         } program;
 
+        /**
+         * 顶点数组对象状态
+         */
         struct {
-            RenderPrimitive* p = nullptr;
+            RenderPrimitive* p = nullptr;  // 当前绑定的渲染图元指针
         } vao;
 
+        /**
+         * 光栅化状态
+         */
         struct {
-            GLenum frontFace            = GL_CCW;
-            GLenum cullFace             = GL_BACK;
-            GLenum blendEquationRGB     = GL_FUNC_ADD;
-            GLenum blendEquationA       = GL_FUNC_ADD;
-            GLenum blendFunctionSrcRGB  = GL_ONE;
-            GLenum blendFunctionSrcA    = GL_ONE;
-            GLenum blendFunctionDstRGB  = GL_ZERO;
-            GLenum blendFunctionDstA    = GL_ZERO;
-            GLboolean colorMask         = GL_TRUE;
-            GLboolean depthMask         = GL_TRUE;
-            GLenum depthFunc            = GL_LESS;
+            GLenum frontFace            = GL_CCW;      // 正面方向
+            GLenum cullFace             = GL_BACK;     // 剔除面
+            GLenum blendEquationRGB     = GL_FUNC_ADD; // RGB 混合方程
+            GLenum blendEquationA       = GL_FUNC_ADD; // Alpha 混合方程
+            GLenum blendFunctionSrcRGB  = GL_ONE;      // RGB 源混合因子
+            GLenum blendFunctionSrcA    = GL_ONE;      // Alpha 源混合因子
+            GLenum blendFunctionDstRGB  = GL_ZERO;     // RGB 目标混合因子
+            GLenum blendFunctionDstA    = GL_ZERO;     // Alpha 目标混合因子
+            GLboolean colorMask         = GL_TRUE;     // 颜色写入掩码
+            GLboolean depthMask         = GL_TRUE;     // 深度写入掩码
+            GLenum depthFunc            = GL_LESS;     // 深度测试函数
         } raster;
 
+        /**
+         * 模板测试状态
+         */
         struct {
+            /**
+             * 模板测试函数结构
+             */
             struct StencilFunc {
-                GLenum func             = GL_ALWAYS;
-                GLint ref               = 0;
-                GLuint mask             = ~GLuint(0);
+                GLenum func             = GL_ALWAYS;  // 模板测试函数
+                GLint ref               = 0;          // 参考值
+                GLuint mask             = ~GLuint(0); // 掩码
                 bool operator != (StencilFunc const& rhs) const noexcept {
                     return func != rhs.func || ref != rhs.ref || mask != rhs.mask;
                 }
             };
+            /**
+             * 模板操作结构
+             */
             struct StencilOp {
-                GLenum sfail            = GL_KEEP;
-                GLenum dpfail           = GL_KEEP;
-                GLenum dppass           = GL_KEEP;
+                GLenum sfail            = GL_KEEP;  // 模板测试失败操作
+                GLenum dpfail           = GL_KEEP;  // 深度测试失败操作
+                GLenum dppass           = GL_KEEP;  // 深度测试通过操作
                 bool operator != (StencilOp const& rhs) const noexcept {
                     return sfail != rhs.sfail || dpfail != rhs.dpfail || dppass != rhs.dppass;
                 }
             };
+            /**
+             * 模板状态（前后两面）
+             */
             struct {
-                StencilFunc func;
-                StencilOp op;
-                GLuint stencilMask      = ~GLuint(0);
-            } front, back;
+                StencilFunc func;       // 模板测试函数
+                StencilOp op;           // 模板操作
+                GLuint stencilMask      = ~GLuint(0);  // 模板写入掩码
+            } front, back;  // 正面和背面
         } stencil;
 
+        /**
+         * 多边形偏移状态
+         */
         struct PolygonOffset {
-            GLfloat factor = 0;
-            GLfloat units = 0;
+            GLfloat factor = 0;  // 偏移因子
+            GLfloat units = 0;   // 偏移单位
             bool operator != (PolygonOffset const& rhs) const noexcept {
                 return factor != rhs.factor || units != rhs.units;
             }
         } polygonOffset;
 
+        /**
+         * 功能启用状态
+         */
         struct {
-            utils::bitset32 caps;
+            utils::bitset32 caps;  // 功能标志位集合
         } enables;
 
+        /**
+         * 缓冲区绑定状态
+         */
         struct {
+            /**
+             * 索引缓冲区目标（每个目标一个）
+             */
             struct {
+                /**
+                 * 缓冲区绑定信息
+                 */
                 struct {
-                    GLuint name = 0;
-                    GLintptr offset = 0;
-                    GLsizeiptr size = 0;
+                    GLuint name = 0;        // 缓冲区对象 ID
+                    GLintptr offset = 0;    // 偏移量（字节）
+                    GLsizeiptr size = 0;    // 大小（字节）
                 } buffers[MAX_BUFFER_BINDINGS];
-            } targets[3];   // there are only 3 indexed buffer targets
-            GLuint genericBinding[7] = {};
+            } targets[3];   // 只有 3 个索引缓冲区目标（UBO、TFB、SSBO）
+            GLuint genericBinding[7] = {};  // 通用缓冲区绑定（非索引）
         } buffers;
 
+        /**
+         * 纹理状态
+         */
         struct {
-            GLuint active = 0;      // zero-based
+            GLuint active = 0;      // 当前活动的纹理单元（从 0 开始）
+            /**
+             * 纹理单元状态
+             */
             struct {
-                GLuint sampler = 0;
-                GLuint target = 0;
-                GLuint id = 0;
+                GLuint sampler = 0;  // 采样器对象 ID
+                GLuint target = 0;    // 纹理目标
+                GLuint id = 0;        // 纹理对象 ID
             } units[MAX_TEXTURE_UNIT_COUNT];
         } textures;
 
+        /**
+         * 解包状态（用于 glTexImage*）
+         */
         struct {
-            GLint row_length = 0;
-            GLint alignment = 4;
+            GLint row_length = 0;   // 行长度
+            GLint alignment = 4;     // 对齐方式
         } unpack;
 
+        /**
+         * 打包状态（用于 glReadPixels）
+         */
         struct {
-            GLint alignment = 4;
+            GLint alignment = 4;     // 对齐方式
         } pack;
 
+        /**
+         * 窗口状态
+         */
         struct {
-            vec4gli scissor { 0 };
-            vec4gli viewport { 0 };
-            vec2glf depthRange { 0.0f, 1.0f };
+            vec4gli scissor { 0 };      // 裁剪矩形 (x, y, width, height)
+            vec4gli viewport { 0 };     // 视口 (x, y, width, height)
+            vec2glf depthRange { 0.0f, 1.0f };  // 深度范围 (near, far)
         } window;
-        uint8_t age = 0;
+        uint8_t age = 0;  // 状态版本号（用于检测状态失效）
     } state;
 
+    /**
+     * OpenGL 函数指针结构
+     * 
+     * 存储可能通过扩展提供的 OpenGL 函数指针。
+     * 允许在运行时选择正确的函数（核心或扩展版本）。
+     */
     struct Procs {
-        void (* bindVertexArray)(GLuint array);
-        void (* deleteVertexArrays)(GLsizei n, const GLuint* arrays);
-        void (* genVertexArrays)(GLsizei n, GLuint* arrays);
+        void (* bindVertexArray)(GLuint array);                    // 绑定顶点数组对象
+        void (* deleteVertexArrays)(GLsizei n, const GLuint* arrays);  // 删除顶点数组对象
+        void (* genVertexArrays)(GLsizei n, GLuint* arrays);       // 生成顶点数组对象
 
-        void (* genQueries)(GLsizei n, GLuint* ids);
-        void (* deleteQueries)(GLsizei n, const GLuint* ids);
-        void (* beginQuery)(GLenum target, GLuint id);
-        void (* endQuery)(GLenum target);
-        void (* getQueryObjectuiv)(GLuint id, GLenum pname, GLuint* params);
-        void (* getQueryObjectui64v)(GLuint id, GLenum pname, GLuint64* params);
+        void (* genQueries)(GLsizei n, GLuint* ids);               // 生成查询对象
+        void (* deleteQueries)(GLsizei n, const GLuint* ids);      // 删除查询对象
+        void (* beginQuery)(GLenum target, GLuint id);             // 开始查询
+        void (* endQuery)(GLenum target);                          // 结束查询
+        void (* getQueryObjectuiv)(GLuint id, GLenum pname, GLuint* params);  // 获取查询对象（uint）
+        void (* getQueryObjectui64v)(GLuint id, GLenum pname, GLuint64* params);  // 获取查询对象（uint64）
 
-        void (* invalidateFramebuffer)(GLenum target, GLsizei numAttachments, const GLenum *attachments);
+        void (* invalidateFramebuffer)(GLenum target, GLsizei numAttachments, const GLenum *attachments);  // 使帧缓冲区无效
 
-        void (* maxShaderCompilerThreadsKHR)(GLuint count);
+        void (* maxShaderCompilerThreadsKHR)(GLuint count);      // 设置最大着色器编译线程数
     } procs{};
 
+    /**
+     * 解绑所有对象
+     * 
+     * 解绑所有绑定的对象，以便资源不会在销毁时卡在此上下文中。
+     */
     void unbindEverything() noexcept;
+
+    /**
+     * 同步状态和缓存
+     * 
+     * 在切换到新上下文时同步状态和缓存。
+     * 
+     * @param index 上下文索引（0=常规，1=保护）
+     */
     void synchronizeStateAndCache(size_t index);
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+    /**
+     * 获取采样器对象（慢路径）
+     * 
+     * 如果采样器不存在，创建新的采样器对象。
+     * 
+     * @param sp 采样器参数
+     * @return 采样器对象 ID
+     */
     GLuint getSamplerSlow(SamplerParams sp) const noexcept;
 
+    /**
+     * 获取采样器对象（快速路径）
+     * 
+     * 从缓存中查找采样器，如果不存在则调用慢路径创建。
+     * 
+     * @param sp 采样器参数
+     * @return 采样器对象 ID
+     */
     inline GLuint getSampler(SamplerParams sp) const noexcept {
         assert_invariant(!sp.padding0);
         assert_invariant(!sp.padding1);

@@ -25,40 +25,93 @@
 
 namespace filament::backend {
 
+/**
+ * Cocoa Touch 外部图像类
+ * 
+ * 封装 iOS CoreVideo CVPixelBuffer 作为 OpenGL ES 纹理。
+ * 
+ * 主要功能：
+ * 1. 将 CVPixelBuffer 转换为 OpenGL ES 纹理
+ * 2. 处理 YCbCr 到 RGB 的颜色空间转换
+ * 3. 管理纹理生命周期
+ * 
+ * 使用场景：
+ * - 从 AVFoundation 获取视频帧
+ * - 从相机捕获图像
+ * - 其他 CoreVideo 像素缓冲区源
+ */
 class CocoaTouchExternalImage final : public OpenGLPlatform::ExternalTexture {
 public:
 
     /**
-     * GL objects that can be shared across multiple instances of CocoaTouchExternalImage.
+     * 共享 GL 对象类
+     * 
+     * 可以在多个 CocoaTouchExternalImage 实例之间共享的 GL 对象。
+     * 包括着色器程序（用于 YCbCr 到 RGB 转换）和采样器对象。
      */
     class SharedGl {
     public:
         SharedGl() noexcept;
         ~SharedGl() noexcept;
 
+        // 禁止拷贝
         SharedGl(const SharedGl&) = delete;
         SharedGl& operator=(const SharedGl&) = delete;
 
-        GLuint program = 0;
-        GLuint sampler = 0;
-        GLuint fragmentShader = 0;
-        GLuint vertexShader = 0;
+        GLuint program = 0;          // 着色器程序（用于 YCbCr 到 RGB 转换）
+        GLuint sampler = 0;          // 采样器对象
+        GLuint fragmentShader = 0;    // 片段着色器
+        GLuint vertexShader = 0;      // 顶点着色器
     };
 
+    /**
+     * 构造函数
+     * 
+     * @param textureCache CoreVideo 纹理缓存
+     * @param sharedGl 共享 GL 对象引用
+     */
     CocoaTouchExternalImage(const CVOpenGLESTextureCacheRef textureCache,
             const SharedGl& sharedGl) noexcept;
+    
+    /**
+     * 析构函数
+     * 
+     * 清理纹理资源。
+     */
     ~CocoaTouchExternalImage() noexcept;
 
     /**
-     * Set this external image to the passed-in CVPixelBuffer.
-     * Afterwards, calling glGetTexture returns the GL texture name backed by the CVPixelBuffer.
-     *
-     * Calling set with a YCbCr image performs a render pass to convert the image from YCbCr to RGB.
+     * 设置外部图像
+     * 
+     * 将此外部图像设置为传入的 CVPixelBuffer。
+     * 之后，调用 glGetTexture 返回由 CVPixelBuffer 支持的 GL 纹理名称。
+     * 
+     * 使用 YCbCr 图像调用 set 会执行渲染通道，将图像从 YCbCr 转换为 RGB。
+     * 
+     * @param p CVPixelBuffer 指针
+     * @return 如果成功返回 true
      */
     bool set(CVPixelBufferRef p) noexcept;
 
+    /**
+     * 获取 GL 纹理
+     * 
+     * @return GL 纹理 ID
+     */
     GLuint getGlTexture() const noexcept;
+    
+    /**
+     * 获取内部格式
+     * 
+     * @return GL 内部格式
+     */
     GLuint getInternalFormat() const noexcept;
+    
+    /**
+     * 获取纹理目标
+     * 
+     * @return GL 纹理目标（GL_TEXTURE_2D）
+     */
     GLuint getTarget() const noexcept;
 
 private:

@@ -55,7 +55,12 @@ using namespace utils;
 namespace filament::backend {
 using namespace backend;
 
-// The Android NDK doesn't expose extensions, fake it with eglGetProcAddress
+/**
+ * EGL 扩展函数指针命名空间
+ * 
+ * Android NDK 不暴露扩展函数，使用 eglGetProcAddress 获取。
+ * 这些函数指针在初始化时通过 eglGetProcAddress 填充。
+ */
 namespace glext {
 UTILS_PRIVATE PFNEGLCREATESYNCKHRPROC eglCreateSyncKHR{}; // NOLINT(*-use-internal-linkage)
 UTILS_PRIVATE PFNEGLDESTROYSYNCKHRPROC eglDestroySyncKHR{}; // NOLINT(*-use-internal-linkage)
@@ -66,17 +71,40 @@ UTILS_PRIVATE PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR{}; // NOLINT(*-use-in
 using namespace glext;
 
 // ---------------------------------------------------------------------------------------------
-// Utilities
+// 工具函数
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * 记录 EGL 错误
+ * 
+ * 获取当前 EGL 错误并记录。
+ * 
+ * @param name 操作名称
+ */
 void PlatformEGL::logEglError(const char* name) noexcept {
     logEglError(name, eglGetError());
 }
 
+/**
+ * 记录 EGL 错误
+ * 
+ * 记录指定的 EGL 错误。
+ * 
+ * @param name 操作名称
+ * @param error EGL 错误代码
+ */
 void PlatformEGL::logEglError(const char* name, EGLint const error) noexcept {
     LOG(ERROR) << name << " failed with " << getEglErrorName(error);
 }
 
+/**
+ * 获取 EGL 错误名称
+ * 
+ * 将 EGL 错误代码转换为可读的字符串。
+ * 
+ * @param error EGL 错误代码
+ * @return 错误名称字符串
+ */
 const char* PlatformEGL::getEglErrorName(EGLint const error) noexcept {
     switch (error) {
         case EGL_NOT_INITIALIZED:       return "EGL_NOT_INITIALIZED";
@@ -97,8 +125,14 @@ const char* PlatformEGL::getEglErrorName(EGLint const error) noexcept {
     }
 }
 
+/**
+ * 清除 GL 错误
+ * 
+ * 清除可能由之前的调用设置的 GL 错误。
+ * 如果发现错误，记录警告但继续执行。
+ */
 void PlatformEGL::clearGlError() noexcept {
-    // clear GL error that may have been set by previous calls
+    // 清除可能由之前的调用设置的 GL 错误
     GLenum const error = glGetError();
     if (error != GL_NO_ERROR) {
         LOG(WARNING) << "Ignoring pending GL error " << io::hex << error;
@@ -107,25 +141,65 @@ void PlatformEGL::clearGlError() noexcept {
 
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * 构造函数
+ * 
+ * 默认构造函数。
+ */
 PlatformEGL::PlatformEGL() noexcept = default;
 
+/**
+ * 获取操作系统版本
+ * 
+ * @return 操作系统版本（EGL 平台返回 0）
+ */
 int PlatformEGL::getOSVersion() const noexcept {
     return 0;
 }
 
+/**
+ * 检查是否为 OpenGL（而非 GLES）
+ * 
+ * @return 如果为 OpenGL 返回 true，否则返回 false（EGL 平台使用 GLES）
+ */
 bool PlatformEGL::isOpenGL() const noexcept {
     return false;
 }
 
+/**
+ * 外部图像析构函数
+ * 
+ * 默认析构函数。
+ */
 PlatformEGL::ExternalImageEGL::~ExternalImageEGL() = default;
 
+/**
+ * 创建驱动
+ * 
+ * 初始化 EGL 显示并创建 OpenGL 驱动。
+ * 
+ * @param sharedContext 共享上下文（可选）
+ * @param driverConfig 驱动配置
+ * @return 创建的驱动指针，失败返回 nullptr
+ * 
+ * 执行流程：
+ * 1. 获取 EGL 显示
+ * 2. 初始化 EGL（如果失败，尝试使用设备扩展）
+ * 3. 导入 GLES 扩展入口点
+ * 4. 查询 EGL 扩展
+ * 5. 获取 EGL 扩展函数指针
+ * 6. 创建上下文和驱动
+ */
 Driver* PlatformEGL::createDriver(void* sharedContext, const DriverConfig& driverConfig) {
+    // 获取默认 EGL 显示
     mEGLDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     assert_invariant(mEGLDisplay != EGL_NO_DISPLAY);
 
+    // 初始化 EGL
     EGLint major, minor;
     EGLBoolean initialized = eglInitialize(mEGLDisplay, &major, &minor);
 
+    // 如果初始化失败，尝试使用设备扩展（用于无头渲染）
     if (!initialized) {
         EGLDeviceEXT eglDevice;
         EGLint numDevices;
@@ -135,6 +209,7 @@ Driver* PlatformEGL::createDriver(void* sharedContext, const DriverConfig& drive
             eglQueryDevicesEXT(1, &eglDevice, &numDevices);
             if(auto* getPlatformDisplay = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(
                     eglGetProcAddress("eglGetPlatformDisplay"))) {
+                // 使用设备扩展获取平台显示
                 mEGLDisplay = getPlatformDisplay(EGL_PLATFORM_DEVICE_EXT, eglDevice, nullptr);
                 initialized = eglInitialize(mEGLDisplay, &major, &minor);
             }
@@ -146,10 +221,12 @@ Driver* PlatformEGL::createDriver(void* sharedContext, const DriverConfig& drive
         return nullptr;
     }
 
+    // 导入 GLES 扩展入口点（Android 需要）
 #if defined(FILAMENT_IMPORT_ENTRY_POINTS)
     importGLESExtensionsEntryPoints();
 #endif
 
+    // 查询并解析 EGL 扩展字符串
     auto const extensions = GLUtils::split(eglQueryString(mEGLDisplay, EGL_EXTENSIONS));
     ext.egl.ANDROID_recordable = extensions.has("EGL_ANDROID_recordable");
     ext.egl.KHR_gl_colorspace = extensions.has("EGL_KHR_gl_colorspace");
@@ -158,10 +235,12 @@ Driver* PlatformEGL::createDriver(void* sharedContext, const DriverConfig& drive
     ext.egl.KHR_surfaceless_context = extensions.has("EGL_KHR_surfaceless_context");
     ext.egl.EXT_protected_content = extensions.has("EGL_EXT_protected_content");
 
+    // 获取 EGL 同步扩展函数指针
     eglCreateSyncKHR = PFNEGLCREATESYNCKHRPROC(eglGetProcAddress("eglCreateSyncKHR"));
     eglDestroySyncKHR = PFNEGLDESTROYSYNCKHRPROC(eglGetProcAddress("eglDestroySyncKHR"));
     eglClientWaitSyncKHR = PFNEGLCLIENTWAITSYNCKHRPROC(eglGetProcAddress("eglClientWaitSyncKHR"));
 
+    // 获取 EGL 图像扩展函数指针
     eglCreateImageKHR = PFNEGLCREATEIMAGEKHRPROC(eglGetProcAddress("eglCreateImageKHR"));
     eglDestroyImageKHR = PFNEGLDESTROYIMAGEKHRPROC(eglGetProcAddress("eglDestroyImageKHR"));
 
@@ -322,18 +401,18 @@ Driver* PlatformEGL::createDriver(void* sharedContext, const DriverConfig& drive
 
     mCurrentContextType = ContextType::UNPROTECTED;
     mContextAttribs = std::move(contextAttribs);
-    mMSAA4XSupport = checkIfMSAASwapChainSupported(4);
+    mMSAA4XSupport = checkIfMSAASwapChainSupported(4);  // 检查 4x MSAA 支持
 
-    initializeGlExtensions();
+    initializeGlExtensions();  // 初始化 GL 扩展
 
-    // this is needed with older emulators/API levels on Android
+    // 这在较旧的 Android 模拟器/API 级别上是必需的
     clearGlError();
 
-    // success!!
+    // 成功！！
     return createDefaultDriver(this, sharedContext, driverConfig);
 
 error:
-    // if we're here, we've failed
+    // 如果到达这里，说明失败了
     if (mEGLDummySurface) {
         eglDestroySurface(mEGLDisplay, mEGLDummySurface);
     }
@@ -354,14 +433,35 @@ error:
     return nullptr;
 }
 
+/**
+ * 检查是否支持额外上下文
+ * 
+ * 检查是否支持无表面上下文（用于多线程编译）。
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ */
 bool PlatformEGL::isExtraContextSupported() const noexcept {
     return ext.egl.KHR_surfaceless_context;
 }
 
+/**
+ * 检查是否支持受保护上下文
+ * 
+ * 检查是否支持 EGL_EXT_protected_content 扩展。
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ */
 bool PlatformEGL::isProtectedContextSupported() const noexcept {
     return ext.egl.EXT_protected_content;
 }
 
+/**
+ * 创建额外上下文
+ * 
+ * 创建额外的 OpenGL 上下文（用于多线程编译）。
+ * 
+ * @param shared 是否与主上下文共享
+ */
 void PlatformEGL::createContext(bool const shared) {
     EGLConfig const config = ext.egl.KHR_no_config_context ? EGL_NO_CONFIG_KHR : mEGLConfig;
 
@@ -369,17 +469,23 @@ void PlatformEGL::createContext(bool const shared) {
             shared ? mEGLContext : EGL_NO_CONTEXT, mContextAttribs.data());
 
     if (UTILS_UNLIKELY(context == EGL_NO_CONTEXT)) {
-        // eglCreateContext failed
+        // eglCreateContext 失败
         logEglError("eglCreateContext");
     }
 
     assert_invariant(context != EGL_NO_CONTEXT);
 
+    // 使上下文成为当前上下文（无表面）
     eglMakeCurrent(mEGLDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, context);
 
     mAdditionalContexts.push_back(context);
 }
 
+/**
+ * 释放上下文
+ * 
+ * 释放当前线程的上下文。
+ */
 void PlatformEGL::releaseContext() noexcept {
     EGLContext context = eglGetCurrentContext();
     eglMakeCurrent(mEGLDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -387,6 +493,7 @@ void PlatformEGL::releaseContext() noexcept {
         eglDestroyContext(mEGLDisplay, context);
     }
 
+    // 从额外上下文列表中移除
     mAdditionalContexts.erase(
             std::remove_if(mAdditionalContexts.begin(), mAdditionalContexts.end(),
                     [context](EGLContext const c) {
@@ -396,8 +503,13 @@ void PlatformEGL::releaseContext() noexcept {
     eglReleaseThread();
 }
 
+/**
+ * 终止平台
+ * 
+ * 清理所有 EGL 资源。
+ */
 void PlatformEGL::terminate() noexcept {
-    // it's always allowed to use EGL_NO_SURFACE, EGL_NO_CONTEXT
+    // 总是允许使用 EGL_NO_SURFACE, EGL_NO_CONTEXT
     eglMakeCurrent(mEGLDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     if (mEGLDummySurface) {
         eglDestroySurface(mEGLDisplay, mEGLDummySurface);
@@ -413,18 +525,28 @@ void PlatformEGL::terminate() noexcept {
     eglReleaseThread();
 }
 
+/**
+ * 查找交换链配置
+ * 
+ * 查找符合指定标志的 EGL 配置。
+ * 
+ * @param flags 交换链标志（透明、模板缓冲区、MSAA 等）
+ * @param window 是否支持窗口表面
+ * @param pbuffer 是否支持像素缓冲区表面
+ * @return EGL 配置，失败返回 EGL_NO_CONFIG_KHR
+ */
 EGLConfig PlatformEGL::findSwapChainConfig(
         uint64_t const flags, bool const window, bool const pbuffer) const {
-    // Find config that support ES3.
+    // 查找支持 ES3 的配置
     EGLConfig config = EGL_NO_CONFIG_KHR;
     EGLint configsCount;
     Config configAttribs = {
-            { EGL_RED_SIZE,         8 },
-            { EGL_GREEN_SIZE,       8 },
-            { EGL_BLUE_SIZE,        8 },
-            { EGL_ALPHA_SIZE,      (flags & SWAP_CHAIN_CONFIG_TRANSPARENT) ? 8 : 0 },
-            { EGL_DEPTH_SIZE,      24 },
-            { EGL_STENCIL_SIZE,    (flags & SWAP_CHAIN_HAS_STENCIL_BUFFER) ? 8 : 0 }
+            { EGL_RED_SIZE,         8 },   // 红色通道 8 位
+            { EGL_GREEN_SIZE,       8 },   // 绿色通道 8 位
+            { EGL_BLUE_SIZE,        8 },   // 蓝色通道 8 位
+            { EGL_ALPHA_SIZE,      (flags & SWAP_CHAIN_CONFIG_TRANSPARENT) ? 8 : 0 },  // Alpha 通道（如果透明）
+            { EGL_DEPTH_SIZE,      24 },   // 深度缓冲区 24 位
+            { EGL_STENCIL_SIZE,    (flags & SWAP_CHAIN_HAS_STENCIL_BUFFER) ? 8 : 0 }  // 模板缓冲区（如果需要）
     };
 
     if (!ext.egl.KHR_no_config_context) {
@@ -482,12 +604,25 @@ EGLConfig PlatformEGL::findSwapChainConfig(
     return config;
 }
 
+/**
+ * 获取适合交换链的配置
+ * 
+ * 根据标志获取适合的 EGL 配置。
+ * 如果支持 KHR_no_config_context，可以为每个交换链选择不同的配置。
+ * 
+ * @param flags 交换链标志
+ * @param window 是否支持窗口表面
+ * @param pbuffer 是否支持像素缓冲区表面
+ * @return EGL 配置
+ */
 EGLConfig PlatformEGL::getSuitableConfigForSwapChain(
         uint64_t const flags, bool const window, bool const pbuffer) const {
     EGLConfig config = EGL_NO_CONFIG_KHR;
     if (UTILS_LIKELY(ext.egl.KHR_no_config_context)) {
+        // 支持无配置上下文，可以为每个交换链选择不同配置
         config = findSwapChainConfig(flags, window, pbuffer);
     } else {
+        // 不支持无配置上下文，必须使用主配置
         config = mEGLConfig;
     }
     return config;
@@ -495,34 +630,65 @@ EGLConfig PlatformEGL::getSuitableConfigForSwapChain(
 
 // -----------------------------------------------------------------------------------------------
 
+/**
+ * 检查是否支持 sRGB 交换链
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ */
 bool PlatformEGL::isSRGBSwapChainSupported() const noexcept {
     return ext.egl.KHR_gl_colorspace;
 }
 
+/**
+ * 检查是否支持 MSAA 交换链
+ * 
+ * @param samples 采样数
+ * @return 如果支持返回 true，否则返回 false
+ */
 bool PlatformEGL::isMSAASwapChainSupported(uint32_t const samples) const noexcept {
     if (samples <= 1) {
-        return true;
+        return true;  // 无 MSAA 总是支持
     }
 
     if (samples == 4) {
-        return mMSAA4XSupport;
+        return mMSAA4XSupport;  // 检查缓存的 4x MSAA 支持
     }
 
-    return false;
+    return false;  // 其他采样数不支持
 }
 
+/**
+ * 创建交换链（从原生窗口）
+ * 
+ * @param nativeWindow 原生窗口指针
+ * @param flags 交换链标志
+ * @return 交换链指针
+ */
 Platform::SwapChain* PlatformEGL::createSwapChain(
         void* nativeWindow, uint64_t const flags) {
     auto* const sc = new(std::nothrow) SwapChainEGL(*this, nativeWindow, flags);
     return sc;
 }
 
+/**
+ * 创建交换链（无头模式）
+ * 
+ * @param width 宽度
+ * @param height 高度
+ * @param flags 交换链标志
+ * @return 交换链指针
+ */
 Platform::SwapChain* PlatformEGL::createSwapChain(
         uint32_t const width, uint32_t const height, uint64_t const flags) {
     auto* const sc = new(std::nothrow) SwapChainEGL(*this, width, height, flags);
     return sc;
 }
 
+/**
+ * 销毁交换链
+ * 
+ * @param swapChain 交换链指针
+ */
 void PlatformEGL::destroySwapChain(SwapChain* swapChain) noexcept {
     if (swapChain) {
         SwapChainEGL* const sc = static_cast<SwapChainEGL*>(swapChain);
@@ -531,6 +697,12 @@ void PlatformEGL::destroySwapChain(SwapChain* swapChain) noexcept {
     }
 }
 
+/**
+ * 检查交换链是否受保护
+ * 
+ * @param swapChain 交换链指针
+ * @return 如果受保护返回 true，否则返回 false
+ */
 bool PlatformEGL::isSwapChainProtected(SwapChain* swapChain) noexcept {
     if (swapChain) {
         SwapChainEGL const* const sc = static_cast<SwapChainEGL const*>(swapChain);
@@ -539,10 +711,25 @@ bool PlatformEGL::isSwapChainProtected(SwapChain* swapChain) noexcept {
     return false;
 }
 
+/**
+ * 获取当前上下文类型
+ * 
+ * @return 当前上下文类型（UNPROTECTED 或 PROTECTED）
+ */
 OpenGLPlatform::ContextType PlatformEGL::getCurrentContextType() const noexcept {
     return mCurrentContextType;
 }
 
+/**
+ * 设置当前上下文
+ * 
+ * 使指定的上下文成为当前上下文。
+ * 
+ * @param type 上下文类型
+ * @param drawSwapChain 绘制交换链
+ * @param readSwapChain 读取交换链
+ * @return 如果成功返回 true，否则返回 false
+ */
 bool PlatformEGL::makeCurrent(ContextType const type,
         SwapChain* drawSwapChain, SwapChain* readSwapChain) {
     SwapChainEGL const* const dsc = static_cast<SwapChainEGL const*>(drawSwapChain);
@@ -552,6 +739,22 @@ bool PlatformEGL::makeCurrent(ContextType const type,
     return success == EGL_TRUE;
 }
 
+/**
+ * 设置当前上下文（带回调）
+ * 
+ * 使指定的上下文成为当前上下文，并在上下文切换时调用回调。
+ * 
+ * @param drawSwapChain 绘制交换链
+ * @param readSwapChain 读取交换链
+ * @param preContextChange 上下文切换前回调
+ * @param postContextChange 上下文切换后回调（参数为上下文索引）
+ * 
+ * 执行流程：
+ * 1. 检查交换链是否需要受保护上下文
+ * 2. 如果需要且不存在，创建受保护上下文
+ * 3. 如果上下文类型改变，调用回调并切换上下文
+ * 4. 如果不再需要受保护上下文，立即销毁
+ */
 void PlatformEGL::makeCurrent(SwapChain* drawSwapChain,
         SwapChain* readSwapChain,
         Invocable<void()> preContextChange,
@@ -564,16 +767,16 @@ void PlatformEGL::makeCurrent(SwapChain* drawSwapChain,
     if (ext.egl.EXT_protected_content) {
         bool const swapChainProtected = isSwapChainProtected(drawSwapChain);
         if (UTILS_UNLIKELY(swapChainProtected)) {
-            // we need a protected context
+            // 我们需要受保护上下文
             if (UTILS_UNLIKELY(mEGLContextProtected == EGL_NO_CONTEXT)) {
-                // we don't have one, create it!
+                // 我们没有，创建它！
                 EGLConfig const config = ext.egl.KHR_no_config_context ? EGL_NO_CONFIG_KHR : mEGLConfig;
                 Config protectedContextAttribs{ mContextAttribs };
                 protectedContextAttribs[EGL_PROTECTED_CONTENT_EXT] = EGL_TRUE;
                 mEGLContextProtected = eglCreateContext(mEGLDisplay, config, mEGLContext,
                         protectedContextAttribs.data());
                 if (UTILS_UNLIKELY(mEGLContextProtected == EGL_NO_CONTEXT)) {
-                    // couldn't create the protected context
+                    // 无法创建受保护上下文
                     logEglError("eglCreateContext[EGL_PROTECTED_CONTENT_EXT]");
                     ext.egl.EXT_protected_content = false;
                     goto error;
@@ -598,7 +801,7 @@ void PlatformEGL::makeCurrent(SwapChain* drawSwapChain,
                 mCurrentContextType = ContextType::UNPROTECTED;
             }
             if (UTILS_LIKELY(!swapChainProtected && mEGLContextProtected != EGL_NO_CONTEXT)) {
-                // We don't need the protected context anymore, unbind and destroy right away.
+                // 我们不再需要受保护上下文，立即解除绑定并销毁
                 eglDestroyContext(mEGLDisplay, mEGLContextProtected);
                 mEGLContextProtected = EGL_NO_CONTEXT;
             }
@@ -614,6 +817,13 @@ void PlatformEGL::makeCurrent(SwapChain* drawSwapChain,
     }
 }
 
+/**
+ * 提交交换链
+ * 
+ * 交换前后缓冲区，将渲染结果呈现到屏幕。
+ * 
+ * @param swapChain 交换链指针
+ */
 void PlatformEGL::commit(SwapChain* swapChain) noexcept {
     if (swapChain) {
         SwapChainEGL const* const sc = static_cast<SwapChainEGL const*>(swapChain);
@@ -625,10 +835,24 @@ void PlatformEGL::commit(SwapChain* swapChain) noexcept {
 
 // -----------------------------------------------------------------------------------------------
 
+/**
+ * 检查是否可以创建 Fence
+ * 
+ * EGL 平台总是可以创建 Fence（如果支持扩展）。
+ * 
+ * @return 总是返回 true
+ */
 bool PlatformEGL::canCreateFence() noexcept {
     return true;
 }
 
+/**
+ * 创建 Fence
+ * 
+ * 创建 EGL 同步 Fence。
+ * 
+ * @return Fence 指针，失败返回 nullptr
+ */
 Platform::Fence* PlatformEGL::createFence() noexcept {
     Fence* f = nullptr;
 #ifdef EGL_KHR_reusable_sync
@@ -637,6 +861,11 @@ Platform::Fence* PlatformEGL::createFence() noexcept {
     return f;
 }
 
+/**
+ * 销毁 Fence
+ * 
+ * @param fence Fence 指针
+ */
 void PlatformEGL::destroyFence(Fence* fence) noexcept {
 #ifdef EGL_KHR_reusable_sync
     EGLSyncKHR const sync = fence;
@@ -646,6 +875,15 @@ void PlatformEGL::destroyFence(Fence* fence) noexcept {
 #endif
 }
 
+/**
+ * 等待 Fence
+ * 
+ * 等待 Fence 完成或超时。
+ * 
+ * @param fence Fence 指针
+ * @param timeout 超时时间（纳秒）
+ * @return Fence 状态（CONDITION_SATISFIED、TIMEOUT_EXPIRED 或 ERROR）
+ */
 FenceStatus PlatformEGL::waitFence(
         Fence* fence, uint64_t const timeout) noexcept {
 #ifdef EGL_KHR_reusable_sync
@@ -665,25 +903,50 @@ FenceStatus PlatformEGL::waitFence(
 
 // -----------------------------------------------------------------------------------------------
 
+/**
+ * 创建外部图像纹理
+ * 
+ * 创建用于外部图像（EGL 图像）的纹理对象。
+ * 
+ * @return 外部纹理指针
+ */
 OpenGLPlatform::ExternalTexture* PlatformEGL::createExternalImageTexture() noexcept {
     ExternalTexture* outTexture = new(std::nothrow) ExternalTexture{};
     glGenTextures(1, &outTexture->id);
     return outTexture;
 }
 
+/**
+ * 销毁外部图像纹理
+ * 
+ * @param texture 外部纹理指针
+ */
 void PlatformEGL::destroyExternalImageTexture(ExternalTexture* texture) noexcept {
     glDeleteTextures(1, &texture->id);
     delete texture;
 }
 
+/**
+ * 设置外部图像
+ * 
+ * 将 EGL 图像附加到纹理。
+ * 
+ * @param externalImage EGL 图像指针
+ * @param texture 外部纹理指针
+ * @return 如果成功返回 true
+ * 
+ * 注意：
+ * - 如果目标是 TEXTURE_EXTERNAL_OES，必须存在 OES_EGL_image_external_essl3
+ * - 如果使用 TEXTURE_2D，必须存在 GL_OES_EGL_image
+ */
 bool PlatformEGL::setExternalImage(void* externalImage,
         UTILS_UNUSED_IN_RELEASE ExternalTexture* texture) noexcept {
 
-    // OES_EGL_image_external_essl3 must be present if the target is TEXTURE_EXTERNAL_OES
-    // GL_OES_EGL_image must be present if TEXTURE_2D is used
+    // 如果目标是 TEXTURE_EXTERNAL_OES，必须存在 OES_EGL_image_external_essl3
+    // 如果使用 TEXTURE_2D，必须存在 GL_OES_EGL_image
 
 #if defined(GL_OES_EGL_image) || defined(GL_OES_EGL_image_external_essl3)
-        // the texture is guaranteed to be bound here.
+        // 纹理保证在此处已绑定
         glEGLImageTargetTexture2DOES(texture->target,
                 static_cast<GLeglImageOES>(externalImage));
 #endif
@@ -691,12 +954,29 @@ bool PlatformEGL::setExternalImage(void* externalImage,
     return true;
 }
 
+/**
+ * 创建外部图像
+ * 
+ * 从 EGL 图像创建外部图像句柄。
+ * 
+ * @param eglImage EGL 图像
+ * @return 外部图像句柄
+ */
 Platform::ExternalImageHandle PlatformEGL::createExternalImage(EGLImageKHR const eglImage) noexcept {
     auto* const p = new(std::nothrow) ExternalImageEGL;
     p->eglImage = eglImage;
     return ExternalImageHandle{p};
 }
 
+/**
+ * 设置外部图像（从句柄）
+ * 
+ * 从外部图像句柄设置外部图像。
+ * 
+ * @param externalImage 外部图像句柄引用
+ * @param texture 外部纹理指针
+ * @return 如果成功返回 true
+ */
 bool PlatformEGL::setExternalImage(ExternalImageHandleRef externalImage,
         UTILS_UNUSED_IN_RELEASE ExternalTexture* texture) noexcept {
     auto const* const eglExternalImage = static_cast<ExternalImageEGL const*>(externalImage.get());
@@ -705,13 +985,24 @@ bool PlatformEGL::setExternalImage(ExternalImageHandleRef externalImage,
 
 // -----------------------------------------------------------------------------------------------
 
+/**
+ * 初始化 GL 扩展
+ * 
+ * 查询并初始化 OpenGL 扩展标志。
+ */
 void PlatformEGL::initializeGlExtensions() noexcept {
-    // We're guaranteed to be on an ES platform, since we're using EGL
+    // 我们保证在 ES 平台上，因为我们使用 EGL
     const char* const extensions = (const char*)glGetString(GL_EXTENSIONS);
     GLUtils::unordered_string_set const glExtensions = GLUtils::split(extensions);
     ext.gl.OES_EGL_image_external_essl3 = glExtensions.has("GL_OES_EGL_image_external_essl3");
 }
 
+/**
+ * 根据类型获取上下文
+ * 
+ * @param type 上下文类型
+ * @return EGL 上下文
+ */
 EGLContext PlatformEGL::getContextForType(ContextType const type) const noexcept {
     switch (type) {
         case ContextType::NONE:
@@ -724,16 +1015,24 @@ EGLContext PlatformEGL::getContextForType(ContextType const type) const noexcept
     return EGL_NO_CONTEXT;
 }
 
+/**
+ * 检查是否支持 MSAA 交换链
+ * 
+ * 检索配置以查看是否支持给定数量的采样。结果被缓存。
+ * 
+ * @param samples 采样数
+ * @return 如果支持返回 true，否则返回 false
+ */
 bool PlatformEGL::checkIfMSAASwapChainSupported(uint32_t const samples) const noexcept {
-    // Retrieve the config to see if the given number of samples is supported. The result is cached.
+    // 检索配置以查看是否支持给定数量的采样。结果被缓存。
     Config configAttribs = {
-            { EGL_SURFACE_TYPE,    EGL_WINDOW_BIT | EGL_PBUFFER_BIT },
+            { EGL_SURFACE_TYPE,    EGL_WINDOW_BIT | EGL_PBUFFER_BIT },  // 支持窗口和像素缓冲区
             { EGL_RED_SIZE,        8 },
             { EGL_GREEN_SIZE,      8 },
             { EGL_BLUE_SIZE,       8 },
             { EGL_DEPTH_SIZE,      24 },
-            { EGL_SAMPLE_BUFFERS,  1 },
-            { EGL_SAMPLES,         EGLint(samples) },
+            { EGL_SAMPLE_BUFFERS,  1 },   // 启用多重采样
+            { EGL_SAMPLES,         EGLint(samples) },  // 采样数
     };
 
     if (!ext.egl.KHR_no_config_context) {
@@ -759,8 +1058,23 @@ bool PlatformEGL::checkIfMSAASwapChainSupported(uint32_t const samples) const no
 // ---------------------------------------------------------------------------------------------
 // PlatformEGL::SwapChainEGL
 
+/**
+ * SwapChainEGL 构造函数（从原生窗口）
+ * 
+ * 创建 EGL 窗口表面交换链。
+ * 
+ * @param platform 平台引用
+ * @param nativeWindow 原生窗口指针
+ * @param flags 交换链标志
+ * 
+ * 执行流程：
+ * 1. 移除不支持功能的标志（sRGB、受保护内容、MSAA）
+ * 2. 获取适合的 EGL 配置
+ * 3. 创建 EGL 窗口表面
+ * 4. 设置交换行为为 EGL_BUFFER_DESTROYED
+ */
 PlatformEGL::SwapChainEGL::SwapChainEGL(PlatformEGL const& platform, void* nativeWindow, uint64_t flags) {
-    // Remove flags for unsupported features.
+    // 移除不支持功能的标志
     if (platform.isSRGBSwapChainSupported()) {
         if (flags & SWAP_CHAIN_CONFIG_SRGB_COLORSPACE) {
             attribs[EGL_GL_COLORSPACE_KHR] = EGL_GL_COLORSPACE_SRGB_KHR;
@@ -783,7 +1097,7 @@ PlatformEGL::SwapChainEGL::SwapChainEGL(PlatformEGL const& platform, void* nativ
         }
     }
 
-    // Retrieve a config for the given flags.
+    // 检索给定标志的配置
     config = platform.getSuitableConfigForSwapChain(flags, true, false);
 
     sur = EGL_NO_SURFACE;
@@ -793,18 +1107,34 @@ PlatformEGL::SwapChainEGL::SwapChainEGL(PlatformEGL const& platform, void* nativ
                 EGLNativeWindowType(nativeWindow), attribs.data());
 
         if (UTILS_LIKELY(sur != EGL_NO_SURFACE)) {
-            // this is not fatal
+            // 这不是致命的
             eglSurfaceAttrib(dpy, sur, EGL_SWAP_BEHAVIOR, EGL_BUFFER_DESTROYED);
         } else {
             logEglError("PlatformEGL::createSwapChain: eglCreateWindowSurface");
         }
     } else {
-        // error already logged
+        // 错误已记录
     }
     this->nativeWindow = EGLNativeWindowType(nativeWindow);
     this->flags = flags;
 }
 
+/**
+ * SwapChainEGL 构造函数（无头模式）
+ * 
+ * 创建 EGL 像素缓冲区表面交换链。
+ * 
+ * @param platform 平台引用
+ * @param width 宽度
+ * @param height 高度
+ * @param flags 交换链标志
+ * 
+ * 执行流程：
+ * 1. 设置像素缓冲区属性（宽度、高度）
+ * 2. 移除不支持功能的标志（sRGB、受保护内容）
+ * 3. 获取适合的 EGL 配置
+ * 4. 创建 EGL 像素缓冲区表面
+ */
 PlatformEGL::SwapChainEGL::SwapChainEGL(PlatformEGL const& platform,
         uint32_t const width, uint32_t const height, uint64_t flags) {
     attribs = {
@@ -838,15 +1168,26 @@ PlatformEGL::SwapChainEGL::SwapChainEGL(PlatformEGL const& platform,
             logEglError("PlatformEGL::createSwapChain: eglCreatePbufferSurface");
         }
     } else {
-        // error already logged
+        // 错误已记录
     }
     this->flags = flags;
 }
 
+/**
+ * 终止交换链
+ * 
+ * 销毁 EGL 表面。
+ * 
+ * @param platform 平台引用
+ * 
+ * 注意：
+ * - 如果支持 EGL_KHR_surfaceless_context，mEGLDummySurface 是 EGL_NO_SURFACE
+ * - 这实际上有点过于激进，但这是一个罕见的操作
+ */
 void PlatformEGL::SwapChainEGL::terminate(PlatformEGL& platform) {
     if (sur != EGL_NO_SURFACE) {
-        // - if EGL_KHR_surfaceless_context is supported, mEGLDummySurface is EGL_NO_SURFACE.
-        // - this is actually a bit too aggressive, but it is a rare operation.
+        // - 如果支持 EGL_KHR_surfaceless_context，mEGLDummySurface 是 EGL_NO_SURFACE
+        // - 这实际上有点过于激进，但这是一个罕见的操作
         platform.egl.makeCurrent(platform.mEGLDummySurface, platform.mEGLDummySurface);
         eglDestroySurface(platform.mEGLDisplay, sur);
         sur = EGL_NO_SURFACE;

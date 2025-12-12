@@ -21,12 +21,25 @@
 #include <EGL/egl.h>
 #include <mutex>
 
-// for non EGL platforms, we'd need to implement this differently. Currently, it's not a problem.
+/**
+ * 获取函数指针
+ * 
+ * 使用 EGL 获取扩展函数的入口点。
+ * 对于非 EGL 平台，我们需要以不同的方式实现此功能。目前，这不是问题。
+ * 
+ * @param pfn 函数指针引用（输出）
+ * @param name 函数名称
+ */
 template<typename T>
 static void getProcAddress(T& pfn, const char* name) noexcept {
     pfn = (T)eglGetProcAddress(name);
 }
 
+/**
+ * GLES 扩展命名空间
+ * 
+ * 包含所有扩展函数的函数指针声明和初始化。
+ */
 namespace glext {
 #ifndef __EMSCRIPTEN__
 #ifdef GL_OES_EGL_image
@@ -79,11 +92,28 @@ PFNGLFRAMEBUFFERTEXTUREMULTISAMPLEMULTIVIEWOVRPROC glFramebufferTextureMultisamp
 // use getProcAddress for ES3.1 and above entry points.
 PFNGLDISPATCHCOMPUTEPROC glDispatchCompute;
 #endif
+/**
+ * 扩展初始化标志
+ * 
+ * 确保扩展入口点只初始化一次（线程安全）。
+ */
 static std::once_flag sGlExtInitialized;
 #endif // __EMSCRIPTEN__
 
+/**
+ * 导入 GLES 扩展入口点
+ * 
+ * 使用 eglGetProcAddress 获取所有扩展函数的入口点。
+ * 此函数是线程安全的，可以多次调用（使用 std::call_once 确保只初始化一次）。
+ * 
+ * 执行流程：
+ * 1. 检查是否已初始化（使用 std::call_once）
+ * 2. 为每个扩展调用 getProcAddress 获取函数指针
+ * 3. 存储函数指针供后续使用
+ */
 void importGLESExtensionsEntryPoints() {
 #ifndef __EMSCRIPTEN__
+    // 使用 std::call_once 确保只初始化一次（线程安全）
     std::call_once(sGlExtInitialized, +[]() {
 #ifdef GL_OES_EGL_image
     getProcAddress(glEGLImageTargetTexture2DOES, "glEGLImageTargetTexture2DOES");

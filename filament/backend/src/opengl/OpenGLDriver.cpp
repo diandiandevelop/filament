@@ -88,31 +88,42 @@
 #pragma ide diagnostic ignored "OCUnusedGlobalDeclarationInspection"
 #endif
 
-// We can only support this feature on OpenGL ES 3.1+
-// Support is currently disabled as we don't need it
+/**
+ * 编译时配置常量
+ */
+
+// 2D 多重采样纹理支持（仅在 OpenGL ES 3.1+ 支持）
+// 当前禁用此功能，因为我们不需要它
 #define TEXTURE_2D_MULTISAMPLE_SUPPORTED false
 
+// 缓冲区映射支持（WebGL 不支持）
 #if defined(__EMSCRIPTEN__)
-#define HAS_MAPBUFFERS 0
+#define HAS_MAPBUFFERS 0  // WebGL 不支持缓冲区映射
 #else
-#define HAS_MAPBUFFERS 1
+#define HAS_MAPBUFFERS 1  // 桌面 OpenGL 支持缓冲区映射
 #endif
 
-#define DEBUG_GROUP_MARKER_NONE       0x00    // no debug marker
-#define DEBUG_GROUP_MARKER_OPENGL     0x01    // markers in the gl command queue (req. driver support)
-#define DEBUG_GROUP_MARKER_BACKEND    0x02    // markers on the backend side (perfetto)
-#define DEBUG_GROUP_MARKER_ALL        0xFF    // all markers
+/**
+ * 调试标记级别定义
+ * 
+ * DEBUG_GROUP_MARKER: 用于用户标记（默认：全部启用）
+ * DEBUG_MARKER: 用于内部调试（默认：无）
+ */
+#define DEBUG_GROUP_MARKER_NONE       0x00    // 无调试标记
+#define DEBUG_GROUP_MARKER_OPENGL     0x01    // OpenGL 命令队列中的标记（需要驱动支持）
+#define DEBUG_GROUP_MARKER_BACKEND    0x02    // 后端侧的标记（perfetto）
+#define DEBUG_GROUP_MARKER_ALL        0xFF    // 所有标记
 
-#define DEBUG_MARKER_NONE             0x00    // no debug marker
-#define DEBUG_MARKER_OPENGL           0x01    // markers in the gl command queue (req. driver support)
-#define DEBUG_MARKER_BACKEND          0x02    // markers on the backend side (perfetto)
-#define DEBUG_MARKER_PROFILE          0x04    // profiling on the backend side (perfetto)
-#define DEBUG_MARKER_ALL              (0xFF & ~DEBUG_MARKER_PROFILE) // all markers
+#define DEBUG_MARKER_NONE             0x00    // 无调试标记
+#define DEBUG_MARKER_OPENGL           0x01    // OpenGL 命令队列中的标记（需要驱动支持）
+#define DEBUG_MARKER_BACKEND          0x02    // 后端侧的标记（perfetto）
+#define DEBUG_MARKER_PROFILE          0x04    // 后端侧的性能分析（perfetto）
+#define DEBUG_MARKER_ALL              (0xFF & ~DEBUG_MARKER_PROFILE) // 所有标记（除了性能分析）
 
-// set to the desired debug marker level (for user markers [default: All])
+// 设置所需的调试标记级别（用于用户标记 [默认：全部]）
 #define DEBUG_GROUP_MARKER_LEVEL      DEBUG_GROUP_MARKER_ALL
 
-// set to the desired debug level (for internal debugging [Default: None])
+// 设置所需的调试级别（用于内部调试 [默认：无]）
 #define DEBUG_MARKER_LEVEL            DEBUG_MARKER_NONE
 
 // Override the debug markers if we are forcing profiling mode
@@ -151,16 +162,63 @@ namespace filament::backend {
 
 namespace {
 
+/**
+ * 同步栅栏回调包装器
+ * 
+ * 用于将 OpenGL 同步栅栏的回调转换为 Filament 的回调格式。
+ * 当 GPU 完成同步栅栏时，此回调会被调用。
+ * 
+ * @param userData 指向 GLSyncFence::CallbackData 的指针
+ * 
+ * 注意：此回调假设同步栅栏尚未被销毁。如果已销毁，行为未定义。
+ */
 CallbackHandler::Callback syncCallbackWrapper = [](void* userData) {
     std::unique_ptr<OpenGLDriver::GLSyncFence::CallbackData> const cbData(
             static_cast<OpenGLDriver::GLSyncFence::CallbackData*>(userData));
-    // This assumes the sync has not yet been destroyed. If it has, this will be
-    // undefined behavior.
+    // 此回调假设同步栅栏尚未被销毁。如果已销毁，行为未定义。
     cbData->cb(cbData->sync, cbData->userData);
 };
 
 } // namespace
 
+/**
+ * OpenGLDriverFactory::create
+ * 
+ * 工厂方法，创建 OpenGLDriver 实例。
+ * 这是创建 OpenGL 驱动的统一入口点。
+ * 
+ * @param platform OpenGL 平台接口指针（不能为空）
+ *                  负责创建和管理 OpenGL 上下文、交换链等
+ * @param sharedGLContext 共享 OpenGL 上下文（可选，可为 nullptr）
+ *                        用于在多个上下文之间共享资源
+ *                        注意：当前实现中此参数未使用，但保留以保持接口一致性
+ * @param driverConfig 驱动配置参数
+ *                     - handleArenaSize: Handle 分配器大小
+ *                     - disableHandleUseAfterFreeCheck: 禁用句柄释放后使用检查
+ *                     - disableHeapHandleTags: 禁用堆句柄标签
+ *                     - forceGLES2Context: 强制使用 GLES 2.0 上下文
+ * @return Driver 指针，成功返回 OpenGLDriver 实例，失败返回 nullptr
+ * 
+ * 执行流程：
+ * 1. 调用 OpenGLDriver::create() 进行实际的创建和初始化
+ * 2. OpenGLDriver::create() 会：
+ *    - 验证平台指针非空
+ *    - 查询 OpenGL 版本（major.minor）
+ *    - 验证版本支持（ES 2.0+ 或 GL 4.1+）
+ *    - 验证失败则清理并返回 nullptr
+ *    - 设置有效的配置
+ *    - 创建并初始化 OpenGLDriver 实例
+ * 
+ * 版本要求：
+ * - OpenGL ES 2.0+（最低要求）
+ * - 桌面 OpenGL 4.1+（最低要求）
+ * - 如果配置了 forceGLES2Context，强制使用 ES 2.0
+ * 
+ * 注意：
+ * - 此方法会创建 OpenGLContext，因此必须在有效的 OpenGL 上下文中调用
+ * - 返回的驱动实例由调用者负责管理生命周期
+ * - 此工厂方法只是简单地委托给 OpenGLDriver::create()，保持接口一致性
+ */
 Driver* OpenGLDriverFactory::create(
         OpenGLPlatform* platform,
         void* sharedGLContext,
@@ -172,6 +230,32 @@ using namespace GLUtils;
 
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * OpenGLDriver::create
+ * 
+ * 静态工厂方法，创建 OpenGLDriver 实例。
+ * 在创建驱动之前，会检查 OpenGL 版本是否支持。
+ * 
+ * @param platform OpenGL 平台接口，负责创建和管理 OpenGL 上下文
+ * @param sharedGLContext 共享 OpenGL 上下文（当前未使用）
+ * @param driverConfig 驱动配置参数
+ * @return OpenGLDriver 实例指针，失败返回 nullptr
+ * 
+ * 执行流程：
+ * 1. 验证平台指针非空
+ * 2. 查询 OpenGL 版本（major.minor）
+ * 3. 验证版本支持：
+ *    - OpenGL ES: 至少 2.0
+ *    - 桌面 OpenGL: 至少 4.1
+ * 4. 验证失败则清理并返回 nullptr
+ * 5. 设置有效的配置（确保 handleArenaSize 至少为默认值）
+ * 6. 创建 OpenGLDriver 实例
+ * 
+ * 版本要求：
+ * - OpenGL ES 2.0+（最低要求）
+ * - 桌面 OpenGL 4.1+（最低要求）
+ * - 如果配置了 forceGLES2Context，强制使用 ES 2.0
+ */
 UTILS_NOINLINE
 OpenGLDriver* OpenGLDriver::create(OpenGLPlatform* platform,
         void* /*sharedGLContext*/, const Platform::DriverConfig& driverConfig) noexcept {
@@ -211,7 +295,7 @@ OpenGLDriver* OpenGLDriver::create(OpenGLPlatform* platform,
     DLOG(INFO) << "OpenGLProgram: " << sizeof(OpenGLProgram);
 #endif
 
-    // here we check we're on a supported version of GL before initializing the driver
+    // 在初始化驱动之前，检查我们是否在支持的 OpenGL 版本上
     GLint major = 0, minor = 0;
     bool const success = OpenGLContext::queryOpenGLVersion(&major, &minor);
 
@@ -223,36 +307,57 @@ OpenGLDriver* OpenGLDriver::create(OpenGLPlatform* platform,
     }
 
 #if defined(BACKEND_OPENGL_VERSION_GLES)
+    // OpenGL ES 版本检查：至少需要 ES 2.0
     if (UTILS_UNLIKELY(!(major >= 2 && minor >= 0))) {
         PANIC_LOG("OpenGL ES 2.0 minimum needed (current %d.%d)", major, minor);
         goto cleanup;
     }
+    // 如果配置强制使用 ES 2.0，则强制版本为 2.0
     if (UTILS_UNLIKELY(driverConfig.forceGLES2Context)) {
         major = 2;
         minor = 0;
     }
 #else
-    // we require GL 4.1 headers and minimum version
+    // 桌面 OpenGL 版本检查：需要 GL 4.1 头文件和最低版本
     if (UTILS_UNLIKELY(!((major == 4 && minor >= 1) || major > 4))) {
         PANIC_LOG("OpenGL 4.1 minimum needed (current %d.%d)", major, minor);
         goto cleanup;
     }
 #endif
 
+    // 设置有效的配置：确保 handleArenaSize 至少为默认值
     constexpr size_t defaultSize = FILAMENT_OPENGL_HANDLE_ARENA_SIZE_IN_MB * 1024U * 1024U;
     Platform::DriverConfig validConfig{ driverConfig };
     validConfig.handleArenaSize = std::max(driverConfig.handleArenaSize, defaultSize);
+    
+    // 创建 OpenGLDriver 实例
     OpenGLDriver* driver = new(std::nothrow) OpenGLDriver(ec, validConfig);
     return driver;
 }
 
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * DebugMarker 构造函数
+ * 
+ * 创建调试标记，用于在调试工具（如 RenderDoc、Xcode GPU Debugger）中标记命令组。
+ * 支持两种类型的标记：
+ * 1. OpenGL 调试标记（glPushGroupMarkerEXT）：需要驱动支持
+ * 2. 后端标记（Perfetto）：用于性能分析
+ * 
+ * @param driver OpenGLDriver 引用
+ * @param string 标记名称（函数名或自定义名称）
+ * 
+ * 执行流程：
+ * 1. 如果启用了 OpenGL 调试标记且驱动支持，调用 glPushGroupMarkerEXT
+ * 2. 如果启用了后端标记，开始 Perfetto 追踪
+ */
 OpenGLDriver::DebugMarker::DebugMarker(OpenGLDriver& driver, const char* string) noexcept
         : driver(driver) {
 #ifndef __EMSCRIPTEN__
 #ifdef GL_EXT_debug_marker
 #if DEBUG_MARKER_LEVEL & DEBUG_MARKER_OPENGL
+    // OpenGL 调试标记：在驱动命令队列中插入标记（需要驱动支持）
     if (UTILS_LIKELY(driver.getContext().ext.EXT_debug_marker)) {
         glPushGroupMarkerEXT(GLsizei(strlen(string)), string);
     }
@@ -260,16 +365,27 @@ OpenGLDriver::DebugMarker::DebugMarker(OpenGLDriver& driver, const char* string)
 #endif
 
 #if DEBUG_MARKER_LEVEL & DEBUG_MARKER_BACKEND
+    // 后端标记：在 Perfetto 追踪中开始标记
     FILAMENT_TRACING_CONTEXT(FILAMENT_TRACING_CATEGORY_FILAMENT);
     FILAMENT_TRACING_NAME_BEGIN(FILAMENT_TRACING_CATEGORY_FILAMENT, string);
 #endif
 #endif
 }
 
+/**
+ * DebugMarker 析构函数
+ * 
+ * 结束调试标记，与构造函数配对使用。
+ * 
+ * 执行流程：
+ * 1. 如果启用了 OpenGL 调试标记且驱动支持，调用 glPopGroupMarkerEXT
+ * 2. 如果启用了后端标记，结束 Perfetto 追踪
+ */
 OpenGLDriver::DebugMarker::~DebugMarker() noexcept {
 #ifndef __EMSCRIPTEN__
 #ifdef GL_EXT_debug_marker
 #if DEBUG_MARKER_LEVEL & DEBUG_MARKER_OPENGL
+    // OpenGL 调试标记：弹出标记组
     if (UTILS_LIKELY(driver.getContext().ext.EXT_debug_marker)) {
         glPopGroupMarkerEXT();
     }
@@ -277,6 +393,7 @@ OpenGLDriver::DebugMarker::~DebugMarker() noexcept {
 #endif
 
 #if DEBUG_MARKER_LEVEL & DEBUG_MARKER_BACKEND
+    // 后端标记：在 Perfetto 追踪中结束标记
     FILAMENT_TRACING_CONTEXT(FILAMENT_TRACING_CATEGORY_FILAMENT);
     FILAMENT_TRACING_NAME_END(FILAMENT_TRACING_CATEGORY_FILAMENT);
 #endif
@@ -285,17 +402,38 @@ OpenGLDriver::DebugMarker::~DebugMarker() noexcept {
 
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * OpenGLDriver 构造函数
+ * 
+ * 初始化 OpenGL 后端驱动的所有核心组件：
+ * 
+ * @param platform OpenGL 平台接口，负责创建和管理 OpenGL 上下文
+ * @param driverConfig 驱动配置参数
+ *                    - handleArenaSize: Handle 分配器大小
+ *                    - disableHandleUseAfterFreeCheck: 禁用句柄释放后使用检查
+ *                    - disableHeapHandleTags: 禁用堆句柄标签
+ * 
+ * 初始化流程：
+ * 1. 保存平台引用和配置
+ * 2. 创建 OpenGLContext：管理 OpenGL 状态缓存，减少状态切换
+ * 3. 创建 ShaderCompilerService：负责异步着色器编译
+ * 4. 创建 HandleAllocator：管理所有 GPU 资源的句柄
+ * 5. 初始化 PushConstantBundle：用于推送常量
+ * 6. 预分配流相关容器：减少运行时分配
+ * 7. 验证定时器查询扩展：确保性能查询功能可用
+ * 8. 初始化着色器编译服务
+ */
 OpenGLDriver::OpenGLDriver(OpenGLPlatform* platform, const Platform::DriverConfig& driverConfig) noexcept
-        : mPlatform(*platform),
-          mContext(mPlatform, driverConfig),
-          mShaderCompilerService(*this),
-          mHandleAllocator("Handles",
+        : mPlatform(*platform),                    // 保存平台引用，用于创建上下文、交换缓冲区等
+          mContext(mPlatform, driverConfig),      // 创建 OpenGL 上下文，管理状态缓存
+          mShaderCompilerService(*this),          // 着色器编译服务，支持异步编译
+          mHandleAllocator("Handles",             // Handle 分配器，管理所有 GPU 资源句柄
                   driverConfig.handleArenaSize,
                   driverConfig.disableHandleUseAfterFreeCheck,
                   driverConfig.disableHeapHandleTags),
-          mDriverConfig(driverConfig),
-          mCurrentPushConstants(new(std::nothrow) PushConstantBundle{}) {
-    // set a reasonable default value for our stream array
+          mDriverConfig(driverConfig),            // 保存配置
+          mCurrentPushConstants(new(std::nothrow) PushConstantBundle{}) { // 推送常量包
+    // 预分配流相关容器，减少运行时内存分配
     mTexturesWithStreamsAttached.reserve(8);
     mStreamsWithPendingAcquiredImage.reserve(8);
 
@@ -303,19 +441,33 @@ OpenGLDriver::OpenGLDriver(OpenGLPlatform* platform, const Platform::DriverConfi
     LOG(INFO) << "OS version: " << mPlatform.getOSVersion();
 #endif
 
-    // Timer queries are core in GL 3.3, otherwise we need EXT_disjoint_timer_query
-    // iOS headers don't define GL_EXT_disjoint_timer_query, so make absolutely sure
-    // we won't use it.
-
+    // 定时器查询在 GL 3.3 中是核心功能，否则需要 EXT_disjoint_timer_query 扩展
+    // iOS 头文件不定义 GL_EXT_disjoint_timer_query，所以需要确保不会使用它
 #if defined(BACKEND_OPENGL_VERSION_GL)
     assert_invariant(mContext.ext.EXT_disjoint_timer_query);
 #endif
 
+    // 初始化着色器编译服务
     mShaderCompilerService.init();
 }
 
+/**
+ * OpenGLDriver 析构函数
+ * 
+ * 注意：此析构函数在主线程调用，不能调用 OpenGL API。
+ * 实际的清理工作由 terminate() 方法完成，该方法在渲染线程调用。
+ * 
+ * 清理流程：
+ * - terminate() 方法会等待 GPU 完成所有命令
+ * - 终止着色器编译服务
+ * - 执行所有 GPU 命令完成回调
+ * - 执行所有帧完成回调
+ * - 清理 OpenGL 上下文
+ * - 终止平台
+ */
 OpenGLDriver::~OpenGLDriver() noexcept { // NOLINT(modernize-use-equals-default)
-    // this is called from the main thread. Can't call GL.
+    // 此方法在主线程调用，不能调用 OpenGL API。
+    // 实际的清理工作由 terminate() 方法完成。
 }
 
 /**
@@ -352,17 +504,38 @@ Dispatcher OpenGLDriver::getDispatcher() const noexcept {
 // Driver interface concrete implementation
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 终止 OpenGLDriver
+ * 
+ * 清理所有资源并终止驱动。此方法必须在渲染线程调用。
+ * 
+ * 执行流程：
+ * 1. 等待 GPU 完成所有命令（glFinish）
+ * 2. 终止着色器编译服务
+ * 3. 执行所有 GPU 命令完成回调（如果支持）
+ * 4. 执行所有帧完成回调（如果支持）
+ * 5. 验证所有回调已执行（因为调用了 glFinish）
+ * 6. 删除推送常量包
+ * 7. 终止 OpenGL 上下文
+ * 8. 终止平台
+ * 
+ * 注意：
+ * - 此方法会阻塞直到 GPU 完成所有工作
+ * - 所有回调都会在此方法中执行
+ * - 调用此方法后，驱动不能再使用
+ */
 void OpenGLDriver::terminate() {
-    // wait for the GPU to finish executing all commands
+    // 等待 GPU 完成执行所有命令
     glFinish();
 
+    // 终止着色器编译服务
     mShaderCompilerService.terminate();
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
-    // and make sure to execute all the GpuCommandCompleteOps callbacks
+    // 确保执行所有 GPU 命令完成回调
     executeGpuCommandsCompleteOps();
 
-    // as well as the FrameCompleteOps callbacks
+    // 以及所有帧完成回调
     if (UTILS_UNLIKELY(!mFrameCompleteOps.empty())) {
         for (auto&& op: mFrameCompleteOps) {
             op();
@@ -370,48 +543,116 @@ void OpenGLDriver::terminate() {
         mFrameCompleteOps.clear();
     }
 
-    // because we called glFinish(), all callbacks should have been executed
+    // 因为我们调用了 glFinish()，所有回调应该都已执行
     assert_invariant(mGpuCommandCompleteOps.empty());
 #endif
 
+    // 删除推送常量包
     delete mCurrentPushConstants;
     mCurrentPushConstants = nullptr;
 
+    // 终止 OpenGL 上下文
     mContext.terminate();
 
+    // 终止平台
     mPlatform.terminate();
 }
 
+/**
+ * 获取着色器模型
+ * 
+ * 返回当前 OpenGL 上下文支持的着色器模型。
+ * 
+ * @return ShaderModel 枚举值
+ *         - ES 2.0: ShaderModel::GL_ES_20
+ *         - ES 3.0+: ShaderModel::GL_ES_30
+ *         - GL 4.1+: ShaderModel::GL_CORE_41
+ */
 ShaderModel OpenGLDriver::getShaderModel() const noexcept {
     return mContext.getShaderModel();
 }
 
+/**
+ * 获取支持的着色器语言
+ * 
+ * 返回当前 OpenGL 上下文支持的着色器语言列表。
+ * 
+ * @param preferredLanguage 首选语言（当前未使用）
+ * @return 支持的着色器语言列表
+ *         - ES 2.0: { ShaderLanguage::ESSL1 }
+ *         - ES 3.0+/GL 4.1+: { ShaderLanguage::ESSL3 }
+ */
 utils::FixedCapacityVector<ShaderLanguage> OpenGLDriver::getShaderLanguages(
         ShaderLanguage /*preferredLanguage*/) const noexcept {
     return { mContext.isES2() ? ShaderLanguage::ESSL1 : ShaderLanguage::ESSL3 };
 }
 
 // ------------------------------------------------------------------------------------------------
-// Change and track GL state
+// 更改和跟踪 GL 状态
 // ------------------------------------------------------------------------------------------------
+
+/**
+ * 重置 OpenGL 状态
+ * 
+ * 将所有 OpenGL 状态重置为默认值。
+ * 这通常用于上下文切换或调试。
+ * 
+ * @param 未使用的参数（保持接口一致性）
+ */
 void OpenGLDriver::resetState(int) {
     mContext.resetState();
 }
 
+/**
+ * 绑定采样器对象
+ * 
+ * 将采样器对象绑定到指定的纹理单元。
+ * 采样器对象定义了纹理采样参数（过滤、包装等）。
+ * 
+ * @param unit 纹理单元索引
+ * @param sampler 采样器对象 ID（0 表示解绑）
+ */
 void OpenGLDriver::bindSampler(GLuint const unit, GLuint const sampler) noexcept {
     mContext.bindSampler(unit, sampler);
 }
 
+/**
+ * 设置推送常量
+ * 
+ * 设置着色器中的推送常量值。推送常量是频繁更新的小数据，
+ * 直接通过 uniform 传递，而不是通过 uniform buffer。
+ * 
+ * @param stage 着色器阶段（VERTEX 或 FRAGMENT）
+ * @param index 常量索引（在推送常量数组中的位置）
+ * @param value 常量值（bool/float/int）
+ * 
+ * 执行流程：
+ * 1. 验证着色器阶段有效
+ * 2. 获取对应阶段的推送常量数组
+ * 3. 验证索引有效
+ * 4. 获取常量的 location 和 type
+ * 5. 如果 location < 0，说明常量未在着色器中找到，直接返回
+ * 6. 根据值类型设置 uniform：
+ *    - bool: glUniform1i (0 或 1)
+ *    - float: glUniform1f
+ *    - int: glUniform1i
+ * 
+ * 注意：
+ * - 推送常量必须在着色器编译时确定 location
+ * - 如果常量未在着色器中找到，不会报错，只是忽略
+ */
 void OpenGLDriver::setPushConstant(ShaderStage const stage, uint8_t const index,
         PushConstantVariant const value) {
     assert_invariant(stage == ShaderStage::VERTEX || stage == ShaderStage::FRAGMENT);
 
 #if FILAMENT_ENABLE_MATDBG
+    // 材质调试模式下，如果程序无效，直接返回
     if (UTILS_UNLIKELY(!mValidProgram)) {
         return;
     }
 #endif
 
+    // 获取对应阶段的推送常量数组
     Slice<const std::pair<GLint, ConstantType>> constants;
     if (stage == ShaderStage::VERTEX) {
         constants = mCurrentPushConstants->vertexConstants;
@@ -422,11 +663,12 @@ void OpenGLDriver::setPushConstant(ShaderStage const stage, uint8_t const index,
     assert_invariant(index < constants.size());
     auto const& [location, type] = constants[index];
 
-    // This push constant wasn't found in the shader. It's ok to return without error-ing here.
+    // 如果推送常量未在着色器中找到，直接返回（不报错）
     if (location < 0) {
         return;
     }
 
+    // 根据值类型设置 uniform
     if (std::holds_alternative<bool>(value)) {
         assert_invariant(type == ConstantType::BOOL);
         bool const bval = std::get<bool>(value);
@@ -442,21 +684,56 @@ void OpenGLDriver::setPushConstant(ShaderStage const stage, uint8_t const index,
     }
 }
 
+/**
+ * 绑定纹理
+ * 
+ * 将纹理绑定到指定的纹理单元。
+ * 
+ * @param unit 纹理单元索引
+ * @param t 纹理对象指针（不能为 nullptr）
+ * 
+ * 执行流程：
+ * 1. 验证纹理指针非空
+ * 2. 通过 OpenGLContext 绑定纹理（使用状态缓存）
+ */
 void OpenGLDriver::bindTexture(GLuint const unit, GLTexture const* t) noexcept {
     assert_invariant(t != nullptr);
     mContext.bindTexture(unit, t->gl.target, t->gl.id, t->gl.external);
 }
 
+/**
+ * 使用着色器程序
+ * 
+ * 绑定着色器程序到当前 OpenGL 上下文。如果程序尚未编译/链接，会先编译/链接。
+ * 
+ * @param p 着色器程序指针
+ * @return 成功返回 true，失败返回 false
+ * 
+ * 执行流程：
+ * 1. 如果程序已绑定，直接返回成功
+ * 2. 否则，编译/链接程序（如果需要）并调用 glUseProgram
+ * 3. 如果成功：
+ *    - 标记所有描述符集为无效（需要重新绑定）
+ *    - 保存当前绑定的程序
+ * 4. ES 2.0 特殊处理：设置输出色彩空间（linear 或 rec709）
+ * 
+ * 性能优化：
+ * - 只在程序改变时重新绑定
+ * - 使用程序状态缓存，避免重复绑定
+ * 
+ * 注意：
+ * - 程序改变时，所有描述符集都需要重新绑定
+ * - ES 2.0 不支持 sRGB 交换链时，需要手动设置色彩空间
+ */
 bool OpenGLDriver::useProgram(OpenGLProgram* p) noexcept {
     bool success = true;
     if (mBoundProgram != p) {
-        // compile/link the program if needed and call glUseProgram
+        // 如果需要，编译/链接程序并调用 glUseProgram
         success = p->use(this, mContext);
         assert_invariant(success == p->isValid());
         if (success) {
-            // TODO: we could even improve this if the program could tell us which of the descriptors
-            //       bindings actually changed. In practice, it is likely that set 0 or 1 might not
-            //       change often.
+            // TODO: 如果程序能告诉我们哪些描述符集绑定实际改变了，可以进一步优化
+            //       实际上，set 0 或 1 可能不会经常改变
             decltype(mInvalidDescriptorSetBindings) changed;
             changed.setValue((1 << MAX_DESCRIPTOR_SET_COUNT) - 1);
             mInvalidDescriptorSetBindings |= changed;
@@ -465,9 +742,9 @@ bool OpenGLDriver::useProgram(OpenGLProgram* p) noexcept {
         }
     }
 
+    // ES 2.0 特殊处理：设置输出色彩空间（linear 或 rec709）
+    // 这仅在 mPlatform.isSRGBSwapChainSupported() 为 false 时相关（无需检查）
     if (UTILS_UNLIKELY(mContext.isES2() && success)) {
-        // Set the output colorspace for this program (linear or rec709). This is only relevant
-        // when mPlatform.isSRGBSwapChainSupported() is false (no need to check though).
         p->setRec709ColorSpace(mRec709OutputColorspace);
     }
 
@@ -475,31 +752,72 @@ bool OpenGLDriver::useProgram(OpenGLProgram* p) noexcept {
 }
 
 
+/**
+ * 设置光栅化状态
+ * 
+ * 配置 OpenGL 的光栅化相关状态，包括：
+ * - 面剔除（Culling）
+ * - 混合（Blending）
+ * - 深度测试（Depth Test）
+ * - 颜色/深度写入掩码
+ * - Alpha to Coverage
+ * - 深度裁剪（Depth Clamp）
+ * 
+ * @param rs 光栅化状态
+ *          - culling: 面剔除模式（NONE/FRONT/BACK）
+ *          - inverseFrontFaces: 是否反转正面
+ *          - hasBlending: 是否启用混合
+ *          - blendEquationRGB/Alpha: 混合方程
+ *          - blendFunctionSrc/Dst: 混合函数
+ *          - depthFunc: 深度测试函数
+ *          - depthWrite: 是否写入深度
+ *          - colorWrite: 是否写入颜色
+ *          - alphaToCoverage: 是否启用 Alpha to Coverage
+ *          - depthClamp: 是否启用深度裁剪
+ * 
+ * 执行流程：
+ * 1. 更新渲染通道写入标志（用于 endRenderPass 优化）
+ * 2. 设置面剔除状态
+ * 3. 设置正面方向（顺时针/逆时针）
+ * 4. 设置混合状态（如果启用）
+ * 5. 设置深度测试状态
+ * 6. 设置颜色写入掩码
+ * 7. 设置 Alpha to Coverage（MSAA 相关）
+ * 8. 设置深度裁剪（如果支持）
+ * 
+ * 性能优化：
+ * - 使用 OpenGLContext 的状态缓存，避免重复设置相同状态
+ * - 只在状态改变时调用 OpenGL API
+ */
 void OpenGLDriver::setRasterState(RasterState const rs) noexcept {
     auto& gl = mContext;
 
+    // 更新渲染通道写入标志（用于 endRenderPass 优化）
     mRenderPassColorWrite |= rs.colorWrite;
     mRenderPassDepthWrite |= rs.depthWrite;
 
-    // culling state
+    // 面剔除状态
     if (rs.culling == CullingMode::NONE) {
         gl.disable(GL_CULL_FACE);
     } else {
         gl.enable(GL_CULL_FACE);
-        gl.cullFace(getCullingMode(rs.culling));
+        gl.cullFace(getCullingMode(rs.culling));  // FRONT/BACK
     }
 
+    // 正面方向（顺时针/逆时针）
     gl.frontFace(rs.inverseFrontFaces ? GL_CW : GL_CCW);
 
-    // blending state
+    // 混合状态
     if (!rs.hasBlending()) {
         gl.disable(GL_BLEND);
     } else {
         gl.enable(GL_BLEND);
+        // 设置混合方程（RGB 和 Alpha 可以不同）
         gl.blendEquation(
                 getBlendEquationMode(rs.blendEquationRGB),
                 getBlendEquationMode(rs.blendEquationAlpha));
 
+        // 设置混合函数（源和目标，RGB 和 Alpha 可以不同）
         gl.blendFunction(
                 getBlendFunctionMode(rs.blendFunctionSrcRGB),
                 getBlendFunctionMode(rs.blendFunctionSrcAlpha),
@@ -507,25 +825,27 @@ void OpenGLDriver::setRasterState(RasterState const rs) noexcept {
                 getBlendFunctionMode(rs.blendFunctionDstAlpha));
     }
 
-    // depth test
+    // 深度测试
+    // 如果深度函数是 A（总是通过）且不写入深度，则禁用深度测试
     if (rs.depthFunc == RasterState::DepthFunc::A && !rs.depthWrite) {
         gl.disable(GL_DEPTH_TEST);
     } else {
         gl.enable(GL_DEPTH_TEST);
-        gl.depthFunc(getDepthFunc(rs.depthFunc));
-        gl.depthMask(GLboolean(rs.depthWrite));
+        gl.depthFunc(getDepthFunc(rs.depthFunc));  // LESS/LEQUAL/GREATER 等
+        gl.depthMask(GLboolean(rs.depthWrite));  // 深度写入掩码
     }
 
-    // write masks
+    // 颜色写入掩码
     gl.colorMask(GLboolean(rs.colorWrite));
 
-    // AA
+    // Alpha to Coverage（MSAA 相关，用于透明物体的抗锯齿）
     if (rs.alphaToCoverage) {
         gl.enable(GL_SAMPLE_ALPHA_TO_COVERAGE);
     } else {
         gl.disable(GL_SAMPLE_ALPHA_TO_COVERAGE);
     }
 
+    // 深度裁剪（如果支持，将深度值限制在 [0, 1] 范围内）
     if (gl.ext.EXT_depth_clamp) {
         if (rs.depthClamp) {
             gl.enable(GL_DEPTH_CLAMP);
@@ -579,101 +899,224 @@ void OpenGLDriver::setStencilState(StencilState const ss) noexcept {
 }
 
 // ------------------------------------------------------------------------------------------------
-// Creating driver objects
+// 创建驱动对象
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 资源创建方法（S 后缀 = Synchronous，同步创建句柄）
+ * 
+ * 这些方法在主线程调用，只分配句柄，不执行实际的 OpenGL 操作。
+ * 实际的资源创建在对应的 R 方法（Render thread）中完成。
+ * 
+ * 设计说明：
+ * - S 方法：在主线程调用，分配句柄（快速，无 OpenGL 调用）
+ * - R 方法：在渲染线程调用，执行实际的 OpenGL 操作（可能较慢）
+ * - 这种设计实现了主线程和渲染线程的解耦，提高性能
+ */
+
+/**
+ * 创建顶点缓冲区信息句柄
+ * 顶点缓冲区信息定义了顶点属性的布局（位置、法线、UV 等）
+ */
 Handle<HwVertexBufferInfo> OpenGLDriver::createVertexBufferInfoS() noexcept {
     return initHandle<GLVertexBufferInfo>();
 }
 
+/**
+ * 创建顶点缓冲区句柄
+ * 顶点缓冲区存储实际的顶点数据
+ */
 Handle<HwVertexBuffer> OpenGLDriver::createVertexBufferS() noexcept {
     return initHandle<GLVertexBuffer>();
 }
 
+/**
+ * 创建索引缓冲区句柄
+ * 索引缓冲区存储顶点索引，用于索引绘制
+ */
 Handle<HwIndexBuffer> OpenGLDriver::createIndexBufferS() noexcept {
     return initHandle<GLIndexBuffer>();
 }
 
+/**
+ * 创建缓冲区对象句柄
+ * 缓冲区对象用于存储 uniform 数据、SSBO 等
+ */
 Handle<HwBufferObject> OpenGLDriver::createBufferObjectS() noexcept {
     return initHandle<GLBufferObject>();
 }
 
+/**
+ * 创建渲染图元句柄
+ * 渲染图元将顶点缓冲区和索引缓冲区组合在一起
+ */
 Handle<HwRenderPrimitive> OpenGLDriver::createRenderPrimitiveS() noexcept {
     return initHandle<GLRenderPrimitive>();
 }
 
+/**
+ * 创建着色器程序句柄
+ * 着色器程序包含顶点着色器和片段着色器
+ */
 Handle<HwProgram> OpenGLDriver::createProgramS() noexcept {
     return initHandle<OpenGLProgram>();
 }
 
+/**
+ * 创建纹理句柄（标准纹理）
+ */
 Handle<HwTexture> OpenGLDriver::createTextureS() noexcept {
     return initHandle<GLTexture>();
 }
 
+/**
+ * 创建纹理视图句柄
+ * 纹理视图是现有纹理的视图，可以有不同的格式或 Mipmap 范围
+ */
 Handle<HwTexture> OpenGLDriver::createTextureViewS() noexcept {
     return initHandle<GLTexture>();
 }
 
+/**
+ * 创建带 Swizzle 的纹理视图句柄
+ * Swizzle 允许重新映射纹理通道（如 R->A, G->R 等）
+ */
 Handle<HwTexture> OpenGLDriver::createTextureViewSwizzleS() noexcept {
     return initHandle<GLTexture>();
 }
 
+/**
+ * 创建外部图像纹理句柄（2D）
+ * 用于从外部源（如相机预览）创建纹理
+ */
 Handle<HwTexture> OpenGLDriver::createTextureExternalImage2S() noexcept {
     return initHandle<GLTexture>();
 }
 
+/**
+ * 创建外部图像纹理句柄
+ * 用于从外部源创建纹理
+ */
 Handle<HwTexture> OpenGLDriver::createTextureExternalImageS() noexcept {
     return initHandle<GLTexture>();
 }
 
+/**
+ * 创建外部图像平面纹理句柄
+ * 用于多平面图像（如 YUV 格式）
+ */
 Handle<HwTexture> OpenGLDriver::createTextureExternalImagePlaneS() noexcept {
     return initHandle<GLTexture>();
 }
 
+/**
+ * 导入纹理句柄
+ * 用于从外部 OpenGL 纹理创建 Filament 纹理
+ */
 Handle<HwTexture> OpenGLDriver::importTextureS() noexcept {
     return initHandle<GLTexture>();
 }
 
+/**
+ * 创建默认渲染目标句柄
+ * 默认渲染目标指向交换链的后缓冲区
+ */
 Handle<HwRenderTarget> OpenGLDriver::createDefaultRenderTargetS() noexcept {
     return initHandle<GLRenderTarget>();
 }
 
+/**
+ * 创建渲染目标句柄
+ * 渲染目标是离屏渲染的目标（FBO）
+ */
 Handle<HwRenderTarget> OpenGLDriver::createRenderTargetS() noexcept {
     return initHandle<GLRenderTarget>();
 }
 
+/**
+ * 创建栅栏句柄
+ * 栅栏用于 CPU-GPU 同步
+ */
 Handle<HwFence> OpenGLDriver::createFenceS() noexcept {
     return initHandle<GLFence>();
 }
 
+/**
+ * 创建同步对象句柄
+ * 同步对象用于更细粒度的 GPU 同步
+ */
 Handle<HwSync> OpenGLDriver::createSyncS() noexcept {
     return initHandle<GLSyncFence>();
 }
 
+/**
+ * 创建交换链句柄
+ * 交换链管理前后缓冲区的交换
+ */
 Handle<HwSwapChain> OpenGLDriver::createSwapChainS() noexcept {
     return initHandle<GLSwapChain>();
 }
 
+/**
+ * 创建无头交换链句柄
+ * 无头交换链用于离屏渲染（不显示到屏幕）
+ */
 Handle<HwSwapChain> OpenGLDriver::createSwapChainHeadlessS() noexcept {
     return initHandle<GLSwapChain>();
 }
 
+/**
+ * 创建定时器查询句柄
+ * 定时器查询用于测量 GPU 执行时间
+ */
 Handle<HwTimerQuery> OpenGLDriver::createTimerQueryS() noexcept {
     return initHandle<GLTimerQuery>();
 }
 
+/**
+ * 创建描述符集布局句柄
+ * 描述符集布局定义了描述符集的绑定结构
+ */
 Handle<HwDescriptorSetLayout> OpenGLDriver::createDescriptorSetLayoutS() noexcept {
     return initHandle<GLDescriptorSetLayout>();
 }
 
+/**
+ * 创建描述符集句柄
+ * 描述符集包含纹理、缓冲区等资源的绑定
+ */
 Handle<HwDescriptorSet> OpenGLDriver::createDescriptorSetS() noexcept {
     return initHandle<GLDescriptorSet>();
 }
 
+/**
+ * 创建内存映射缓冲区句柄
+ * 内存映射缓冲区允许 CPU 直接访问 GPU 缓冲区
+ */
 MemoryMappedBufferHandle OpenGLDriver::mapBufferS() noexcept {
     return initHandle<GLMemoryMappedBuffer>();
 }
 
+/**
+ * 创建顶点缓冲区信息（渲染线程）
+ * 
+ * 在渲染线程中创建顶点缓冲区信息对象。
+ * 顶点缓冲区信息定义了顶点属性的布局。
+ * 
+ * @param vbih 顶点缓冲区信息句柄（已在主线程分配）
+ * @param bufferCount 缓冲区数量（顶点数据可以分布在多个缓冲区中）
+ * @param attributeCount 属性数量（位置、法线、UV 等）
+ * @param attributes 属性数组，定义每个属性的格式和位置
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 在句柄位置构造 GLVertexBufferInfo 对象
+ * 2. 关联调试标签到句柄
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 只创建对象，不执行 OpenGL 操作
+ */
 void OpenGLDriver::createVertexBufferInfoR(
         Handle<HwVertexBufferInfo> vbih,
         uint8_t bufferCount,
@@ -685,6 +1128,26 @@ void OpenGLDriver::createVertexBufferInfoR(
     mHandleAllocator.associateTagToHandle(vbih.getId(), std::move(tag));
 }
 
+/**
+ * 创建顶点缓冲区（渲染线程）
+ * 
+ * 在渲染线程中创建顶点缓冲区对象。
+ * 顶点缓冲区存储实际的顶点数据，但不分配 OpenGL 缓冲区（缓冲区对象在 setVertexBufferObject 时创建）。
+ * 
+ * @param vbh 顶点缓冲区句柄（已在主线程分配）
+ * @param vertexCount 顶点数量
+ * @param vbih 顶点缓冲区信息句柄（定义顶点属性布局）
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 在句柄位置构造 GLVertexBuffer 对象
+ * 2. 关联调试标签到句柄
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 只创建对象，不分配 OpenGL 缓冲区
+ * - 实际的缓冲区对象通过 setVertexBufferObject 设置
+ */
 void OpenGLDriver::createVertexBufferR(
         Handle<HwVertexBuffer> vbh,
         uint32_t vertexCount,
@@ -695,6 +1158,30 @@ void OpenGLDriver::createVertexBufferR(
     mHandleAllocator.associateTagToHandle(vbh.getId(), std::move(tag));
 }
 
+/**
+ * 创建索引缓冲区（渲染线程）
+ * 
+ * 在渲染线程中创建索引缓冲区对象并分配 OpenGL 缓冲区。
+ * 
+ * @param ibh 索引缓冲区句柄（已在主线程分配）
+ * @param elementType 索引元素类型（USHORT 或 UINT）
+ * @param indexCount 索引数量
+ * @param usage 缓冲区使用方式（STATIC/DYNAMIC/STREAM）
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 计算元素大小（USHORT=2, UINT=4）
+ * 2. 构造 GLIndexBuffer 对象
+ * 3. 生成 OpenGL 缓冲区对象
+ * 4. 绑定索引缓冲区（解绑 VAO 以避免影响）
+ * 5. 分配缓冲区存储（不初始化数据，后续通过 updateIndexBuffer 填充）
+ * 6. 关联调试标签到句柄
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 缓冲区初始为空，数据通过 updateIndexBuffer 上传
+ * - 索引类型影响绘制时的偏移计算
+ */
 void OpenGLDriver::createIndexBufferR(
         Handle<HwIndexBuffer> ibh,
         ElementType const elementType,
@@ -704,33 +1191,75 @@ void OpenGLDriver::createIndexBufferR(
     DEBUG_MARKER()
 
     auto& gl = mContext;
+    // 计算元素大小（USHORT=2, UINT=4）
     uint8_t const elementSize = static_cast<uint8_t>(getElementTypeSize(elementType));
     GLIndexBuffer* ib = construct<GLIndexBuffer>(ibh, elementSize, indexCount);
+    
+    // 生成 OpenGL 缓冲区对象
     glGenBuffers(1, &ib->gl.buffer);
     GLsizeiptr const size = elementSize * GLsizeiptr(indexCount);
+    
+    // 解绑 VAO 以避免影响，然后绑定索引缓冲区
     gl.bindVertexArray(nullptr);
     gl.bindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib->gl.buffer);
+    
+    // 分配缓冲区存储（不初始化数据，后续通过 updateIndexBuffer 填充）
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, size, nullptr, getBufferUsage(usage));
     CHECK_GL_ERROR()
     mHandleAllocator.associateTagToHandle(ibh.getId(), std::move(tag));
 }
 
+/**
+ * 创建缓冲区对象（渲染线程）
+ * 
+ * 在渲染线程中创建缓冲区对象并分配 OpenGL 缓冲区。
+ * 缓冲区对象用于存储 uniform 数据、SSBO 等。
+ * 
+ * @param boh 缓冲区对象句柄（已在主线程分配）
+ * @param byteCount 缓冲区大小（字节）
+ * @param bindingType 绑定类型（VERTEX/UNIFORM/STORAGE 等）
+ * @param usage 缓冲区使用方式（STATIC/DYNAMIC/STREAM）
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 验证缓冲区大小 > 0
+ * 2. 如果是顶点缓冲区，解绑 VAO 以避免影响
+ * 3. 构造 GLBufferObject 对象
+ * 4. ES 2.0 特殊处理（uniform 缓冲区模拟）：
+ *    - 使用 CPU 内存模拟（ES 2.0 不支持 uniform buffer）
+ *    - 分配系统内存并初始化为 0
+ * 5. 其他情况：
+ *    - 获取绑定类型（GL_ARRAY_BUFFER/GL_UNIFORM_BUFFER 等）
+ *    - 生成 OpenGL 缓冲区对象
+ *    - 绑定缓冲区
+ *    - 分配缓冲区存储（不初始化数据）
+ * 6. 关联调试标签到句柄
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - ES 2.0 的 uniform 缓冲区使用 CPU 内存模拟
+ * - 缓冲区初始为空，数据通过 updateBufferObject 上传
+ */
 void OpenGLDriver::createBufferObjectR(Handle<HwBufferObject> boh, uint32_t byteCount,
         BufferObjectBinding bindingType, BufferUsage usage, ImmutableCString&& tag) {
     DEBUG_MARKER()
     assert_invariant(byteCount > 0);
 
     auto& gl = mContext;
+    // 如果是顶点缓冲区，解绑 VAO 以避免影响
     if (bindingType == BufferObjectBinding::VERTEX) {
         gl.bindVertexArray(nullptr);
     }
 
     GLBufferObject* bo = construct<GLBufferObject>(boh, byteCount, bindingType, usage);
+    
+    // ES 2.0 特殊处理：uniform 缓冲区使用 CPU 内存模拟
     if (UTILS_UNLIKELY(bindingType == BufferObjectBinding::UNIFORM && gl.isES2())) {
         bo->gl.id = ++mLastAssignedEmulatedUboId;
         bo->gl.buffer = malloc(byteCount);
         memset(bo->gl.buffer, 0, byteCount);
     } else {
+        // 标准 OpenGL 缓冲区创建
         bo->gl.binding = getBufferBindingType(bindingType);
         glGenBuffers(1, &bo->gl.id);
         gl.bindBuffer(bo->gl.binding, bo->gl.id);
@@ -741,6 +1270,38 @@ void OpenGLDriver::createBufferObjectR(Handle<HwBufferObject> boh, uint32_t byte
     mHandleAllocator.associateTagToHandle(boh.getId(), std::move(tag));
 }
 
+/**
+ * 创建渲染图元（渲染线程）
+ * 
+ * 在渲染线程中创建渲染图元对象。
+ * 渲染图元将顶点缓冲区和索引缓冲区组合在一起，并创建 VAO（顶点数组对象）。
+ * 
+ * @param rph 渲染图元句柄（已在主线程分配）
+ * @param vbh 顶点缓冲区句柄
+ * @param ibh 索引缓冲区句柄
+ * @param pt 图元类型（TRIANGLES/LINES/POINTS 等）
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 获取索引缓冲区和顶点缓冲区对象
+ * 2. 验证索引元素大小（必须是 2 或 4 字节）
+ * 3. 设置索引偏移量（用于绘制时的字节偏移计算）：
+ *    - 32位索引：indicesShift = 2（偏移 = indexOffset * 4）
+ *    - 16位索引：indicesShift = 1（偏移 = indexOffset * 2）
+ * 4. 设置索引类型（GL_UNSIGNED_INT 或 GL_UNSIGNED_SHORT）
+ * 5. 保存顶点缓冲区句柄和图元类型
+ * 6. 为当前上下文生成 VAO 名称
+ * 7. 记录状态版本（用于 VAO 缓存）
+ * 8. 绑定 VAO（实际创建 VAO）
+ * 9. 将索引缓冲区记录到 VAO 中
+ * 10. 关联调试标签到句柄
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - VAO 包含索引缓冲区绑定，但顶点缓冲区绑定在 draw/bindRenderPrimitive 时更新
+ * - 这是因为此时顶点缓冲区可能还没有所有缓冲区对象设置完成
+ * - VAO 在多个上下文间共享时需要为每个上下文创建
+ */
 void OpenGLDriver::createRenderPrimitiveR(Handle<HwRenderPrimitive> rph,
         Handle<HwVertexBuffer> vbh, Handle<HwIndexBuffer> ibh,
         PrimitiveType const pt, ImmutableCString&& tag) {
@@ -753,32 +1314,52 @@ void OpenGLDriver::createRenderPrimitiveR(Handle<HwRenderPrimitive> rph,
 
     GLVertexBuffer const* const vb = handle_cast<GLVertexBuffer*>(vbh);
     GLRenderPrimitive* const rp = handle_cast<GLRenderPrimitive*>(rph);
+    
+    // 设置索引偏移量（用于绘制时的字节偏移计算）
     rp->gl.indicesShift = (ib->elementSize == 4u) ? 2u : 1u;
     rp->gl.indicesType  = (ib->elementSize == 4u) ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT;
     rp->gl.vertexBufferWithObjects = vbh;
     rp->type = pt;
     rp->vbih = vb->vbih;
 
-    // create a name for this VAO in the current context
+    // 为当前上下文创建 VAO 名称
     gl.procs.genVertexArrays(1, &rp->gl.vao[gl.contextIndex]);
 
-    // this implies our name is up-to-date
+    // 这表示我们的名称是最新的
     rp->gl.nameVersion = gl.state.age;
 
-    // binding the VAO will actually create it
+    // 绑定 VAO 会实际创建它
     gl.bindVertexArray(&rp->gl);
 
-    // Note: we don't update the vertex buffer bindings in the VAO just yet, we will do that
-    // later in draw() or bindRenderPrimitive(). At this point, the HwVertexBuffer might not
-    // have all its buffers set.
+    // 注意：我们此时不更新 VAO 中的顶点缓冲区绑定，稍后在 draw() 或 bindRenderPrimitive() 中更新
+    // 因为此时 HwVertexBuffer 可能还没有所有缓冲区设置完成
 
-    // this records the index buffer into the currently bound VAO
+    // 将索引缓冲区记录到当前绑定的 VAO 中
     gl.bindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib->gl.buffer);
 
     CHECK_GL_ERROR()
     mHandleAllocator.associateTagToHandle(rph.getId(), std::move(tag));
 }
 
+/**
+ * 创建着色器程序（渲染线程）
+ * 
+ * 在渲染线程中创建着色器程序对象。
+ * 着色器程序包含顶点着色器和片段着色器，但编译和链接是延迟的（在 useProgram 时）。
+ * 
+ * @param ph 着色器程序句柄（已在主线程分配）
+ * @param program 程序对象（包含着色器源码）
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 在句柄位置构造 OpenGLProgram 对象
+ * 2. 关联调试标签到句柄
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 着色器的编译和链接是延迟的，在第一次 useProgram 时执行
+ * - 这样可以避免阻塞，支持异步编译
+ */
 void OpenGLDriver::createProgramR(Handle<HwProgram> ph, Program&& program, ImmutableCString&& tag) {
     DEBUG_MARKER()
 
@@ -787,17 +1368,50 @@ void OpenGLDriver::createProgramR(Handle<HwProgram> ph, Program&& program, Immut
     mHandleAllocator.associateTagToHandle(ph.getId(), std::move(tag));
 }
 
+/**
+ * 分配纹理存储
+ * 
+ * 为纹理分配不可变的存储空间。使用 glTexStorage* 而不是 glTexImage*，
+ * 这样可以获得更好的性能和驱动优化。
+ * 
+ * @param t 纹理对象指针
+ * @param width 纹理宽度
+ * @param height 纹理高度
+ * @param depth 纹理深度（3D/Array 纹理）
+ * @param useProtectedMemory 是否使用保护内存（用于 DRM 内容保护）
+ * 
+ * 执行流程：
+ * 1. 绑定纹理到虚拟纹理单元（用于设置参数）
+ * 2. 如果使用保护内存，设置保护标志（需要 EXT_protected_textures 扩展）
+ * 3. 根据纹理目标类型分配存储：
+ *    - GL_TEXTURE_2D/CUBE_MAP: glTexStorage2D
+ *    - GL_TEXTURE_3D/2D_ARRAY: glTexStorage3D
+ *    - GL_TEXTURE_CUBE_MAP_ARRAY: glTexStorage3D（深度 * 6）
+ *    - GL_TEXTURE_2D_MULTISAMPLE: glTexStorage2DMultisample
+ *    - ES 2.0: 使用 glTexImage2D（不支持 glTexStorage）
+ * 4. 更新纹理尺寸
+ * 
+ * 性能优化：
+ * - 使用 glTexStorage* 而不是 glTexImage*（不可变存储，性能更好）
+ * - ES 2.0 回退到 glTexImage*（不支持 glTexStorage）
+ * 
+ * 注意：
+ * - 此方法可以用于重新分配纹理到新尺寸
+ * - 保护内存仅在某些平台支持（如 Android 的 DRM 内容保护）
+ */
 UTILS_NOINLINE
 void OpenGLDriver::textureStorage(GLTexture* t,
         uint32_t const width, uint32_t const height, uint32_t const depth, bool useProtectedMemory) noexcept {
 
     auto& gl = mContext;
 
+    // 绑定纹理到虚拟纹理单元（用于设置参数）
     bindTexture(OpenGLContext::DUMMY_TEXTURE_BINDING, t);
     gl.activeTexture(OpenGLContext::DUMMY_TEXTURE_BINDING);
 
 #ifdef GL_EXT_protected_textures
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+    // 如果使用保护内存，设置保护标志（需要 EXT_protected_textures 扩展）
     if (UTILS_UNLIKELY(useProtectedMemory)) {
         assert_invariant(gl.ext.EXT_protected_textures);
         glTexParameteri(t->gl.target, GL_TEXTURE_PROTECTED_EXT, 1);
@@ -805,6 +1419,7 @@ void OpenGLDriver::textureStorage(GLTexture* t,
 #endif
 #endif
 
+    // 根据纹理目标类型分配存储
     switch (t->gl.target) {
         case GL_TEXTURE_2D:
         case GL_TEXTURE_CUBE_MAP:
@@ -888,32 +1503,78 @@ void OpenGLDriver::textureStorage(GLTexture* t,
     t->depth = depth;
 }
 
+/**
+ * 创建纹理资源
+ * 
+ * 创建 OpenGL 纹理或渲染缓冲区（Renderbuffer）。根据使用场景选择：
+ * - 纹理（Texture）：可采样、可上传、有 Mipmap、非 2D 等
+ * - 渲染缓冲区（Renderbuffer）：仅用于渲染目标，性能更好
+ * 
+ * @param th 纹理句柄
+ * @param target 采样器类型（2D/3D/Cube/Array/External 等）
+ * @param levels Mipmap 级别数量（1 = 无 Mipmap）
+ * @param format 纹理格式（RGBA8/RGB8/DEPTH24 等）
+ * @param samples 多重采样数量（1 = 无 MSAA）
+ * @param width 纹理宽度
+ * @param height 纹理高度
+ * @param depth 纹理深度（3D/Array 纹理）
+ * @param usage 使用标志（SAMPLEABLE/RENDERABLE/UPLOADABLE/PROTECTED 等）
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 获取内部格式（GLenum）
+ * 2. 根据使用场景决定使用纹理还是渲染缓冲区：
+ *    - PROTECTED：必须使用纹理（渲染缓冲区不支持）
+ *    - UPLOADABLE：必须使用纹理（需要上传数据）
+ *    - 非 2D：必须使用纹理（渲染缓冲区只能是 2D）
+ *    - 有 Mipmap：必须使用纹理（渲染缓冲区不支持 Mipmap）
+ *    - 其他：可以使用渲染缓冲区（性能更好）
+ * 3. 限制采样数量（不超过驱动支持的最大值）
+ * 4. 构造 GLTexture 对象
+ * 5. 如果是纹理：
+ *    - ES 2.0 特殊处理（格式必须匹配）
+ *    - 外部纹理特殊处理（相机预览等）
+ *    - 创建 OpenGL 纹理对象
+ *    - 分配纹理存储（glTexStorage*）
+ * 6. 如果是渲染缓冲区：
+ *    - 创建渲染缓冲区对象
+ *    - 分配渲染缓冲区存储（glRenderbufferStorage*）
+ * 
+ * 性能优化：
+ * - 使用 glTexStorage* 而不是 glTexImage*（不可变存储，性能更好）
+ * - 对于纯渲染目标，使用渲染缓冲区（性能更好）
+ */
 void OpenGLDriver::createTextureR(Handle<HwTexture> th, SamplerType target, uint8_t levels,
         TextureFormat format, uint8_t samples, uint32_t width, uint32_t height, uint32_t depth,
         TextureUsage usage, ImmutableCString&& tag) {
     DEBUG_MARKER()
 
+    // 获取内部格式（GLenum）
     GLenum internalFormat = getInternalFormat(format);
     assert_invariant(internalFormat);
 
+    // 根据使用场景决定使用纹理还是渲染缓冲区
     if (any(usage & TextureUsage::PROTECTED)) {
-        // renderbuffers don't have a protected mode, so we need to use a texture
-        // because protected textures are only supported on GLES 3.2, MSAA will be available.
+        // 渲染缓冲区没有保护模式，所以需要使用纹理
+        // 因为保护纹理仅在 GLES 3.2 上支持，MSAA 将可用
         usage |= TextureUsage::SAMPLEABLE;
     } else if (any(usage & TextureUsage::UPLOADABLE)) {
-        // if we have the uploadable flag, we also need to use a texture
+        // 如果有可上传标志，也需要使用纹理
         usage |= TextureUsage::SAMPLEABLE;
     } else if (target != SamplerType::SAMPLER_2D) {
-        // renderbuffers can only be 2D
+        // 渲染缓冲区只能是 2D
         usage |= TextureUsage::SAMPLEABLE;
     } else if (levels > 1) {
-        // renderbuffers can't have mip levels
+        // 渲染缓冲区不能有 Mipmap
         usage |= TextureUsage::SAMPLEABLE;
     }
 
     auto const& gl = mContext;
+    // 限制采样数量（不超过驱动支持的最大值）
     samples = std::clamp(samples, uint8_t(1u), uint8_t(gl.gets.max_samples));
     GLTexture* t = construct<GLTexture>(th, target, levels, samples, width, height, depth, format, usage);
+    
+    // 如果是纹理（可采样）
     if (UTILS_LIKELY(usage & TextureUsage::SAMPLEABLE)) {
 
         if (UTILS_UNLIKELY(gl.isES2())) {
@@ -982,22 +1643,53 @@ void OpenGLDriver::createTextureR(Handle<HwTexture> th, SamplerType target, uint
     mHandleAllocator.associateTagToHandle(th.getId(), std::move(tag));
 }
 
+/**
+ * 创建纹理视图（渲染线程）
+ * 
+ * 在渲染线程中创建纹理视图对象。
+ * 纹理视图是现有纹理的视图，可以有不同的 Mipmap 范围，共享底层纹理数据。
+ * 
+ * @param th 纹理视图句柄（已在主线程分配）
+ * @param srch 源纹理句柄（要创建视图的纹理）
+ * @param baseLevel 基础 Mipmap 级别
+ * @param levelCount Mipmap 级别数量
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 验证源纹理是可采样的（SAMPLEABLE）
+ * 2. 验证源纹理不是导入的（导入纹理不支持视图）
+ * 3. 如果源纹理还没有引用句柄，延迟创建（大多数纹理不会有视图）
+ * 4. 构造纹理视图对象（复制源纹理的属性）
+ * 5. 复制 OpenGL 状态（但重置 sidecar 相关字段）
+ * 6. 计算视图的 Mipmap 范围（基于源纹理的 baseLevel/maxLevel）
+ * 7. 增加源纹理的引用计数（多个视图共享同一纹理）
+ * 8. 关联调试标签到句柄
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 纹理视图共享底层纹理数据，不复制数据
+ * - 多个视图可以有不同的 Mipmap 范围
+ * - 使用引用计数管理共享纹理的生命周期
+ */
 void OpenGLDriver::createTextureViewR(Handle<HwTexture> th,
         Handle<HwTexture> srch, uint8_t const baseLevel, uint8_t const levelCount, ImmutableCString&& tag) {
     DEBUG_MARKER()
     GLTexture const* const src = handle_cast<GLTexture const*>(srch);
 
+    // 验证源纹理是可采样的
     FILAMENT_CHECK_PRECONDITION(any(src->usage & TextureUsage::SAMPLEABLE))
             << "TextureView can only be created on a SAMPLEABLE texture";
 
+    // 验证源纹理不是导入的
     FILAMENT_CHECK_PRECONDITION(!src->gl.imported)
             << "TextureView can't be created on imported textures";
 
+    // 如果源纹理还没有引用句柄，延迟创建（大多数纹理不会有视图）
     if (!src->ref) {
-        // lazily create the ref handle, because most textures will never get a texture view
         src->ref = initHandle<GLTextureRef>();
     }
 
+    // 构造纹理视图对象（复制源纹理的属性）
     GLTexture* t = construct<GLTexture>(th,
             src->target,
             src->levels,
@@ -1006,10 +1698,12 @@ void OpenGLDriver::createTextureViewR(Handle<HwTexture> th,
             src->format,
             src->usage);
 
+    // 复制 OpenGL 状态（但重置 sidecar 相关字段）
     t->gl = src->gl;
     t->gl.sidecarRenderBufferMS = 0;
     t->gl.sidecarSamples = 1;
 
+    // 计算视图的 Mipmap 范围（基于源纹理的 baseLevel/maxLevel）
     auto srcBaseLevel = src->gl.baseLevel;
     auto srcMaxLevel = src->gl.maxLevel;
     if (srcBaseLevel > srcMaxLevel) {
@@ -1019,7 +1713,7 @@ void OpenGLDriver::createTextureViewR(Handle<HwTexture> th,
     t->gl.baseLevel = int8_t(std::min(127, srcBaseLevel + baseLevel));
     t->gl.maxLevel  = int8_t(std::min(127, srcBaseLevel + baseLevel + levelCount - 1));
 
-    // increase reference count to this texture handle
+    // 增加源纹理的引用计数（多个视图共享同一纹理）
     t->ref = src->ref;
     GLTextureRef* ref = handle_cast<GLTextureRef*>(t->ref);
     assert_invariant(ref);
@@ -1029,6 +1723,38 @@ void OpenGLDriver::createTextureViewR(Handle<HwTexture> th,
     mHandleAllocator.associateTagToHandle(th.getId(), std::move(tag));
 }
 
+/**
+ * 创建带 Swizzle 的纹理视图（渲染线程）
+ * 
+ * 在渲染线程中创建带通道重映射（Swizzle）的纹理视图对象。
+ * Swizzle 允许重新映射纹理通道（如 R->A, G->R 等），用于格式转换或特殊效果。
+ * 
+ * @param th 纹理视图句柄（已在主线程分配）
+ * @param srch 源纹理句柄（要创建视图的纹理）
+ * @param r 红色通道的 Swizzle 映射
+ * @param g 绿色通道的 Swizzle 映射
+ * @param b 蓝色通道的 Swizzle 映射
+ * @param a Alpha 通道的 Swizzle 映射
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 验证源纹理是可采样的（SAMPLEABLE）
+ * 2. 验证源纹理不是导入的（导入纹理不支持视图）
+ * 3. 如果源纹理还没有引用句柄，延迟创建
+ * 4. 构造纹理视图对象（复制源纹理的属性）
+ * 5. 复制 OpenGL 状态（包括 baseLevel/maxLevel）
+ * 6. 计算 Swizzle 映射：
+ *    - 如果请求的通道是 SUBSTITUTE_ZERO/ONE，直接使用
+ *    - 如果请求的通道是 CHANNEL_0/1/2/3，从源纹理的 swizzle 中获取
+ * 7. 设置视图的 Swizzle
+ * 8. 增加源纹理的引用计数
+ * 9. 关联调试标签到句柄
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - Swizzle 可以嵌套（视图的 Swizzle 基于源纹理的 Swizzle）
+ * - 用于实现格式转换（如 R8 -> RGBA8，通过 Swizzle R->R, R->G, R->B, 1->A）
+ */
 void OpenGLDriver::createTextureViewSwizzleR(Handle<HwTexture> th, Handle<HwTexture> srch,
         TextureSwizzle const r, TextureSwizzle const g, TextureSwizzle const b, TextureSwizzle const a,
         ImmutableCString&& tag) {
@@ -1036,17 +1762,20 @@ void OpenGLDriver::createTextureViewSwizzleR(Handle<HwTexture> th, Handle<HwText
     DEBUG_MARKER()
     GLTexture const* const src = handle_cast<GLTexture const*>(srch);
 
+    // 验证源纹理是可采样的
     FILAMENT_CHECK_PRECONDITION(any(src->usage & TextureUsage::SAMPLEABLE))
                     << "TextureView can only be created on a SAMPLEABLE texture";
 
+    // 验证源纹理不是导入的
     FILAMENT_CHECK_PRECONDITION(!src->gl.imported)
                     << "TextureView can't be created on imported textures";
 
+    // 如果源纹理还没有引用句柄，延迟创建
     if (!src->ref) {
-        // lazily create the ref handle, because most textures will never get a texture view
         src->ref = initHandle<GLTextureRef>();
     }
 
+    // 构造纹理视图对象（复制源纹理的属性）
     GLTexture* t = construct<GLTexture>(th,
             src->target,
             src->levels,
@@ -1055,19 +1784,21 @@ void OpenGLDriver::createTextureViewSwizzleR(Handle<HwTexture> th, Handle<HwText
             src->format,
             src->usage);
 
+    // 复制 OpenGL 状态（包括 baseLevel/maxLevel）
     t->gl = src->gl;
     t->gl.baseLevel = src->gl.baseLevel;
     t->gl.maxLevel = src->gl.maxLevel;
     t->gl.sidecarRenderBufferMS = 0;
     t->gl.sidecarSamples = 1;
 
+    // 计算 Swizzle 映射（可以嵌套，基于源纹理的 swizzle）
     auto getChannel = [&swizzle = src->gl.swizzle](TextureSwizzle const ch) {
         switch (ch) {
             case TextureSwizzle::SUBSTITUTE_ZERO:
             case TextureSwizzle::SUBSTITUTE_ONE:
-                return ch;
+                return ch;  // 直接使用 0 或 1
             case TextureSwizzle::CHANNEL_0:
-                return swizzle[0];
+                return swizzle[0];  // 从源纹理的 swizzle 获取
             case TextureSwizzle::CHANNEL_1:
                 return swizzle[1];
             case TextureSwizzle::CHANNEL_2:
@@ -1078,6 +1809,7 @@ void OpenGLDriver::createTextureViewSwizzleR(Handle<HwTexture> th, Handle<HwText
         return ch;
     };
 
+    // 设置视图的 Swizzle
     t->gl.swizzle = {
             getChannel(r),
             getChannel(g),
@@ -1085,7 +1817,7 @@ void OpenGLDriver::createTextureViewSwizzleR(Handle<HwTexture> th, Handle<HwText
             getChannel(a),
     };
 
-    // increase reference count to this texture handle
+    // 增加源纹理的引用计数
     t->ref = src->ref;
     GLTextureRef* const ref = handle_cast<GLTextureRef*>(t->ref);
     assert_invariant(ref);
@@ -1095,11 +1827,41 @@ void OpenGLDriver::createTextureViewSwizzleR(Handle<HwTexture> th, Handle<HwText
     mHandleAllocator.associateTagToHandle(th.getId(), std::move(tag));
 }
 
+/**
+ * 创建外部图像纹理（2D，渲染线程）
+ * 
+ * 在渲染线程中创建外部图像纹理对象。
+ * 外部图像纹理用于从外部源（如相机预览、视频帧）创建纹理。
+ * 
+ * @param th 纹理句柄（已在主线程分配）
+ * @param target 采样器类型（通常是 SAMPLER_EXTERNAL 或 SAMPLER_2D）
+ * @param format 纹理格式
+ * @param width 纹理宽度
+ * @param height 纹理高度
+ * @param usage 使用标志（自动添加 SAMPLEABLE，移除 UPLOADABLE）
+ * @param image 外部图像句柄引用（平台特定）
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 设置使用标志（必须是 SAMPLEABLE，不能是 UPLOADABLE）
+ * 2. 获取内部格式（ES 2.0 特殊处理）
+ * 3. 构造纹理对象
+ * 4. 创建外部纹理对象（通过平台接口）
+ * 5. 设置纹理目标（GL_TEXTURE_EXTERNAL_OES 或 GL_TEXTURE_2D）
+ * 6. 绑定纹理并设置外部图像
+ * 7. 关联调试标签到句柄
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 外部纹理的格式取决于外部图像，内部格式仅供参考
+ * - 外部纹理总是标记为 external，强制每次绑定（不缓存）
+ */
 void OpenGLDriver::createTextureExternalImage2R(Handle<HwTexture> th, SamplerType target,
     TextureFormat format, uint32_t width, uint32_t height, TextureUsage usage,
     Platform::ExternalImageHandleRef image, ImmutableCString&& tag) {
     DEBUG_MARKER()
 
+    // 外部纹理必须是可采样的，不能是可上传的
     usage |= TextureUsage::SAMPLEABLE;
     usage &= ~TextureUsage::UPLOADABLE;
 
@@ -1147,11 +1909,31 @@ void OpenGLDriver::createTextureExternalImage2R(Handle<HwTexture> th, SamplerTyp
     mHandleAllocator.associateTagToHandle(th.getId(), std::move(tag));
 }
 
+/**
+ * 创建外部图像纹理（渲染线程）
+ * 
+ * 在渲染线程中创建外部图像纹理对象。
+ * 与 createTextureExternalImage2R 类似，但使用 void* 图像指针。
+ * 
+ * @param th 纹理句柄（已在主线程分配）
+ * @param target 采样器类型
+ * @param format 纹理格式
+ * @param width 纹理宽度
+ * @param height 纹理高度
+ * @param usage 使用标志
+ * @param image 外部图像指针（平台特定）
+ * @param tag 调试标签
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 与 createTextureExternalImage2R 功能相同，但参数类型不同
+ */
 void OpenGLDriver::createTextureExternalImageR(Handle<HwTexture> th, SamplerType target,
         TextureFormat format, uint32_t width, uint32_t height, TextureUsage usage, void* image,
         ImmutableCString&& tag) {
     DEBUG_MARKER()
 
+    // 外部纹理必须是可采样的，不能是可上传的
     usage |= TextureUsage::SAMPLEABLE;
     usage &= ~TextureUsage::UPLOADABLE;
 
@@ -1198,23 +1980,79 @@ void OpenGLDriver::createTextureExternalImageR(Handle<HwTexture> th, SamplerType
     mHandleAllocator.associateTagToHandle(th.getId(), std::move(tag));
 }
 
+/**
+ * 创建外部图像平面纹理（渲染线程）
+ * 
+ * 在渲染线程中创建外部图像平面纹理对象。
+ * 用于多平面图像（如 YUV 格式，Y、U、V 分别在不同平面）。
+ * 
+ * @param th 纹理句柄（已在主线程分配）
+ * @param format 纹理格式
+ * @param width 纹理宽度
+ * @param height 纹理高度
+ * @param usage 使用标志
+ * @param image 外部图像指针（平台特定）
+ * @param plane 平面索引（0=Y, 1=U, 2=V 等）
+ * @param tag 调试标签（未使用）
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - OpenGL 后端不支持多平面图像，此方法为空实现
+ * - 多平面图像通常在 Vulkan/Metal 后端使用
+ */
 void OpenGLDriver::createTextureExternalImagePlaneR(Handle<HwTexture> th,
         TextureFormat format, uint32_t width, uint32_t height, TextureUsage usage,
         void* image, uint32_t plane, ImmutableCString&&) {
-    // not relevant for the OpenGL backend
+    // OpenGL 后端不相关（不支持多平面图像）
 }
 
+/**
+ * 导入纹理（渲染线程）
+ * 
+ * 在渲染线程中导入外部 OpenGL 纹理。
+ * 用于从外部 OpenGL 应用程序或库导入现有纹理。
+ * 
+ * @param th 纹理句柄（已在主线程分配）
+ * @param id 外部 OpenGL 纹理 ID
+ * @param target 采样器类型（2D/3D/Cube/Array/External 等）
+ * @param levels Mipmap 级别数量
+ * @param format 纹理格式
+ * @param samples 多重采样数量
+ * @param width 纹理宽度
+ * @param height 纹理高度
+ * @param depth 纹理深度（3D/Array 纹理）
+ * @param usage 使用标志
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 限制采样数量（不超过驱动支持的最大值）
+ * 2. 构造纹理对象
+ * 3. 设置导入的纹理 ID（不创建新纹理）
+ * 4. 标记为导入纹理（imported = true）
+ * 5. 获取内部格式
+ * 6. 根据采样器类型设置 OpenGL 目标
+ * 7. 处理多采样纹理（如果适用）
+ * 8. 关联调试标签到句柄
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 导入的纹理不归 Filament 管理，外部负责生命周期
+ * - 导入的纹理不支持纹理视图
+ * - 外部纹理（SAMPLER_EXTERNAL）总是标记为 external，强制每次绑定
+ */
 void OpenGLDriver::importTextureR(Handle<HwTexture> th, intptr_t const id,
         SamplerType target, uint8_t levels, TextureFormat format, uint8_t samples,
         uint32_t width, uint32_t height, uint32_t depth, TextureUsage usage, ImmutableCString&& tag) {
     DEBUG_MARKER()
 
     auto const& gl = mContext;
+    // 限制采样数量（不超过驱动支持的最大值）
     samples = std::clamp(samples, uint8_t(1u), uint8_t(gl.gets.max_samples));
     GLTexture* t = construct<GLTexture>(th, target, levels, samples, width, height, depth, format, usage);
 
+    // 设置导入的纹理 ID（不创建新纹理）
     t->gl.id = GLuint(id);
-    t->gl.imported = true;
+    t->gl.imported = true;  // 标记为导入纹理
     t->gl.internalFormat = getInternalFormat(format);
     assert_invariant(t->gl.internalFormat);
 
@@ -1262,27 +2100,61 @@ void OpenGLDriver::importTextureR(Handle<HwTexture> th, intptr_t const id,
     mHandleAllocator.associateTagToHandle(th.getId(), std::move(tag));
 }
 
+/**
+ * 更新顶点数组对象（VAO）
+ * 
+ * 更新 VAO 中的顶点缓冲区绑定和顶点属性配置。
+ * 此方法被频繁调用，必须尽可能高效。
+ * 
+ * @param rp 渲染图元指针
+ * @param vb 顶点缓冲区指针
+ * 
+ * 执行流程：
+ * 1. 验证 VAO 已绑定（调试模式）
+ * 2. 检查版本号，如果 VAO 已是最新，直接返回（性能优化）
+ * 3. 获取顶点缓冲区信息（属性布局）
+ * 4. 遍历所有属性，设置顶点属性指针：
+ *    - 绑定对应的缓冲区对象
+ *    - 启用顶点属性
+ *    - 设置顶点属性指针（位置、步长、偏移）
+ *    - 设置整数属性标志（如果适用）
+ * 5. 禁用未使用的属性
+ * 6. 更新版本号
+ * 
+ * 性能优化：
+ * - 使用版本号检查，避免不必要的更新
+ * - 只在缓冲区或状态改变时更新
+ * - 禁用未使用的属性，避免驱动开销
+ * 
+ * 注意：
+ * - 此方法被频繁调用（每次 draw 都可能调用）
+ * - VAO 必须在调用前已绑定
+ * - 版本号用于缓存，避免重复设置相同状态
+ */
 void OpenGLDriver::updateVertexArrayObject(GLRenderPrimitive* rp, GLVertexBuffer const* vb) {
-    // NOTE: this is called often and must be as efficient as possible.
+    // 注意：此方法被频繁调用，必须尽可能高效
 
     auto& gl = mContext;
 
 #ifndef NDEBUG
+    // 验证 VAO 已绑定（调试模式）
     if (UTILS_LIKELY(gl.ext.OES_vertex_array_object)) {
-        // The VAO for the given render primitive must already be bound.
         GLint vaoBinding;
         glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vaoBinding);
         assert_invariant(vaoBinding == GLint(rp->gl.vao[gl.contextIndex]));
     }
 #endif
 
+    // 检查版本号，如果 VAO 已是最新，直接返回（性能优化）
     if (UTILS_LIKELY(rp->gl.vertexBufferVersion == vb->bufferObjectsVersion &&
                      rp->gl.stateVersion == gl.state.age)) {
         return;
     }
 
+    // 获取顶点缓冲区信息（属性布局）
     GLVertexBufferInfo const* const vbi = handle_cast<const GLVertexBufferInfo*>(vb->vbih);
 
+    // 遍历所有属性，设置顶点属性指针
     for (size_t i = 0, n = vbi->attributes.size(); i < n; i++) {
         const auto& attribute = vbi->attributes[i];
         const uint8_t bi = attribute.buffer;
@@ -1349,6 +2221,34 @@ void OpenGLDriver::updateVertexArrayObject(GLRenderPrimitive* rp, GLVertexBuffer
     }
 }
 
+/**
+ * 将纹理附加到 Framebuffer
+ * 
+ * 将纹理或渲染缓冲区附加到渲染目标的指定附件（颜色、深度、模板）。
+ * 处理多种纹理类型（2D、3D、Cube、Array）和 MSAA 情况。
+ * 
+ * @param binfo 目标缓冲区信息（纹理句柄、Mipmap 级别、层等）
+ * @param rt 渲染目标指针
+ * @param attachment 附件类型（GL_COLOR_ATTACHMENT0、GL_DEPTH_ATTACHMENT 等）
+ * @param layerCount 层数量（用于 Array 纹理）
+ * 
+ * 执行流程：
+ * 1. 验证纹理有效且不是外部纹理
+ * 2. 验证尺寸匹配（渲染目标尺寸 <= 纹理 Mipmap 级别尺寸）
+ * 3. 确定 resolve 标志（用于 MSAA resolve）
+ * 4. 验证深度/模板附件的采样数匹配（EXT_multisampled_render_to_texture 限制）
+ * 5. 根据纹理类型确定目标（2D、Cube face、Array 等）
+ * 6. 如果是纹理：
+ *    - 使用 glFramebufferTexture2D/3D 附加
+ *    - 处理 MSAA（使用 EXT_multisampled_render_to_texture）
+ * 7. 如果是渲染缓冲区：
+ *    - 使用 glFramebufferRenderbuffer 附加
+ * 8. 更新 resolve 标志
+ * 
+ * 注意：
+ * - 深度/模板附件必须与渲染目标的采样数匹配（EXT_multisampled_render_to_texture 限制）
+ * - MSAA 纹理使用 sidecar renderbuffer 进行实际渲染
+ */
 void OpenGLDriver::framebufferTexture(TargetBufferInfo const& binfo,
         GLRenderTarget const* rt, GLenum attachment, uint8_t const layerCount) noexcept {
 
@@ -1631,15 +2531,43 @@ void OpenGLDriver::framebufferTexture(TargetBufferInfo const& binfo,
     CHECK_GL_FRAMEBUFFER_STATUS(GL_FRAMEBUFFER)
 }
 
+/**
+ * 分配渲染缓冲区存储
+ * 
+ * 为渲染缓冲区分配存储空间。
+ * 渲染缓冲区用于离屏渲染目标（不能采样，只能作为附件）。
+ * 
+ * @param rbo 渲染缓冲区对象 ID
+ * @param internalformat 内部格式（GLenum）
+ * @param width 宽度
+ * @param height 高度
+ * @param samples 多重采样数量（1 = 无 MSAA）
+ * 
+ * 执行流程：
+ * 1. 绑定渲染缓冲区
+ * 2. 如果 samples > 1（MSAA）：
+ *    - 检查 EXT_multisampled_render_to_texture 扩展
+ *    - 如果支持，使用 glRenderbufferStorageMultisampleEXT
+ *    - 否则使用 glRenderbufferStorageMultisample（ES 3.0+/GL 4.1+）
+ * 3. 如果 samples == 1（无 MSAA）：
+ *    - 使用 glRenderbufferStorage
+ * 4. 解绑渲染缓冲区（避免后续混淆）
+ * 
+ * 注意：
+ * - 渲染缓冲区不能采样，只能作为 Framebuffer 附件
+ * - MSAA 渲染缓冲区需要相应扩展或 ES 3.0+/GL 4.1+
+ */
 void OpenGLDriver::renderBufferStorage(GLuint const rbo, GLenum internalformat, uint32_t width, // NOLINT(readability-convert-member-functions-to-static)
         uint32_t height, uint8_t samples) const noexcept {
     glBindRenderbuffer(GL_RENDERBUFFER, rbo);
     if (samples > 1) {
+        // MSAA 渲染缓冲区
 #ifndef __EMSCRIPTEN__
 #ifdef GL_EXT_multisampled_render_to_texture
         auto& gl = mContext;
         if (gl.ext.EXT_multisampled_render_to_texture ||
             gl.ext.EXT_multisampled_render_to_texture2) {
+            // 使用扩展 API
             glext::glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER,
                     samples, internalformat, width, height);
         } else
@@ -1647,34 +2575,96 @@ void OpenGLDriver::renderBufferStorage(GLuint const rbo, GLenum internalformat, 
 #endif // __EMSCRIPTEN__
         {
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+            // 使用标准 API（ES 3.0+/GL 4.1+）
             glRenderbufferStorageMultisample(GL_RENDERBUFFER,
                     samples, internalformat, GLsizei(width), GLsizei(height));
 #endif
         }
     } else {
+        // 无 MSAA 渲染缓冲区
         glRenderbufferStorage(GL_RENDERBUFFER, internalformat, GLsizei(width), GLsizei(height));
     }
-    // unbind the renderbuffer, to avoid any later confusion
+    // 解绑渲染缓冲区，避免后续混淆
     glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
     CHECK_GL_ERROR()
 }
 
+/**
+ * 创建默认渲染目标（渲染线程）
+ * 
+ * 在渲染线程中创建默认渲染目标对象。
+ * 默认渲染目标指向交换链的后缓冲区（默认帧缓冲区）。
+ * 
+ * @param rth 渲染目标句柄（已在主线程分配）
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 构造 GLRenderTarget 对象（宽度/高度未知，设为 0）
+ * 2. 标记为默认渲染目标（isDefault = true）
+ * 3. 设置 FBO = 0（默认帧缓冲区，实际 ID 在绑定时解析）
+ * 4. 设置采样数 = 1（默认无 MSAA）
+ * 5. 设置目标标志（COLOR0 | DEPTH，假设有颜色和深度附件）
+ * 6. 关联调试标签到句柄
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - FBO = 0 表示默认帧缓冲区（交换链的后缓冲区）
+ * - 宽度/高度在运行时从交换链获取
+ * - TODO: 目标标志应该反映实际存在的附件
+ */
 void OpenGLDriver::createDefaultRenderTargetR(
         Handle<HwRenderTarget> rth, ImmutableCString&& tag) {
     DEBUG_MARKER()
 
-    construct<GLRenderTarget>(rth, 0, 0);  // FIXME: we don't know the width/height
+    construct<GLRenderTarget>(rth, 0, 0);  // FIXME: 我们不知道宽度/高度
 
     GLRenderTarget* rt = handle_cast<GLRenderTarget*>(rth);
-    rt->gl.isDefault = true;
-    rt->gl.fbo = 0; // the actual id is resolved at binding time
+    rt->gl.isDefault = true;  // 标记为默认渲染目标
+    rt->gl.fbo = 0;  // 实际 ID 在绑定时解析（0 = 默认帧缓冲区）
     rt->gl.samples = 1;
-    // FIXME: these flags should reflect the actual attachments present
+    // FIXME: 这些标志应该反映实际存在的附件
     rt->targets = TargetBufferFlags::COLOR0 | TargetBufferFlags::DEPTH;
     mHandleAllocator.associateTagToHandle(rth.getId(), std::move(tag));
 }
 
+/**
+ * 创建渲染目标（渲染线程）
+ * 
+ * 在渲染线程中创建离屏渲染目标对象（FBO）。
+ * 渲染目标可以包含多个颜色附件、深度附件和模板附件。
+ * 
+ * @param rth 渲染目标句柄（已在主线程分配）
+ * @param targets 目标缓冲区标志（COLOR0-COLOR7、DEPTH、STENCIL）
+ * @param width 渲染目标宽度
+ * @param height 渲染目标高度
+ * @param samples 多重采样数量
+ * @param layerCount 层数量（用于 Array 纹理）
+ * @param color 颜色附件数组（MRT，最多 8 个）
+ * @param depth 深度附件信息
+ * @param stencil 模板附件信息
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 构造 GLRenderTarget 对象
+ * 2. 生成 Framebuffer 对象（FBO）
+ * 3. 限制采样数量（不超过驱动支持的最大值）
+ * 4. 附加颜色附件（COLOR0-COLOR7）：
+ *    - 遍历所有颜色附件
+ *    - 调用 framebufferTexture 附加到 FBO
+ *    - 设置 glDrawBuffers（ES 3.0+）
+ * 5. 处理深度/模板附件：
+ *    - 如果深度和模板打包（DEPTH_AND_STENCIL），使用 GL_DEPTH_STENCIL_ATTACHMENT
+ *    - 否则分别附加深度和模板附件
+ * 6. 验证所有附件尺寸相同（OpenGL 要求）
+ * 7. 关联调试标签到句柄
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 所有附件必须具有相同的尺寸（OpenGL 要求）
+ * - MSAA 附件的采样数必须匹配（GLES 3.0 限制）
+ * - 混合渲染缓冲区和纹理需要 GLES 3.1+ 或 EXT_multisampled_render_to_texture
+ */
 void OpenGLDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
         TargetBufferFlags const targets,
         uint32_t width,
@@ -1688,6 +2678,7 @@ void OpenGLDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
     DEBUG_MARKER()
 
     GLRenderTarget* rt = construct<GLRenderTarget>(rth, width, height);
+    // 生成 Framebuffer 对象（FBO）
     glGenFramebuffers(1, &rt->gl.fbo);
 
     /*
@@ -1800,6 +2791,30 @@ void OpenGLDriver::createRenderTargetR(Handle<HwRenderTarget> rth,
     mHandleAllocator.associateTagToHandle(rth.getId(), std::move(tag));
 }
 
+/**
+ * 创建栅栏（渲染线程）
+ * 
+ * 在渲染线程中创建栅栏对象，用于 CPU-GPU 同步。
+ * 
+ * @param fh 栅栏句柄（已在主线程分配）
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 关联调试标签到句柄
+ * 2. 获取栅栏状态
+ * 3. 如果平台支持栅栏或 ES 2.0：
+ *    - 创建平台栅栏（如果支持）
+ *    - 或设置状态为 ERROR（如果不支持）
+ *    - 通知等待者
+ * 4. 否则使用 OpenGL 栅栏（ES 3.0+/GL 4.1+）：
+ *    - 使用弱引用保存状态（因为用户可能在返回后销毁栅栏）
+ *    - 调度回调，在 GPU 完成时设置状态为 CONDITION_SATISFIED
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 返回后用户可能立即销毁栅栏，所以使用弱引用
+ * - 平台栅栏可能异步创建
+ */
 void OpenGLDriver::createFenceR(Handle<HwFence> fh, ImmutableCString&& tag) {
     DEBUG_MARKER()
 
@@ -1810,20 +2825,23 @@ void OpenGLDriver::createFenceR(Handle<HwFence> fh, ImmutableCString&& tag) {
 
     bool const platformCanCreateFence = mPlatform.canCreateFence();
 
+    // 如果平台支持栅栏或 ES 2.0
     if (mContext.isES2() || platformCanCreateFence) {
         std::lock_guard const lock(f->state->lock);
         if (platformCanCreateFence) {
+            // 创建平台栅栏
             f->fence = mPlatform.createFence();
             f->state->cond.notify_all();
         } else {
+            // 不支持栅栏，设置错误状态
             f->state->status = FenceStatus::ERROR;
         }
         return;
     }
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
-    // This is the case where we need to use OpenGL fences, as soon as we return, the user
-    // is allowed to destroy the fence, so we need to keep a reference to the internal state.
+    // 这是需要使用 OpenGL 栅栏的情况
+    // 一旦返回，用户就可以销毁栅栏，所以我们需要保持对内部状态的引用
     std::weak_ptr<GLFence::State> const weak = f->state;
     whenGpuCommandsComplete([weak] {
         if (auto const state = weak.lock()) {
@@ -1835,15 +2853,39 @@ void OpenGLDriver::createFenceR(Handle<HwFence> fh, ImmutableCString&& tag) {
 #endif
 }
 
+/**
+ * 创建同步对象（渲染线程）
+ * 
+ * 在渲染线程中创建同步对象，用于更细粒度的 GPU 同步。
+ * 同步对象从 GLsync 转换为平台同步对象。
+ * 
+ * @param sh 同步对象句柄（已在主线程分配）
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 创建平台同步对象（从 GLsync 转换）
+ * 2. 处理转换回调（在同步对象创建前注册的回调）：
+ *    - 设置同步对象句柄
+ *    - 调度回调（在 GPU 完成时调用）
+ * 3. 清空转换回调列表
+ * 4. 关联调试标签到句柄
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 同步对象从 GLsync 转换为平台同步对象（异步）
+ * - 在转换前注册的回调会在转换完成后调用
+ */
 void OpenGLDriver::createSyncR(Handle<HwSync> sh, ImmutableCString&& tag) {
     DEBUG_MARKER()
 
     GLSyncFence* s = handle_cast<GLSyncFence*>(sh);
     {
         std::lock_guard const guard(s->lock);
+        // 创建平台同步对象（从 GLsync 转换）
         s->sync = mPlatform.createSync();
     }
 
+    // 处理转换回调（在同步对象创建前注册的回调）
     for (auto& cbData : s->conversionCallbacks) {
         cbData->sync = s->sync;
         scheduleCallback(cbData->handler, cbData.release(), syncCallbackWrapper);
@@ -1853,20 +2895,43 @@ void OpenGLDriver::createSyncR(Handle<HwSync> sh, ImmutableCString&& tag) {
     mHandleAllocator.associateTagToHandle(sh.getId(), std::move(tag));
 }
 
+/**
+ * 创建交换链（渲染线程）
+ * 
+ * 在渲染线程中创建交换链对象，用于管理前后缓冲区的交换。
+ * 
+ * @param sch 交换链句柄（已在主线程分配）
+ * @param nativeWindow 原生窗口句柄（平台特定，如 HWND、NSWindow 等）
+ * @param flags 交换链配置标志（SRGB_COLORSPACE、TRIPLE_BUFFERING 等）
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 通过平台接口创建交换链
+ * 2. 验证创建成功（非 Emscripten）
+ * 3. ES 2.0 特殊处理：检查是否需要模拟 rec709 输出转换
+ *    - 如果请求 sRGB 但平台不支持，启用模拟
+ * 4. 关联调试标签到句柄
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 交换链管理前后缓冲区的交换和呈现
+ * - ES 2.0 不支持 sRGB 交换链时，需要模拟 rec709 转换
+ */
 void OpenGLDriver::createSwapChainR(Handle<HwSwapChain> sch, void* nativeWindow, uint64_t const flags,
         ImmutableCString&& tag) {
     DEBUG_MARKER()
 
     GLSwapChain* sc = handle_cast<GLSwapChain*>(sch);
+    // 通过平台接口创建交换链
     sc->swapChain = mPlatform.createSwapChain(nativeWindow, flags);
 
 #if !defined(__EMSCRIPTEN__)
-    // note: in practice this should never happen on Android
+    // 注意：实际上这在 Android 上不应该发生
     FILAMENT_CHECK_POSTCONDITION(sc->swapChain) << "createSwapChain(" << nativeWindow << ", "
                                                 << flags << ") failed. See logs for details.";
 #endif
 
-    // See if we need the emulated rec709 output conversion
+    // 检查是否需要模拟 rec709 输出转换
     if (UTILS_UNLIKELY(mContext.isES2())) {
         sc->rec709 = ((flags & SWAP_CHAIN_CONFIG_SRGB_COLORSPACE) &&
                 !mPlatform.isSRGBSwapChainSupported());
@@ -1875,21 +2940,44 @@ void OpenGLDriver::createSwapChainR(Handle<HwSwapChain> sch, void* nativeWindow,
     mHandleAllocator.associateTagToHandle(sch.getId(), std::move(tag));
 }
 
+/**
+ * 创建无头交换链（渲染线程）
+ * 
+ * 在渲染线程中创建无头交换链对象，用于离屏渲染（不显示到屏幕）。
+ * 
+ * @param sch 交换链句柄（已在主线程分配）
+ * @param width 交换链宽度
+ * @param height 交换链高度
+ * @param flags 交换链配置标志
+ * @param tag 调试标签
+ * 
+ * 执行流程：
+ * 1. 通过平台接口创建无头交换链（指定尺寸）
+ * 2. 验证创建成功
+ * 3. ES 2.0 特殊处理：检查是否需要模拟 rec709 输出转换
+ * 4. 关联调试标签到句柄
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 无头交换链用于离屏渲染（截图、视频录制等）
+ * - 与 createSwapChainR 类似，但不使用原生窗口
+ */
 void OpenGLDriver::createSwapChainHeadlessR(Handle<HwSwapChain> sch,
         uint32_t const width, uint32_t const height, uint64_t const flags, ImmutableCString&& tag) {
     DEBUG_MARKER()
 
     GLSwapChain* sc = handle_cast<GLSwapChain*>(sch);
+    // 通过平台接口创建无头交换链（指定尺寸）
     sc->swapChain = mPlatform.createSwapChain(width, height, flags);
 
 #if !defined(__EMSCRIPTEN__)
-    // note: in practice this should never happen on Android
+    // 注意：实际上这在 Android 上不应该发生
     FILAMENT_CHECK_POSTCONDITION(sc->swapChain)
             << "createSwapChainHeadless(" << width << ", " << height << ", " << flags
             << ") failed. See logs for details.";
 #endif
 
-    // See if we need the emulated rec709 output conversion
+    // 检查是否需要模拟 rec709 输出转换
     if (UTILS_UNLIKELY(mContext.isES2())) {
         sc->rec709 = (flags & SWAP_CHAIN_CONFIG_SRGB_COLORSPACE &&
                       !mPlatform.isSRGBSwapChainSupported());
@@ -1898,6 +2986,18 @@ void OpenGLDriver::createSwapChainHeadlessR(Handle<HwSwapChain> sch,
     mHandleAllocator.associateTagToHandle(sch.getId(), std::move(tag));
 }
 
+/**
+ * 创建定时器查询（渲染线程）
+ * 
+ * 在渲染线程中创建定时器查询对象，用于测量 GPU 执行时间。
+ * 
+ * @param tqh 定时器查询句柄（已在主线程分配）
+ * @param tag 调试标签
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 定时器查询用于性能分析
+ */
 void OpenGLDriver::createTimerQueryR(Handle<HwTimerQuery> tqh, ImmutableCString&& tag) {
     DEBUG_MARKER()
     GLTimerQuery* tq = handle_cast<GLTimerQuery*>(tqh);
@@ -1905,6 +3005,20 @@ void OpenGLDriver::createTimerQueryR(Handle<HwTimerQuery> tqh, ImmutableCString&
     mHandleAllocator.associateTagToHandle(tqh.getId(), std::move(tag));
 }
 
+/**
+ * 创建描述符集布局（渲染线程）
+ * 
+ * 在渲染线程中创建描述符集布局对象。
+ * 描述符集布局定义了描述符集的绑定结构（哪些槽位绑定什么类型的资源）。
+ * 
+ * @param dslh 描述符集布局句柄（已在主线程分配）
+ * @param info 描述符集布局信息（绑定数组）
+ * @param tag 调试标签
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 描述符集布局定义资源绑定结构
+ */
 void OpenGLDriver::createDescriptorSetLayoutR(Handle<HwDescriptorSetLayout> dslh,
         DescriptorSetLayout&& info, ImmutableCString&& tag) {
     DEBUG_MARKER()
@@ -1912,6 +3026,21 @@ void OpenGLDriver::createDescriptorSetLayoutR(Handle<HwDescriptorSetLayout> dslh
     mHandleAllocator.associateTagToHandle(dslh.getId(), std::move(tag));
 }
 
+/**
+ * 创建描述符集（渲染线程）
+ * 
+ * 在渲染线程中创建描述符集对象。
+ * 描述符集包含实际的资源绑定（纹理、缓冲区等）。
+ * 
+ * @param dsh 描述符集句柄（已在主线程分配）
+ * @param dslh 描述符集布局句柄（定义绑定结构）
+ * @param tag 调试标签
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 描述符集基于描述符集布局创建
+ * - 资源绑定通过 updateDescriptorSet* 方法设置
+ */
 void OpenGLDriver::createDescriptorSetR(Handle<HwDescriptorSet> dsh,
         Handle<HwDescriptorSetLayout> dslh, ImmutableCString&& tag) {
     DEBUG_MARKER()
@@ -1920,6 +3049,24 @@ void OpenGLDriver::createDescriptorSetR(Handle<HwDescriptorSet> dsh,
     mHandleAllocator.associateTagToHandle(dslh.getId(), std::move(tag));
 }
 
+/**
+ * 映射缓冲区（渲染线程）
+ * 
+ * 在渲染线程中创建内存映射缓冲区对象。
+ * 内存映射缓冲区允许 CPU 直接访问 GPU 缓冲区。
+ * 
+ * @param mmbh 内存映射缓冲区句柄（已在主线程分配）
+ * @param boh 缓冲区对象句柄（要映射的缓冲区）
+ * @param offset 映射偏移（字节）
+ * @param size 映射大小（字节）
+ * @param access 访问标志（READ/WRITE）
+ * @param tag 调试标签
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 内存映射允许 CPU 直接访问 GPU 缓冲区
+ * - 映射期间缓冲区可能被锁定
+ */
 void OpenGLDriver::mapBufferR(MemoryMappedBufferHandle mmbh,
         BufferObjectHandle boh, size_t offset,
         size_t size, MapBufferAccessFlags access, ImmutableCString&& tag) {
@@ -1929,9 +3076,16 @@ void OpenGLDriver::mapBufferR(MemoryMappedBufferHandle mmbh,
 }
 
 // ------------------------------------------------------------------------------------------------
-// Destroying driver objects
+// 销毁驱动对象
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 销毁顶点缓冲区信息
+ * 
+ * 销毁顶点缓冲区信息对象，释放相关资源。
+ * 
+ * @param vbih 顶点缓冲区信息句柄
+ */
 void OpenGLDriver::destroyVertexBufferInfo(Handle<HwVertexBufferInfo> vbih) {
     DEBUG_MARKER()
     if (vbih) {
@@ -1940,6 +3094,14 @@ void OpenGLDriver::destroyVertexBufferInfo(Handle<HwVertexBufferInfo> vbih) {
     }
 }
 
+/**
+ * 销毁顶点缓冲区
+ * 
+ * 销毁顶点缓冲区对象，释放相关资源。
+ * 注意：只销毁对象，不销毁缓冲区对象（通过 destroyBufferObject）。
+ * 
+ * @param vbh 顶点缓冲区句柄
+ */
 void OpenGLDriver::destroyVertexBuffer(Handle<HwVertexBuffer> vbh) {
     DEBUG_MARKER()
     if (vbh) {
@@ -1948,47 +3110,100 @@ void OpenGLDriver::destroyVertexBuffer(Handle<HwVertexBuffer> vbh) {
     }
 }
 
+/**
+ * 销毁索引缓冲区
+ * 
+ * 销毁索引缓冲区对象并释放 OpenGL 缓冲区。
+ * 
+ * @param ibh 索引缓冲区句柄
+ * 
+ * 执行流程：
+ * 1. 删除 OpenGL 缓冲区对象
+ * 2. 销毁对象
+ */
 void OpenGLDriver::destroyIndexBuffer(Handle<HwIndexBuffer> ibh) {
     DEBUG_MARKER()
 
     if (ibh) {
         auto& gl = mContext;
         GLIndexBuffer const* ib = handle_cast<const GLIndexBuffer*>(ibh);
+        // 删除 OpenGL 缓冲区对象
         gl.deleteBuffer(ib->gl.buffer, GL_ELEMENT_ARRAY_BUFFER);
         destruct(ibh, ib);
     }
 }
 
+/**
+ * 销毁缓冲区对象
+ * 
+ * 销毁缓冲区对象并释放 OpenGL 缓冲区或系统内存。
+ * 
+ * @param boh 缓冲区对象句柄
+ * 
+ * 执行流程：
+ * 1. 验证没有活动的映射（mappingCount == 0）
+ * 2. ES 2.0 特殊处理（uniform 缓冲区使用系统内存）：
+ *    - 释放系统内存
+ * 3. 其他情况：
+ *    - 删除 OpenGL 缓冲区对象
+ * 4. 销毁对象
+ * 
+ * 注意：
+ * - 不能销毁有活动映射的缓冲区
+ * - ES 2.0 的 uniform 缓冲区使用系统内存，需要 free
+ */
 void OpenGLDriver::destroyBufferObject(Handle<HwBufferObject> boh) {
     DEBUG_MARKER()
     if (boh) {
         auto& gl = mContext;
         GLBufferObject const* bo = handle_cast<const GLBufferObject*>(boh);
-        // check we're not destroying a buffer that has active mappings
+        // 检查我们不是在销毁有活动映射的缓冲区
         assert_invariant(bo->mappingCount == 0);
+        
+        // ES 2.0 特殊处理：uniform 缓冲区使用系统内存
         if (UTILS_UNLIKELY(bo->bindingType == BufferObjectBinding::UNIFORM && gl.isES2())) {
             free(bo->gl.buffer);
         } else {
+            // 删除 OpenGL 缓冲区对象
             gl.deleteBuffer(bo->gl.id, bo->gl.binding);
         }
         destruct(boh, bo);
     }
 }
 
+/**
+ * 销毁渲染图元
+ * 
+ * 销毁渲染图元对象并释放 VAO。
+ * 
+ * @param rph 渲染图元句柄
+ * 
+ * 执行流程：
+ * 1. 删除当前上下文的 VAO
+ * 2. 如果其他上下文也有 VAO，调度延迟销毁：
+ *    - VAO 是"容器对象"，不在上下文间共享
+ *    - 必须在对应的上下文中删除
+ * 3. 销毁对象
+ * 
+ * 注意：
+ * - VAO 不在上下文间共享，每个上下文需要单独删除
+ * - 其他上下文的 VAO 会延迟销毁
+ */
 void OpenGLDriver::destroyRenderPrimitive(Handle<HwRenderPrimitive> rph) {
     DEBUG_MARKER()
 
     if (rph) {
         auto& gl = mContext;
         GLRenderPrimitive const* rp = handle_cast<const GLRenderPrimitive*>(rph);
+        // 删除当前上下文的 VAO
         gl.deleteVertexArray(rp->gl.vao[gl.contextIndex]);
 
-        // If we have a name in the "other" context, we need to schedule the destroy for
-        // later, because it can't be done here. VAOs are "container objects" and are not
-        // shared between contexts.
+        // 如果其他上下文也有 VAO，我们需要调度延迟销毁
+        // 因为不能在这里完成。VAO 是"容器对象"，不在上下文间共享
         size_t const otherContextIndex = 1 - gl.contextIndex;
         GLuint const nameInOtherContext = rp->gl.vao[otherContextIndex];
         if (UTILS_UNLIKELY(nameInOtherContext)) {
+            // 调度在其他上下文中删除 VAO
             gl.destroyWithContext(otherContextIndex,
                     [name = nameInOtherContext](OpenGLContext& gl) {
                 gl.deleteVertexArray(name);
@@ -1999,6 +3214,16 @@ void OpenGLDriver::destroyRenderPrimitive(Handle<HwRenderPrimitive> rph) {
     }
 }
 
+/**
+ * 销毁着色器程序
+ * 
+ * 销毁着色器程序对象，释放相关资源（着色器对象、程序对象等）。
+ * 
+ * @param ph 着色器程序句柄
+ * 
+ * 注意：
+ * - 着色器对象的释放由 OpenGLProgram 析构函数处理
+ */
 void OpenGLDriver::destroyProgram(Handle<HwProgram> ph) {
     DEBUG_MARKER()
     if (ph) {
@@ -2007,6 +3232,37 @@ void OpenGLDriver::destroyProgram(Handle<HwProgram> ph) {
     }
 }
 
+/**
+ * 销毁纹理
+ * 
+ * 销毁纹理对象并释放 OpenGL 纹理或渲染缓冲区。
+ * 处理纹理视图的引用计数和共享纹理的生命周期。
+ * 
+ * @param th 纹理句柄
+ * 
+ * 执行流程：
+ * 1. 如果是导入纹理：
+ *    - 解绑纹理（不删除，外部负责生命周期）
+ *    - 销毁对象
+ * 2. 如果是可采样纹理：
+ *    - 减少引用计数（如果有纹理视图）
+ *    - 如果引用计数为 0（最后一个引用）：
+ *      * 解绑纹理
+ *      * 如果附加了流，分离流
+ *      * 如果是外部纹理，销毁外部纹理对象
+ *      * 否则删除 OpenGL 纹理对象
+ *    - 如果引用计数 > 0（还有纹理视图）：
+ *      * 只销毁句柄，不删除 OpenGL 纹理（共享）
+ * 3. 如果是渲染缓冲区：
+ *    - 删除渲染缓冲区对象
+ * 4. 删除 sidecar 渲染缓冲区（MSAA 相关）
+ * 5. 销毁对象
+ * 
+ * 注意：
+ * - 纹理视图共享底层纹理数据，使用引用计数管理
+ * - 导入纹理不归 Filament 管理，只解绑不删除
+ * - sidecar 渲染缓冲区用于 MSAA 模拟
+ */
 void OpenGLDriver::destroyTexture(Handle<HwTexture> th) {
     DEBUG_MARKER()
 
@@ -2014,66 +3270,95 @@ void OpenGLDriver::destroyTexture(Handle<HwTexture> th) {
         auto& gl = mContext;
         GLTexture* t = handle_cast<GLTexture*>(th);
 
+        // 如果不是导入纹理
         if (UTILS_LIKELY(!t->gl.imported)) {
+            // 如果是可采样纹理
             if (UTILS_LIKELY(t->usage & TextureUsage::SAMPLEABLE)) {
-                // drop a reference
+                // 减少引用计数（如果有纹理视图）
                 uint16_t count = 0;
                 if (UTILS_UNLIKELY(t->ref)) {
-                    // the common case is that we don't have a ref handle
+                    // 常见情况是我们没有 ref 句柄
                     GLTextureRef* const ref = handle_cast<GLTextureRef*>(t->ref);
                     count = --(ref->count);
                     if (count == 0) {
                         destruct(t->ref, ref);
                     }
                 }
+                // 如果这是最后一个引用，销毁引用计数以及 GL 纹理名称本身
                 if (count == 0) {
-                    // if this was the last reference, we destroy the refcount as well as
-                    // the GL texture name itself.
                     gl.unbindTexture(t->gl.target, t->gl.id);
+                    // 如果附加了流，分离流
                     if (UTILS_UNLIKELY(t->hwStream)) {
                         detachStream(t);
                     }
+                    // 如果是外部纹理，销毁外部纹理对象
                     if (UTILS_UNLIKELY(t->externalTexture)) {
                         mPlatform.destroyExternalImageTexture(t->externalTexture);
                     } else {
+                        // 否则删除 OpenGL 纹理对象
                         glDeleteTextures(1, &t->gl.id);
                     }
                 } else {
-                    // The Handle<HwTexture> is always destroyed. For extra precaution we also
-                    // check that the GLTexture has a trivial destructor.
+                    // Handle<HwTexture> 总是被销毁。为了额外的预防措施，我们还
+                    // 检查 GLTexture 是否有平凡的析构函数
                     static_assert(std::is_trivially_destructible_v<GLTexture>);
                 }
             } else {
+                // 如果是渲染缓冲区
                 assert_invariant(t->gl.target == GL_RENDERBUFFER);
                 glDeleteRenderbuffers(1, &t->gl.id);
             }
+            // 删除 sidecar 渲染缓冲区（MSAA 相关）
             if (t->gl.sidecarRenderBufferMS) {
                 glDeleteRenderbuffers(1, &t->gl.sidecarRenderBufferMS);
             }
         } else {
+            // 导入纹理：只解绑，不删除（外部负责生命周期）
             gl.unbindTexture(t->gl.target, t->gl.id);
         }
         destruct(th, t);
     }
 }
 
+/**
+ * 销毁渲染目标
+ * 
+ * 销毁渲染目标对象并释放 Framebuffer 对象（FBO）。
+ * 
+ * @param rth 渲染目标句柄
+ * 
+ * 执行流程：
+ * 1. 如果 FBO 已绑定，解绑（避免删除已绑定的 FBO）
+ * 2. 处理驱动 bug（延迟 FBO 销毁）：
+ *    - 某些驱动在帧完成前删除 FBO 会导致问题
+ *    - 调度延迟销毁（在帧完成后删除）
+ * 3. 否则立即删除 FBO：
+ *    - 删除主 FBO（rt->gl.fbo）
+ *    - 删除读取 FBO（rt->gl.fbo_read，用于 MSAA resolve）
+ * 4. 销毁对象
+ * 
+ * 注意：
+ * - 某些驱动需要延迟 FBO 销毁（在帧完成后）
+ * - fbo_read 用于 MSAA resolve（EXT_multisampled_render_to_texture 模拟）
+ */
 void OpenGLDriver::destroyRenderTarget(Handle<HwRenderTarget> rth) {
     DEBUG_MARKER()
 
     if (rth) {
         auto& gl = mContext;
         GLRenderTarget const* rt = handle_cast<GLRenderTarget*>(rth);
+        // 如果 FBO 已绑定，先解绑（避免删除已绑定的 FBO）
         if (rt->gl.fbo) {
-            // first unbind this framebuffer if needed
             gl.unbindFramebuffer(GL_FRAMEBUFFER);
         }
         if (rt->gl.fbo_read) {
-            // first unbind this framebuffer if needed
             gl.unbindFramebuffer(GL_FRAMEBUFFER);
         }
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+        // 处理驱动 bug：某些驱动在帧完成前删除 FBO 会导致问题
         if (UTILS_UNLIKELY(gl.bugs.delay_fbo_destruction)) {
+            // 调度延迟销毁（在帧完成后删除）
             if (rt->gl.fbo) {
                 whenFrameComplete([fbo = rt->gl.fbo]() {
                     glDeleteFramebuffers(1, &fbo);
@@ -2087,6 +3372,7 @@ void OpenGLDriver::destroyRenderTarget(Handle<HwRenderTarget> rth) {
         } else
 #endif
         {
+            // 立即删除 FBO
             if (rt->gl.fbo) {
                 glDeleteFramebuffers(1, &rt->gl.fbo);
             }
@@ -2098,6 +3384,13 @@ void OpenGLDriver::destroyRenderTarget(Handle<HwRenderTarget> rth) {
     }
 }
 
+/**
+ * 销毁交换链
+ * 
+ * 销毁交换链对象并释放平台交换链。
+ * 
+ * @param sch 交换链句柄
+ */
 void OpenGLDriver::destroySwapChain(Handle<HwSwapChain> sch) {
     DEBUG_MARKER()
 
@@ -2108,13 +3401,29 @@ void OpenGLDriver::destroySwapChain(Handle<HwSwapChain> sch) {
     }
 }
 
+/**
+ * 销毁流
+ * 
+ * 销毁流对象并释放相关资源。
+ * 
+ * @param sh 流句柄
+ * 
+ * 执行流程：
+ * 1. 如果流仍附加到纹理，先分离（避免悬空指针）
+ * 2. 如果是 NATIVE 流，销毁平台流对象
+ * 3. 销毁句柄
+ * 
+ * 注意：
+ * - 只有 NATIVE 流有 Platform::Stream 关联
+ * - ACQUIRED 流没有平台对象
+ */
 void OpenGLDriver::destroyStream(Handle<HwStream> sh) {
     DEBUG_MARKER()
 
     if (sh) {
         GLStream const* s = handle_cast<GLStream*>(sh);
 
-        // if this stream is still attached to a texture, detach it first
+        // 如果流仍附加到纹理，先分离
         auto& texturesWithStreamsAttached = mTexturesWithStreamsAttached;
         auto const pos = std::find_if(
                 texturesWithStreamsAttached.begin(), texturesWithStreamsAttached.end(),
@@ -2126,16 +3435,23 @@ void OpenGLDriver::destroyStream(Handle<HwStream> sh) {
             detachStream(*pos);
         }
 
-        // and then destroy the stream. Only NATIVE streams have Platform::Stream associated.
+        // 然后销毁流。只有 NATIVE 流有 Platform::Stream 关联
         if (s->streamType == StreamType::NATIVE) {
             mPlatform.destroyStream(s->stream);
         }
 
-        // finally destroy the HwStream handle
+        // 最后销毁 HwStream 句柄
         destruct(sh, s);
     }
 }
 
+/**
+ * 销毁同步对象
+ * 
+ * 销毁同步对象并释放平台同步对象。
+ * 
+ * @param sh 同步对象句柄
+ */
 void OpenGLDriver::destroySync(Handle<HwSync> sh) {
     DEBUG_MARKER()
 
@@ -2146,6 +3462,13 @@ void OpenGLDriver::destroySync(Handle<HwSync> sh) {
     }
 }
 
+/**
+ * 销毁定时器查询
+ * 
+ * 销毁定时器查询对象并释放相关资源。
+ * 
+ * @param tqh 定时器查询句柄
+ */
 void OpenGLDriver::destroyTimerQuery(Handle<HwTimerQuery> tqh) {
     DEBUG_MARKER()
 
@@ -2156,6 +3479,13 @@ void OpenGLDriver::destroyTimerQuery(Handle<HwTimerQuery> tqh) {
     }
 }
 
+/**
+ * 销毁描述符集布局
+ * 
+ * 销毁描述符集布局对象。
+ * 
+ * @param dslh 描述符集布局句柄
+ */
 void OpenGLDriver::destroyDescriptorSetLayout(Handle<HwDescriptorSetLayout> dslh) {
     DEBUG_MARKER()
     if (dslh) {
@@ -2164,10 +3494,21 @@ void OpenGLDriver::destroyDescriptorSetLayout(Handle<HwDescriptorSetLayout> dslh
     }
 }
 
+/**
+ * 销毁描述符集
+ * 
+ * 销毁描述符集对象。
+ * 
+ * @param dsh 描述符集句柄
+ * 
+ * 执行流程：
+ * 1. 解绑描述符集（避免 use-after-free）
+ * 2. 销毁对象
+ */
 void OpenGLDriver::destroyDescriptorSet(Handle<HwDescriptorSet> dsh) {
     DEBUG_MARKER()
     if (dsh) {
-        // unbind the descriptor-set, to avoid use-after-free
+        // 解绑描述符集，避免 use-after-free
         for (auto& bound : mBoundDescriptorSets) {
             if (bound.dsh == dsh) {
                 bound = {};
@@ -2178,6 +3519,13 @@ void OpenGLDriver::destroyDescriptorSet(Handle<HwDescriptorSet> dsh) {
     }
 }
 
+/**
+ * 取消映射缓冲区
+ * 
+ * 取消内存映射缓冲区，释放映射并销毁对象。
+ * 
+ * @param mmbh 内存映射缓冲区句柄
+ */
 void OpenGLDriver::unmapBuffer(MemoryMappedBufferHandle mmbh) {
     DEBUG_MARKER()
     if (mmbh) {
@@ -2276,6 +3624,15 @@ void OpenGLDriver::updateStreams(DriverApi* driver) {
     }
 }
 
+/**
+ * 设置流尺寸
+ * 
+ * 设置外部流（如相机预览）的尺寸。
+ * 
+ * @param sh 流句柄
+ * @param width 流宽度
+ * @param height 流高度
+ */
 void OpenGLDriver::setStreamDimensions(Handle<HwStream> sh, uint32_t const width, uint32_t const height) {
     if (sh) {
         GLStream* s = handle_cast<GLStream*>(sh);
@@ -2284,6 +3641,14 @@ void OpenGLDriver::setStreamDimensions(Handle<HwStream> sh, uint32_t const width
     }
 }
 
+/**
+ * 获取流时间戳
+ * 
+ * 获取外部流（如相机预览）的当前帧时间戳。
+ * 
+ * @param sh 流句柄
+ * @return 时间戳（纳秒），如果句柄无效返回 0
+ */
 int64_t OpenGLDriver::getStreamTimestamp(Handle<HwStream> sh) {
     if (sh) {
         GLStream const* s = handle_cast<GLStream*>(sh);
@@ -2292,6 +3657,18 @@ int64_t OpenGLDriver::getStreamTimestamp(Handle<HwStream> sh) {
     return 0;
 }
 
+/**
+ * 获取流变换矩阵
+ * 
+ * 获取外部流（如相机预览）的变换矩阵，用于处理旋转、翻转等。
+ * 
+ * @param sh 流句柄
+ * @return 3x3 变换矩阵，如果句柄无效返回单位矩阵
+ * 
+ * 注意：
+ * - NATIVE 流：从平台获取变换矩阵（可能包含旋转、翻转等）
+ * - ACQUIRED 流：使用存储的变换矩阵
+ */
 mat3f OpenGLDriver::getStreamTransformMatrix(Handle<HwStream> sh) {
     if (sh) {
         GLStream const* s = handle_cast<GLStream*>(sh);
@@ -2304,20 +3681,46 @@ mat3f OpenGLDriver::getStreamTransformMatrix(Handle<HwStream> sh) {
     return mat3f();
 }
 
+/**
+ * 销毁栅栏
+ * 
+ * 销毁栅栏对象并释放相关资源。
+ * 
+ * @param fh 栅栏句柄
+ * 
+ * 注意：
+ * - 在另一个线程调用 fenceWait(fh) 期间调用此方法是无效的
+ * - 因此不需要通知等待者，应该没有等待者
+ */
 void OpenGLDriver::destroyFence(Handle<HwFence> fh) {
     if (fh) {
         GLFence const* const f = handle_cast<GLFence*>(fh);
+        // 如果平台支持栅栏或 ES 2.0，销毁平台栅栏
         if (mPlatform.canCreateFence() || mContext.isES2()) {
             mPlatform.destroyFence(f->fence);
         }
-        // note: it's invalid to call this during a fenceWait(fh) on another thread. For this
-        // reason there is no point signaling the waiters. There should be no waiters.
+        // 注意：在另一个线程调用 fenceWait(fh) 期间调用此方法是无效的
+        // 因此不需要通知等待者，应该没有等待者
         destruct(fh, f);
     }
 }
 
+/**
+ * 取消栅栏
+ * 
+ * 取消栅栏等待，将所有等待者唤醒并设置为错误状态。
+ * 
+ * @param fh 栅栏句柄（必须有效）
+ * 
+ * 执行流程：
+ * 1. 验证句柄有效
+ * 2. 获取栅栏状态
+ * 3. 加锁
+ * 4. 设置状态为 ERROR
+ * 5. 通知所有等待者
+ */
 void OpenGLDriver::fenceCancel(FenceHandle fh) {
-    // Even though this is a synchronous call, the fence handle must be (and stay) valid
+    // 即使这是同步调用，栅栏句柄必须（并保持）有效
     assert_invariant(fh);
     GLFence const* const f = handle_cast<GLFence*>(fh);
     assert_invariant(f->state);
@@ -2327,10 +3730,41 @@ void OpenGLDriver::fenceCancel(FenceHandle fh) {
     f->state->cond.notify_all();
 }
 
+/**
+ * 获取栅栏状态
+ * 
+ * 非阻塞地查询栅栏状态。
+ * 
+ * @param fh 栅栏句柄
+ * @return 栅栏状态（CONDITION_SATISFIED/TIMEOUT_EXPIRED/ERROR）
+ */
 FenceStatus OpenGLDriver::getFenceStatus(Handle<HwFence> fh) {
-    return fenceWait(fh, 0);
+    return fenceWait(fh, 0);  // 超时 0 = 非阻塞查询
 }
 
+/**
+ * 等待栅栏
+ * 
+ * 等待栅栏信号，直到条件满足或超时。
+ * 
+ * @param fh 栅栏句柄（必须有效）
+ * @param timeout 超时时间（纳秒），0 表示非阻塞查询
+ * @return 栅栏状态（CONDITION_SATISFIED/TIMEOUT_EXPIRED/ERROR）
+ * 
+ * 执行流程：
+ * 1. 验证句柄有效
+ * 2. 计算超时时间点
+ * 3. 如果平台支持栅栏或 ES 2.0：
+ *    - 等待平台栅栏创建（如果是异步创建）
+ *    - 调用平台 waitFence
+ * 4. 否则使用 OpenGL 栅栏：
+ *    - 等待状态改变
+ *    - 返回状态
+ * 
+ * 注意：
+ * - 平台栅栏可能异步创建，需要等待创建完成
+ * - ES 2.0 或平台不支持栅栏时返回 ERROR
+ */
 FenceStatus OpenGLDriver::fenceWait(FenceHandle fh, uint64_t const timeout) {
     // Even though this is a synchronous call, the fence handle must be (and stay) valid
     assert_invariant(fh);
@@ -2386,6 +3820,30 @@ FenceStatus OpenGLDriver::fenceWait(FenceHandle fh, uint64_t const timeout) {
 #endif
 }
 
+/**
+ * 获取平台同步对象
+ * 
+ * 获取 OpenGL 同步对象的平台句柄，并注册回调。
+ * 当 GPU 完成同步对象时，回调会被调用。
+ * 
+ * @param sh 同步对象句柄
+ * @param handler 回调处理器
+ * @param cb 回调函数
+ * @param userData 用户数据
+ * 
+ * 执行流程：
+ * 1. 验证句柄有效
+ * 2. 创建回调数据
+ * 3. 如果同步对象尚未创建（异步创建）：
+ *    - 将回调添加到转换回调列表
+ *    - 等待同步对象创建后调用
+ * 4. 如果同步对象已创建：
+ *    - 立即调度回调
+ * 
+ * 注意：
+ * - 同步对象可能异步创建（从 GLsync 转换为平台同步对象）
+ * - 回调在 GPU 完成同步对象时调用
+ */
 void OpenGLDriver::getPlatformSync(Handle<HwSync> sh, CallbackHandler* handler,
         Platform::SyncCallback const cb, void* userData) {
     if (!sh) {
@@ -2398,8 +3856,7 @@ void OpenGLDriver::getPlatformSync(Handle<HwSync> sh, CallbackHandler* handler,
     cbData->cb = cb;
     cbData->userData = userData;
 
-    // If we haven't already set the handle, toss the conversion callback in the
-    // back of the list.
+    // 如果同步对象尚未创建，将转换回调添加到列表末尾
     {
         std::lock_guard const guard(s->lock);
         if (s->sync == nullptr) {
@@ -2408,26 +3865,44 @@ void OpenGLDriver::getPlatformSync(Handle<HwSync> sh, CallbackHandler* handler,
         }
     }
 
-    // Otherwise, go ahead and schedule the callback now.
+    // 否则，立即调度回调
     cbData->sync = s->sync;
     scheduleCallback(cbData->handler, cbData.release(), syncCallbackWrapper);
 }
 
+/**
+ * 检查纹理格式是否支持
+ * 
+ * 检查指定的纹理格式是否在当前 OpenGL 上下文中支持。
+ * 
+ * @param format 纹理格式
+ * @return 如果支持返回 true，否则返回 false
+ * 
+ * 检查逻辑：
+ * 1. ETC2 压缩格式：检查 EXT_texture_compression_etc2 或 WEBGL_compressed_texture_etc
+ * 2. S3TC sRGB 压缩格式：检查 WEBGL/ES/GL 扩展
+ * 3. S3TC 压缩格式：检查 EXT_texture_compression_s3tc 或 WEBGL 扩展
+ * 4. RGTC 压缩格式：检查 EXT_texture_compression_rgtc
+ * 5. BPTC 压缩格式：检查 EXT_texture_compression_bptc
+ * 6. ASTC 压缩格式：检查 KHR_texture_compression_astc_hdr
+ * 7. ES 2.0：检查格式和类型是否有效
+ * 8. ES 3.0+/GL 4.1+：检查内部格式是否有效
+ */
 bool OpenGLDriver::isTextureFormatSupported(TextureFormat const format) {
     const auto& ext = mContext.ext;
     if (isETC2Compression(format)) {
         return ext.EXT_texture_compression_etc2 ||
-               ext.WEBGL_compressed_texture_etc; // WEBGL specific, apparently contains ETC2
+               ext.WEBGL_compressed_texture_etc; // WEBGL 特定，显然包含 ETC2
     }
     if (isS3TCSRGBCompression(format)) {
-        // see https://www.khronos.org/registry/OpenGL/extensions/EXT/EXT_texture_sRGB.txt
-        return  ext.WEBGL_compressed_texture_s3tc_srgb || // this is WEBGL specific
-                ext.EXT_texture_compression_s3tc_srgb || // this is ES specific
+        // 参见 https://www.khronos.org/registry/OpenGL/extensions/EXT/EXT_texture_sRGB.txt
+        return  ext.WEBGL_compressed_texture_s3tc_srgb || // WEBGL 特定
+                ext.EXT_texture_compression_s3tc_srgb || // ES 特定
                (ext.EXT_texture_compression_s3tc && ext.EXT_texture_sRGB);
     }
     if (isS3TCCompression(format)) {
-        return  ext.EXT_texture_compression_s3tc || // this is ES specific
-                ext.WEBGL_compressed_texture_s3tc; // this is WEBGL specific
+        return  ext.EXT_texture_compression_s3tc || // ES 特定
+                ext.WEBGL_compressed_texture_s3tc; // WEBGL 特定
     }
     if (isRGTCCompression(format)) {
         return  ext.EXT_texture_compression_rgtc;
@@ -2438,28 +3913,58 @@ bool OpenGLDriver::isTextureFormatSupported(TextureFormat const format) {
     if (isASTCCompression(format)) {
         return ext.KHR_texture_compression_astc_hdr;
     }
+    // ES 2.0：检查格式和类型是否有效
     if (mContext.isES2()) {
         return textureFormatToFormatAndType(format).first != GL_NONE;
     }
+    // ES 3.0+/GL 4.1+：检查内部格式是否有效
     return getInternalFormat(format) != 0;
 }
 
+/**
+ * 检查纹理 Swizzle 是否支持
+ * 
+ * 检查当前 OpenGL 上下文是否支持纹理通道重映射（Swizzle）。
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ * 
+ * 支持情况：
+ * - WebGL2：不支持（规范限制）
+ * - OpenGL ES 2.0：不支持
+ * - OpenGL ES 3.0+：支持
+ * - 桌面 OpenGL：支持
+ */
 bool OpenGLDriver::isTextureSwizzleSupported() {
 #if defined(__EMSCRIPTEN__)
-    // WebGL2 doesn't support texture swizzle
-    // see https://registry.khronos.org/webgl/specs/latest/2.0/#5.19
+    // WebGL2 不支持纹理 swizzle
+    // 参见 https://registry.khronos.org/webgl/specs/latest/2.0/#5.19
     return false;
 #elif defined(BACKEND_OPENGL_VERSION_GLES)
-    return !mContext.isES2();
+    return !mContext.isES2();  // ES 3.0+ 支持
 #else
-    return true;
+    return true;  // 桌面 OpenGL 支持
 #endif
 }
 
+/**
+ * 检查纹理格式是否支持 Mipmap
+ * 
+ * 检查指定的纹理格式是否支持生成 Mipmap。
+ * 
+ * @param format 纹理格式
+ * @return 如果支持返回 true，否则返回 false
+ * 
+ * OpenGL 规范规定，GenerateMipmap 会返回 INVALID_OPERATION，除非
+ * 内部格式既是颜色可渲染的，又是纹理可过滤的。
+ * 
+ * 深度/模板格式不支持 Mipmap（不是颜色可渲染的）。
+ * 其他格式需要检查是否是渲染目标格式（颜色可渲染的）。
+ */
 bool OpenGLDriver::isTextureFormatMipmappable(TextureFormat const format) {
-    // The OpenGL spec for GenerateMipmap stipulates that it returns INVALID_OPERATION unless
-    // the sized internal format is both color-renderable and texture-filterable.
+    // OpenGL 规范规定，GenerateMipmap 会返回 INVALID_OPERATION，除非
+    // 内部格式既是颜色可渲染的，又是纹理可过滤的
     switch (format) {
+        // 深度/模板格式不支持 Mipmap（不是颜色可渲染的）
         case TextureFormat::DEPTH16:
         case TextureFormat::DEPTH24:
         case TextureFormat::DEPTH32F:
@@ -2467,10 +3972,32 @@ bool OpenGLDriver::isTextureFormatMipmappable(TextureFormat const format) {
         case TextureFormat::DEPTH32F_STENCIL8:
             return false;
         default:
+            // 其他格式需要检查是否是渲染目标格式（颜色可渲染的）
             return isRenderTargetFormatSupported(format);
     }
 }
 
+/**
+ * 检查渲染目标格式是否支持
+ * 
+ * 检查指定的纹理格式是否可以作为渲染目标（Framebuffer 附件）。
+ * 
+ * @param format 纹理格式
+ * @return 如果支持返回 true，否则返回 false
+ * 
+ * 支持的格式（根据 http://docs.gl/es3/glRenderbufferStorage）：
+ * - 核心格式：R8/RG8/RGB565/RGBA8/...（标准格式）
+ * - 三分量 sRGB：SRGB8（需要 GL 4.5+）
+ * - 半精度浮点：R16F/RG16F/RGBA16F（需要扩展）
+ * - RGB16F：需要 EXT_color_buffer_half_float（WebGL 不支持）
+ * - 浮点格式：R32F/RG32F/RGBA32F（需要 EXT_color_buffer_float）
+ * - RGB_11_11_10：需要 EXT_color_buffer_float 或 APPLE_color_buffer_packed_float
+ * 
+ * 注意：
+ * - 桌面 OpenGL 可能支持更多格式，但需要查询 GL_INTERNALFORMAT_SUPPORTED
+ * - OpenGL ES 不支持 GL_INTERNALFORMAT_SUPPORTED
+ * - ES 2.0 需要检查格式和类型是否有效
+ */
 bool OpenGLDriver::isRenderTargetFormatSupported(TextureFormat const format) {
     // Supported formats per http://docs.gl/es3/glRenderbufferStorage, note that desktop OpenGL may
     // support more formats, but it requires querying GL_INTERNALFORMAT_SUPPORTED which is not
@@ -2550,45 +4077,118 @@ bool OpenGLDriver::isRenderTargetFormatSupported(TextureFormat const format) {
     }
 }
 
+/**
+ * 检查是否支持帧缓冲区获取
+ * 
+ * 检查是否支持 EXT_shader_framebuffer_fetch 扩展。
+ * 此扩展允许片段着色器读取当前片段的帧缓冲区值。
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ */
 bool OpenGLDriver::isFrameBufferFetchSupported() {
     auto const& gl = mContext;
     return gl.ext.EXT_shader_framebuffer_fetch;
 }
 
+/**
+ * 检查是否支持多重采样帧缓冲区获取
+ * 
+ * 检查是否支持多重采样帧缓冲区获取。
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ * 
+ * 注意：
+ * - 当前实现与 isFrameBufferFetchSupported 相同
+ */
 bool OpenGLDriver::isFrameBufferFetchMultiSampleSupported() {
     return isFrameBufferFetchSupported();
 }
 
+/**
+ * 检查是否支持帧时间查询
+ * 
+ * 检查是否支持 GPU 帧时间查询。
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ */
 bool OpenGLDriver::isFrameTimeSupported() {
     return TimerQueryFactory::isGpuTimeSupported();
 }
 
+/**
+ * 检查是否支持自动深度解析
+ * 
+ * 检查是否支持自动深度/模板解析（MSAA resolve）。
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ * 
+ * 注意：
+ * - TODO: 这应该只在 GLES 3.1+ 和 EXT_multisampled_render_to_texture2 时返回 true
+ * - 当前总是返回 true
+ */
 bool OpenGLDriver::isAutoDepthResolveSupported() {
-    // TODO: this should return true only for GLES3.1+ and EXT_multisampled_render_to_texture2
+    // TODO: 这应该只在 GLES 3.1+ 和 EXT_multisampled_render_to_texture2 时返回 true
     return true;
 }
 
+/**
+ * 检查是否支持 sRGB 交换链
+ * 
+ * 检查是否支持 sRGB 交换链。
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ * 
+ * 注意：
+ * - ES 2.0 后端（即功能级别 0），我们总是向客户端假装 sRGB 交换链可用
+ * - 如果实际有此功能，将使用它，否则在着色器中模拟
+ */
 bool OpenGLDriver::isSRGBSwapChainSupported() {
     if (UTILS_UNLIKELY(mContext.isES2())) {
-        // On ES2 backend (i.e. feature level 0), we always pretend to the client that sRGB
-        // SwapChain are available. If we actually have that feature, it'll be used, otherwise
-        // we emulate it in the shaders.
+        // 在 ES 2.0 后端（即功能级别 0），我们总是向客户端假装 sRGB 交换链可用
+        // 如果实际有此功能，将使用它，否则在着色器中模拟
         return true;
     }
     return mPlatform.isSRGBSwapChainSupported();
 }
 
+/**
+ * 检查是否支持 MSAA 交换链
+ * 
+ * 检查是否支持指定采样数的 MSAA 交换链。
+ * 
+ * @param samples 采样数
+ * @return 如果支持返回 true，否则返回 false
+ */
 bool OpenGLDriver::isMSAASwapChainSupported(uint32_t const samples) {
     return mPlatform.isMSAASwapChainSupported(samples);
 }
 
+/**
+ * 检查是否支持保护内容
+ * 
+ * 检查是否支持保护上下文（用于 DRM 内容保护）。
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ */
 bool OpenGLDriver::isProtectedContentSupported() {
     return mPlatform.isProtectedContextSupported();
 }
 
+/**
+ * 检查是否支持立体渲染
+ * 
+ * 检查是否支持立体渲染（Instanced 或 Multiview）。
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ * 
+ * 支持情况：
+ * - Instanced 立体：需要实例化和 EXT_clip_cull_distance
+ * - Multiview 立体：需要 ES 3.0 和 OVR_multiview2
+ * - ES 2.0：不支持
+ */
 bool OpenGLDriver::isStereoSupported() {
-    // Instanced-stereo requires instancing and EXT_clip_cull_distance.
-    // Multiview-stereo requires ES 3.0 and OVR_multiview2.
+    // Instanced 立体需要实例化和 EXT_clip_cull_distance
+    // Multiview 立体需要 ES 3.0 和 OVR_multiview2
     if (UTILS_UNLIKELY(mContext.isES2())) {
         return false;
     }
@@ -2603,36 +4203,95 @@ bool OpenGLDriver::isStereoSupported() {
     return false;
 }
 
+/**
+ * 检查是否支持并行着色器编译
+ * 
+ * 检查是否支持并行着色器编译。
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ * 
+ * 注意：
+ * - 即使在平台不支持的情况下，我们也通过将着色器编译成本分摊到 N 帧来模拟并行编译
+ * - 如果禁用了分摊编译，返回实际的平台支持情况
+ */
 bool OpenGLDriver::isParallelShaderCompileSupported() {
-    // We emulate parallel compilation even on platforms that don't support it by amortizing the
-    // cost of shader compilation over N frames. It would be nice to move this behavior out of the
-    // OpenGL into a generic system usable by all backends. However, the behavior of async shader
-    // compilation is closely coupled to the internals of ShaderCompilerService, which is
-    // GL-specific. It would also be nice to inform the engine that they're working with this fake
-    // amortized system, but this fact will become implicit when we generalize this feature for all
-    // backends.
+    // 即使在平台不支持的情况下，我们也通过将着色器编译成本分摊到 N 帧来模拟并行编译
+    // 如果禁用了分摊编译，返回实际的平台支持情况
     if (mDriverConfig.disableAmortizedShaderCompile) {
         return mShaderCompilerService.isParallelShaderCompileSupported();
     }
     return true;
 }
 
+/**
+ * 检查是否支持深度/模板解析
+ * 
+ * 检查是否支持深度/模板缓冲区的 MSAA resolve。
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ * 
+ * 注意：
+ * - OpenGL 后端总是返回 true（支持）
+ */
 bool OpenGLDriver::isDepthStencilResolveSupported() {
     return true;
 }
 
+/**
+ * 检查是否支持深度/模板 Blit
+ * 
+ * 检查是否支持深度/模板缓冲区的 Blit 操作。
+ * 
+ * @param 未使用的格式参数（保持接口一致性）
+ * @return 如果支持返回 true，否则返回 false
+ * 
+ * 注意：
+ * - OpenGL 后端总是返回 true（支持）
+ */
 bool OpenGLDriver::isDepthStencilBlitSupported(TextureFormat) {
     return true;
 }
 
+/**
+ * 检查是否支持保护纹理
+ * 
+ * 检查是否支持 EXT_protected_textures 扩展（用于 DRM 内容保护）。
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ */
 bool OpenGLDriver::isProtectedTexturesSupported() {
     return getContext().ext.EXT_protected_textures;
 }
 
+/**
+ * 检查是否支持深度裁剪
+ * 
+ * 检查是否支持 EXT_depth_clamp 扩展。
+ * 深度裁剪将深度值限制在 [0, 1] 范围内。
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ */
 bool OpenGLDriver::isDepthClampSupported() {
     return getContext().ext.EXT_depth_clamp;
 }
 
+/**
+ * 检查是否需要工作区
+ * 
+ * 检查是否需要特定的驱动工作区（bug 修复）。
+ * 
+ * @param workaround 工作区类型
+ * @return 如果需要返回 true，否则返回 false
+ * 
+ * 支持的工作区：
+ * - SPLIT_EASU：分割 EASU（某些驱动需要）
+ * - ALLOW_READ_ONLY_ANCILLARY_FEEDBACK_LOOP：允许只读辅助反馈循环
+ * - ADRENO_UNIFORM_ARRAY_CRASH：Adreno uniform 数组崩溃修复
+ * - DISABLE_BLIT_INTO_TEXTURE_ARRAY：禁用 Blit 到纹理数组
+ * - POWER_VR_SHADER_WORKAROUNDS：PowerVR 着色器工作区
+ * - DISABLE_DEPTH_PRECACHE_FOR_DEFAULT_MATERIAL：禁用默认材质的深度预缓存
+ * - EMULATE_SRGB_SWAPCHAIN：模拟 sRGB 交换链（ES 2.0）
+ */
 bool OpenGLDriver::isWorkaroundNeeded(Workaround const workaround) {
     switch (workaround) {
         case Workaround::SPLIT_EASU:
@@ -2655,26 +4314,69 @@ bool OpenGLDriver::isWorkaroundNeeded(Workaround const workaround) {
     return false;
 }
 
+/**
+ * 获取功能级别
+ * 
+ * 返回当前 OpenGL 上下文的功能级别。
+ * 
+ * @return FeatureLevel 枚举值
+ */
 FeatureLevel OpenGLDriver::getFeatureLevel() {
     return mContext.getFeatureLevel();
 }
 
+/**
+ * 获取裁剪空间参数
+ * 
+ * 返回裁剪空间的参数，用于深度值的转换。
+ * 
+ * @return float2，包含缩放和偏移参数
+ *         - 如果支持 EXT_clip_control：
+ *           * 缩放 = 1.0，偏移 = 0.0（虚拟和物理裁剪空间的 z 坐标都在 [-w, 0]）
+ *         - 否则：
+ *           * 缩放 = 2.0，偏移 = -1.0（虚拟裁剪空间的 z 坐标在 [-w, 0]，物理在 [-w, w]）
+ * 
+ * 注意：
+ * - 用于将 Filament 的虚拟裁剪空间转换为 OpenGL 的物理裁剪空间
+ */
 float2 OpenGLDriver::getClipSpaceParams() {
     return mContext.ext.EXT_clip_control ?
-           // z-coordinate of virtual and physical clip-space is in [-w, 0]
+           // 虚拟和物理裁剪空间的 z 坐标都在 [-w, 0]
            float2{ 1.0f, 0.0f } :
-           // z-coordinate of virtual clip-space is in [-w,0], physical is in [-w, w]
+           // 虚拟裁剪空间的 z 坐标在 [-w, 0]，物理在 [-w, w]
            float2{ 2.0f, -1.0f };
 }
 
+/**
+ * 获取最大绘制缓冲区数量
+ * 
+ * 返回支持的最大绘制缓冲区数量（MRT）。
+ * 
+ * @return 最大绘制缓冲区数量（最多 MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT）
+ */
 uint8_t OpenGLDriver::getMaxDrawBuffers() {
     return std::min(MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT, uint8_t(mContext.gets.max_draw_buffers));
 }
 
+/**
+ * 获取最大 Uniform 缓冲区大小
+ * 
+ * 返回支持的最大 Uniform 缓冲区大小（字节）。
+ * 
+ * @return 最大 Uniform 缓冲区大小（字节）
+ */
 size_t OpenGLDriver::getMaxUniformBufferSize() {
     return mContext.gets.max_uniform_block_size;
 }
 
+/**
+ * 获取最大纹理尺寸
+ * 
+ * 返回指定采样器类型支持的最大纹理尺寸。
+ * 
+ * @param target 采样器类型（2D/3D/Cube/Array/External）
+ * @return 最大纹理尺寸（像素），如果类型无效返回 0
+ */
 size_t OpenGLDriver::getMaxTextureSize(SamplerType const target) {
     switch (target) {
         case SamplerType::SAMPLER_2D:
@@ -2691,24 +4393,62 @@ size_t OpenGLDriver::getMaxTextureSize(SamplerType const target) {
     return 0;
 }
 
+/**
+ * 获取最大数组纹理层数
+ * 
+ * 返回支持的最大数组纹理层数。
+ * 
+ * @return 最大数组纹理层数
+ */
 size_t OpenGLDriver::getMaxArrayTextureLayers() {
     return mContext.gets.max_array_texture_layers;
 }
 
+/**
+ * 获取 Uniform 缓冲区偏移对齐
+ * 
+ * 返回 Uniform 缓冲区偏移的对齐要求（字节）。
+ * 
+ * @return Uniform 缓冲区偏移对齐（字节）
+ * 
+ * 注意：
+ * - 用于确保 Uniform 缓冲区偏移满足驱动要求
+ * - 通常为 256 字节对齐
+ */
 size_t OpenGLDriver::getUniformBufferOffsetAlignment() {
     return mContext.gets.uniform_buffer_offset_alignment;
 }
 
 // ------------------------------------------------------------------------------------------------
-// Swap chains
+// 交换链
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 提交交换链
+ * 
+ * 提交当前帧到交换链，交换前后缓冲区并呈现到屏幕。
+ * 
+ * @param sch 交换链句柄
+ * 
+ * 执行流程：
+ * 1. 通过平台接口提交交换链（交换缓冲区）
+ * 2. 如果有帧调度回调，调度回调（在渲染线程执行）
+ * 3. 如果有帧完成操作，调度在 GPU 完成时执行
+ * 
+ * 注意：
+ * - 此方法在渲染线程调用
+ * - 提交后，后缓冲区变为前缓冲区，前缓冲区变为后缓冲区
+ * - 帧调度回调用于通知帧已调度到显示队列
+ * - 帧完成操作在 GPU 完成所有命令后执行
+ */
 void OpenGLDriver::commit(Handle<HwSwapChain> sch) {
     DEBUG_MARKER()
 
     GLSwapChain* sc = handle_cast<GLSwapChain*>(sch);
+    // 通过平台接口提交交换链（交换缓冲区）
     mPlatform.commit(sc->swapChain);
 
+    // 如果有帧调度回调，调度回调
     auto& fs = sc->frameScheduled;
     if (fs.callback) {
         scheduleCallback(fs.handler, [callback = fs.callback]() {
@@ -2717,6 +4457,7 @@ void OpenGLDriver::commit(Handle<HwSwapChain> sch) {
     }
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+    // 如果有帧完成操作，调度在 GPU 完成时执行
     if (UTILS_UNLIKELY(!mFrameCompleteOps.empty())) {
         whenGpuCommandsComplete([ops = std::move(mFrameCompleteOps)]() {
             for (auto&& op: ops) {
@@ -2727,39 +4468,103 @@ void OpenGLDriver::commit(Handle<HwSwapChain> sch) {
 #endif
 }
 
+/**
+ * 检查是否支持合成器时序
+ * 
+ * 检查平台是否支持合成器时序查询。
+ * 
+ * @return 如果支持返回 true，否则返回 false
+ * 
+ * 注意：
+ * - 这是同步调用
+ * - 合成器时序用于测量帧在显示管道中的时间
+ */
 bool OpenGLDriver::isCompositorTimingSupported() {
-    // this is a synchronous call
+    // 这是同步调用
     return mPlatform.isCompositorTimingSupported();
 }
 
+/**
+ * 查询合成器时序
+ * 
+ * 查询交换链的合成器时序信息。
+ * 
+ * @param swapChain 交换链句柄
+ * @param outCompositorTiming 输出参数，返回合成器时序
+ * @return 如果成功返回 true，否则返回 false
+ * 
+ * 注意：
+ * - 这是同步调用
+ * - 如果句柄无效或未初始化，返回 false
+ */
 bool OpenGLDriver::queryCompositorTiming(SwapChainHandle swapChain,
         CompositorTiming* outCompositorTiming) {
-    // this is a synchronous call
+    // 这是同步调用
     if (!swapChain) {
         return false;
     }
     GLSwapChain const* const sc = handle_cast<GLSwapChain*>(swapChain);
     if (!sc) {
-        // can happen if the SwapChainHandle is not initialized yet (still in CommandStream)
+        // 如果 SwapChainHandle 尚未初始化（仍在 CommandStream 中），可能发生
         return false;
     }
     return mPlatform.queryCompositorTiming(sc->swapChain, outCompositorTiming);
 }
 
+/**
+ * 查询帧时间戳
+ * 
+ * 查询指定帧的时间戳信息。
+ * 
+ * @param swapChain 交换链句柄
+ * @param frameId 帧 ID
+ * @param outFrameTimestamps 输出参数，返回帧时间戳
+ * @return 如果成功返回 true，否则返回 false
+ * 
+ * 注意：
+ * - 这是同步调用
+ * - 如果句柄无效或未初始化，返回 false
+ * - 帧时间戳用于性能分析
+ */
 bool OpenGLDriver::queryFrameTimestamps(SwapChainHandle swapChain, uint64_t const frameId,
         FrameTimestamps* outFrameTimestamps) {
-    // this is a synchronous call
+    // 这是同步调用
     if (!swapChain) {
         return false;
     }
     GLSwapChain const* const sc = handle_cast<GLSwapChain*>(swapChain);
     if (!sc) {
-        // can happen if the SwapChainHandle is not initialized yet (still in CommandStream)
+        // 如果 SwapChainHandle 尚未初始化（仍在 CommandStream 中），可能发生
         return false;
     }
     return mPlatform.queryFrameTimestamps(sc->swapChain, frameId, outFrameTimestamps);
 }
 
+/**
+ * 使交换链成为当前上下文
+ * 
+ * 将指定的交换链设置为当前 OpenGL 上下文。
+ * 用于上下文切换（如从默认上下文切换到保护上下文）。
+ * 
+ * @param schDraw 绘制交换链句柄
+ * @param schRead 读取交换链句柄（可选）
+ * 
+ * 执行流程：
+ * 1. 上下文切换前回调：
+ *    - 分离所有 NATIVE 流（上下文切换会删除纹理 ID）
+ *    - 解绑所有 OpenGL 对象（避免上下文切换问题）
+ * 2. 上下文切换后回调：
+ *    - 重新附加所有 NATIVE 流（生成新纹理 ID）
+ *    - 强制所有绑定的描述符集失效（需要重新绑定）
+ *    - 同步状态和缓存（上下文切换后状态可能改变）
+ * 3. 保存当前绘制交换链
+ * 4. 重置视口和裁剪区域（上下文切换后可能改变）
+ * 
+ * 注意：
+ * - 上下文切换会删除所有 OpenGL 对象名称（纹理、缓冲区等）
+ * - 需要重新创建和绑定所有资源
+ * - 视口和裁剪区域在上下文切换后可能被重置
+ */
 void OpenGLDriver::makeCurrent(Handle<HwSwapChain> schDraw, Handle<HwSwapChain> schRead) {
     DEBUG_MARKER()
 
@@ -2767,16 +4572,20 @@ void OpenGLDriver::makeCurrent(Handle<HwSwapChain> schDraw, Handle<HwSwapChain> 
     GLSwapChain const* scRead = handle_cast<GLSwapChain*>(schRead);
 
     mPlatform.makeCurrent(scDraw->swapChain, scRead->swapChain,
+            // 上下文切换前回调
             [this]() {
+                // 分离所有 NATIVE 流（上下文切换会删除纹理 ID）
                 for (auto const t: mTexturesWithStreamsAttached) {
                     if (t->hwStream->streamType == StreamType::NATIVE) {
                         mPlatform.detach(t->hwStream->stream);
                     }
                 }
-                // OpenGL context is about to change, unbind everything
+                // OpenGL 上下文即将改变，解绑所有内容
                 mContext.unbindEverything();
             },
+            // 上下文切换后回调
             [this](size_t const index) {
+                // 重新附加所有 NATIVE 流（生成新纹理 ID）
                 for (auto const t: mTexturesWithStreamsAttached) {
                     if (t->hwStream->streamType == StreamType::NATIVE) {
                         if (t->externalTexture) {
@@ -2790,30 +4599,49 @@ void OpenGLDriver::makeCurrent(Handle<HwSwapChain> schDraw, Handle<HwSwapChain> 
                     }
                 }
 
-                // force invalidation of all bound descriptor sets
+                // 强制所有绑定的描述符集失效（需要重新绑定）
                 decltype(mInvalidDescriptorSetBindings) changed;
                 changed.setValue((1 << MAX_DESCRIPTOR_SET_COUNT) - 1);
                 mInvalidDescriptorSetBindings |= changed;
 
-                // OpenGL context has changed, resynchronize the state with the cache
+                // OpenGL 上下文已改变，重新同步状态和缓存
                 mContext.synchronizeStateAndCache(index);
                 DLOG(INFO) << "*** OpenGL context change : " << (index ? "protected" : "default");
             });
 
     mCurrentDrawSwapChain = scDraw;
 
-    // From the GL spec for glViewport and glScissor:
-    // When a GL context is first attached to a window, width and height are set to the
-    // dimensions of that window.
-    // So basically, our viewport/scissor can be reset to "something" here.
+    // 根据 GL 规范，glViewport 和 glScissor：
+    // 当 GL 上下文首次附加到窗口时，宽度和高度设置为该窗口的尺寸
+    // 所以基本上，我们的 viewport/scissor 可能在这里被重置为"某些值"
     mContext.state.window.viewport = {};
     mContext.state.window.scissor = {};
 }
 
 // ------------------------------------------------------------------------------------------------
-// Updating driver objects
+// 更新驱动对象
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 设置顶点缓冲区对象
+ * 
+ * 将缓冲区对象设置到顶点缓冲区的指定槽位。
+ * 
+ * @param vbh 顶点缓冲区句柄
+ * @param index 槽位索引（0, 1, 2, ...）
+ * @param boh 缓冲区对象句柄
+ * 
+ * 执行流程：
+ * 1. 验证缓冲区对象绑定类型是 GL_ARRAY_BUFFER
+ * 2. 如果指定的 VBO 句柄与槽位中的不同：
+ *    - 更新槽位
+ *    - 增加循环版本号（用于 VAO 缓存失效）
+ * 3. 依赖的 VAO 使用版本号来检测何时需要更新
+ * 
+ * 性能优化：
+ * - 使用版本号避免不必要的 VAO 更新
+ * - 版本号是循环的（避免溢出）
+ */
 void OpenGLDriver::setVertexBufferObject(Handle<HwVertexBuffer> vbh,
         uint32_t const index, Handle<HwBufferObject> boh) {
    DEBUG_MARKER()
@@ -2823,20 +4651,39 @@ void OpenGLDriver::setVertexBufferObject(Handle<HwVertexBuffer> vbh,
 
     assert_invariant(bo->gl.binding == GL_ARRAY_BUFFER);
 
-    // If the specified VBO handle is different from what's already in the slot, then update the
-    // slot and bump the cyclical version number. Dependent VAOs use the version number to detect
-    // when they should be updated.
+    // 如果指定的 VBO 句柄与槽位中的不同，更新槽位并增加循环版本号
+    // 依赖的 VAO 使用版本号来检测何时需要更新
     if (vb->gl.buffers[index] != bo->gl.id) {
         vb->gl.buffers[index] = bo->gl.id;
-        static constexpr uint32_t kMaxVersion =
+        static constexpr uint32_t kMaxVersion = 
                 std::numeric_limits<decltype(vb->bufferObjectsVersion)>::max();
         const uint32_t version = vb->bufferObjectsVersion;
-        vb->bufferObjectsVersion = (version + 1) % kMaxVersion;
+        vb->bufferObjectsVersion = (version + 1) % kMaxVersion;  // 循环版本号
     }
 
     CHECK_GL_ERROR()
 }
 
+/**
+ * 更新索引缓冲区
+ * 
+ * 更新索引缓冲区的数据。
+ * 
+ * @param ibh 索引缓冲区句柄
+ * @param p 缓冲区描述符（包含数据和大小）
+ * @param byteOffset 更新偏移（字节）
+ * 
+ * 执行流程：
+ * 1. 验证元素大小（必须是 2 或 4 字节）
+ * 2. 解绑 VAO（避免影响）
+ * 3. 绑定索引缓冲区
+ * 4. 使用 glBufferSubData 更新数据
+ * 5. 调度销毁缓冲区描述符
+ * 
+ * 注意：
+ * - 数据更新是同步的（可能阻塞）
+ * - 使用 glBufferSubData 进行部分更新
+ */
 void OpenGLDriver::updateIndexBuffer(
         Handle<HwIndexBuffer> ibh, BufferDescriptor&& p, uint32_t const byteOffset) {
     DEBUG_MARKER()
@@ -2845,8 +4692,10 @@ void OpenGLDriver::updateIndexBuffer(
     GLIndexBuffer const* ib = handle_cast<GLIndexBuffer *>(ibh);
     assert_invariant(ib->elementSize == 2 || ib->elementSize == 4);
 
+    // 解绑 VAO（避免影响）
     gl.bindVertexArray(nullptr);
     gl.bindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib->gl.buffer);
+    // 更新索引缓冲区数据
     glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, byteOffset, GLsizeiptr(p.size), p.buffer);
 
     scheduleDestroy(std::move(p));
@@ -2854,6 +4703,34 @@ void OpenGLDriver::updateIndexBuffer(
     CHECK_GL_ERROR()
 }
 
+/**
+ * 更新缓冲区对象
+ * 
+ * 更新缓冲区对象的数据。
+ * 
+ * @param boh 缓冲区对象句柄
+ * @param bd 缓冲区描述符（包含数据和大小）
+ * @param byteOffset 更新偏移（字节）
+ * 
+ * 执行流程：
+ * 1. 验证更新范围有效（offset + size <= byteCount）
+ * 2. 如果是顶点缓冲区，解绑 VAO（避免影响）
+ * 3. ES 2.0 特殊处理（uniform 缓冲区使用系统内存）：
+ *    - 直接复制到系统内存
+ *    - 增加 age 计数器
+ * 4. 其他情况：
+ *    - 绑定缓冲区
+ *    - 如果更新整个缓冲区（offset=0, size=byteCount）：
+ *      * 使用 glBufferData（通常更快）
+ *    - 否则：
+ *      * 使用 glBufferSubData（部分更新）
+ * 5. 调度销毁缓冲区描述符
+ * 
+ * 性能优化：
+ * - 更新整个缓冲区时使用 glBufferData（通常更快）
+ * - 部分更新时使用 glBufferSubData
+ * - 注意：glBufferSubData 在同一帧多次调用时可能效率低下
+ */
 void OpenGLDriver::updateBufferObject(
         Handle<HwBufferObject> boh, BufferDescriptor&& bd, uint32_t const byteOffset) {
     DEBUG_MARKER()
@@ -2863,23 +4740,27 @@ void OpenGLDriver::updateBufferObject(
 
     assert_invariant(bd.size + byteOffset <= bo->byteCount);
 
+    // 如果是顶点缓冲区，解绑 VAO（避免影响）
     if (bo->gl.binding == GL_ARRAY_BUFFER) {
         gl.bindVertexArray(nullptr);
     }
 
+    // ES 2.0 特殊处理：uniform 缓冲区使用系统内存
     if (UTILS_UNLIKELY(bo->bindingType == BufferObjectBinding::UNIFORM && gl.isES2())) {
         assert_invariant(bo->gl.buffer);
+        // 直接复制到系统内存
         memcpy(static_cast<uint8_t*>(bo->gl.buffer) + byteOffset, bd.buffer, bd.size);
-        bo->age++;
+        bo->age++;  // 增加 age 计数器
     } else {
+        // 标准 OpenGL 缓冲区更新
         assert_invariant(bo->gl.id);
         gl.bindBuffer(bo->gl.binding, bo->gl.id);
         if (byteOffset == 0 && bd.size == bo->byteCount) {
-            // it looks like it's generally faster (or not worse) to use glBufferData()
+            // 看起来使用 glBufferData() 通常更快（或不更差）
             glBufferData(bo->gl.binding, GLsizeiptr(bd.size), bd.buffer, getBufferUsage(bo->usage));
         } else {
-            // glBufferSubData() could be catastrophically inefficient if several are
-            // issued during the same frame. Currently, we're not doing that though.
+            // glBufferSubData() 在同一帧多次调用时可能效率低下
+            // 目前我们没有这样做
             glBufferSubData(bo->gl.binding, byteOffset, GLsizeiptr(bd.size), bd.buffer);
         }
     }
@@ -2889,16 +4770,48 @@ void OpenGLDriver::updateBufferObject(
     CHECK_GL_ERROR()
 }
 
+/**
+ * 异步更新缓冲区对象
+ * 
+ * 使用内存映射异步更新缓冲区对象的数据（不阻塞 CPU）。
+ * 
+ * @param boh 缓冲区对象句柄
+ * @param bd 缓冲区描述符（包含数据和大小）
+ * @param byteOffset 更新偏移（字节）
+ * 
+ * 执行流程：
+ * 1. ES 2.0 或不支持映射：回退到 updateBufferObject（同步）
+ * 2. 如果不支持映射：回退到 updateBufferObject
+ * 3. 如果不是 uniform 缓冲区：回退到 updateBufferObject（TODO: 支持所有类型）
+ * 4. 如果是 uniform 缓冲区：
+ *    - 绑定缓冲区
+ *    - 映射缓冲区范围（GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_RANGE_BIT | GL_MAP_UNSYNCHRONIZED_BIT）
+ *    - 复制数据到映射的内存
+ *    - 取消映射（如果失败，重试）
+ *    - 如果映射失败，回退到 glBufferSubData
+ * 
+ * 性能优化：
+ * - 使用 GL_MAP_UNSYNCHRONIZED_BIT 避免 CPU-GPU 同步（不阻塞）
+ * - 使用 GL_MAP_INVALIDATE_RANGE_BIT 允许驱动优化（丢弃旧数据）
+ * - 映射失败时回退到同步更新
+ * 
+ * 注意：
+ * - 当前只支持 uniform 缓冲区的异步更新
+ * - 根据规范，UnmapBuffer 在极少数情况下可能返回 FALSE（如屏幕模式改变）
+ * - 这不是 GL 错误，可以通过重试处理
+ */
 void OpenGLDriver::updateBufferObjectUnsynchronized(
         Handle<HwBufferObject> boh, BufferDescriptor&& bd, uint32_t const byteOffset) {
     DEBUG_MARKER()
 
+    // ES 2.0 不支持映射，回退到同步更新
     if (UTILS_UNLIKELY(mContext.isES2())) {
         updateBufferObject(boh, std::move(bd), byteOffset);
         return;
     }
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+    // 如果不支持映射，回退到同步更新
     if constexpr (!HAS_MAPBUFFERS) {
         updateBufferObject(boh, std::move(bd), byteOffset);
     } else {
@@ -2907,27 +4820,31 @@ void OpenGLDriver::updateBufferObjectUnsynchronized(
         assert_invariant(bo->gl.id);
         assert_invariant(bd.size + byteOffset <= bo->byteCount);
 
+        // 如果不是 uniform 缓冲区，回退到同步更新
         if (bo->gl.binding != GL_UNIFORM_BUFFER) {
-            // TODO: use updateBuffer() for all types of buffer? Make sure GL supports that.
+            // TODO: 对所有类型的缓冲区使用 updateBuffer？确保 GL 支持
             updateBufferObject(boh, std::move(bd), byteOffset);
         } else {
+            // uniform 缓冲区：使用内存映射异步更新
             auto& gl = mContext;
             gl.bindBuffer(bo->gl.binding, bo->gl.id);
 retry:
+            // 映射缓冲区范围（不阻塞，允许驱动优化）
             void* const vaddr = glMapBufferRange(bo->gl.binding, byteOffset, GLsizeiptr(bd.size),
                     GL_MAP_WRITE_BIT |
                     GL_MAP_INVALIDATE_RANGE_BIT |
                     GL_MAP_UNSYNCHRONIZED_BIT);
             if (UTILS_LIKELY(vaddr)) {
+                // 复制数据到映射的内存
                 memcpy(vaddr, bd.buffer, bd.size);
+                // 取消映射（如果失败，重试）
                 if (UTILS_UNLIKELY(glUnmapBuffer(bo->gl.binding) == GL_FALSE)) {
-                    // According to the spec, UnmapBuffer can return FALSE in rare conditions (e.g.
-                    // during a screen mode change). Note that this is not a GL error, and we can handle
-                    // it by simply making a second attempt.
+                    // 根据规范，UnmapBuffer 在极少数情况下可能返回 FALSE（如屏幕模式改变）
+                    // 注意：这不是 GL 错误，可以通过重试处理
                     goto retry; // NOLINT(cppcoreguidelines-avoid-goto,hicpp-avoid-goto)
                 }
             } else {
-                // handle mapping error, revert to glBufferSubData()
+                // 处理映射错误，回退到 glBufferSubData()
                 glBufferSubData(bo->gl.binding, byteOffset, GLsizeiptr(bd.size), bd.buffer);
             }
             scheduleDestroy(std::move(bd));
@@ -2937,21 +4854,65 @@ retry:
 #endif
 }
 
+/**
+ * 重置缓冲区对象
+ * 
+ * 重置缓冲区对象的数据（清零或重新分配）。
+ * 
+ * @param boh 缓冲区对象句柄
+ * 
+ * 执行流程：
+ * 1. ES 2.0 特殊处理（uniform 缓冲区使用系统内存）：
+ *    - 无需操作（系统内存保持原值）
+ * 2. 其他情况：
+ *    - 绑定缓冲区
+ *    - 使用 glBufferData 重新分配（数据清零）
+ * 
+ * 注意：
+ * - 重置会重新分配缓冲区，旧数据丢失
+ * - ES 2.0 的 uniform 缓冲区不重置（系统内存保持原值）
+ */
 void OpenGLDriver::resetBufferObject(Handle<HwBufferObject> boh) {
     DEBUG_MARKER()
 
     auto& gl = mContext;
     GLBufferObject const* bo = handle_cast<GLBufferObject*>(boh);
 
+    // ES 2.0 特殊处理：uniform 缓冲区使用系统内存，无需操作
     if (UTILS_UNLIKELY(bo->bindingType == BufferObjectBinding::UNIFORM && gl.isES2())) {
-        // nothing to do here
+        // 这里无需操作
     } else {
+        // 重新分配缓冲区（数据清零）
         assert_invariant(bo->gl.id);
         gl.bindBuffer(bo->gl.binding, bo->gl.id);
         glBufferData(bo->gl.binding, bo->byteCount, nullptr, getBufferUsage(bo->usage));
     }
 }
 
+/**
+ * 更新 3D 图像
+ * 
+ * 更新纹理的 3D 图像数据（3D 纹理、2D 数组纹理、Cube 纹理等）。
+ * 
+ * @param th 纹理句柄
+ * @param level Mipmap 级别
+ * @param xoffset X 偏移
+ * @param yoffset Y 偏移
+ * @param zoffset Z 偏移（层索引）
+ * @param width 更新区域宽度
+ * @param height 更新区域高度
+ * @param depth 更新区域深度（层数）
+ * @param data 像素缓冲区描述符
+ * 
+ * 执行流程：
+ * 1. 根据数据类型选择更新方法：
+ *    - 压缩数据：使用 setCompressedTextureData
+ *    - 非压缩数据：使用 setTextureData
+ * 
+ * 注意：
+ * - 此方法支持 3D 纹理、2D 数组纹理、Cube 纹理等
+ * - 压缩和非压缩数据使用不同的更新路径
+ */
 void OpenGLDriver::update3DImage(Handle<HwTexture> th,
         uint32_t const level, uint32_t const xoffset, uint32_t const yoffset, uint32_t const zoffset,
         uint32_t const width, uint32_t const height, uint32_t const depth,
@@ -2959,33 +4920,91 @@ void OpenGLDriver::update3DImage(Handle<HwTexture> th,
     DEBUG_MARKER()
 
     GLTexture const* t = handle_cast<GLTexture *>(th);
+    // 根据数据类型选择更新方法
     if (data.type == PixelDataType::COMPRESSED) {
+        // 压缩数据：使用压缩纹理更新
         setCompressedTextureData(t,
                 level, xoffset, yoffset, zoffset, width, height, depth, std::move(data));
     } else {
+        // 非压缩数据：使用标准纹理更新
         setTextureData(t,
                 level, xoffset, yoffset, zoffset, width, height, depth, std::move(data));
     }
 }
 
+/**
+ * 生成 Mipmap
+ * 
+ * 为纹理生成 Mipmap 链。
+ * 
+ * @param th 纹理句柄
+ * 
+ * 执行流程：
+ * 1. 验证不是多采样纹理（多采样纹理不支持 Mipmap）
+ * 2. 绑定纹理到虚拟纹理单元
+ * 3. 调用 glGenerateMipmap 生成 Mipmap
+ * 
+ * 注意：
+ * - glGenerateMipmap 可能失败，如果内部格式不是既颜色可渲染又纹理可过滤的
+ * - 深度纹理不支持 Mipmap（不是颜色可渲染的）
+ * - 多采样纹理不支持 Mipmap
+ */
 void OpenGLDriver::generateMipmaps(Handle<HwTexture> th) {
     DEBUG_MARKER()
 
     auto& gl = mContext;
     GLTexture const* t = handle_cast<GLTexture *>(th);
 #if defined(BACKEND_OPENGL_LEVEL_GLES31)
+    // 多采样纹理不支持 Mipmap
     assert_invariant(t->gl.target != GL_TEXTURE_2D_MULTISAMPLE);
 #endif
-    // Note: glGenerateMimap can also fail if the internal format is not both
-    // color-renderable and filterable (i.e.: doesn't work for depth)
+    // 注意：glGenerateMipmap 也可能失败，如果内部格式不是既颜色可渲染又纹理可过滤的
+    // （即：对深度纹理不起作用）
+    // 绑定纹理到虚拟纹理单元
     bindTexture(OpenGLContext::DUMMY_TEXTURE_BINDING, t);
     gl.activeTexture(OpenGLContext::DUMMY_TEXTURE_BINDING);
 
+    // 生成 Mipmap
     glGenerateMipmap(t->gl.target);
 
     CHECK_GL_ERROR()
 }
 
+/**
+ * 设置纹理数据
+ * 
+ * 更新纹理的像素数据（非压缩格式）。
+ * 
+ * @param t 纹理指针
+ * @param level Mipmap 级别
+ * @param xoffset X 偏移
+ * @param yoffset Y 偏移
+ * @param zoffset Z 偏移（层索引，用于 3D/Array 纹理）
+ * @param width 更新区域宽度
+ * @param height 更新区域高度
+ * @param depth 更新区域深度（层数）
+ * @param p 像素缓冲区描述符（格式、类型、对齐、步长等）
+ * 
+ * 执行流程：
+ * 1. 验证偏移和尺寸有效
+ * 2. 验证不是多采样纹理（不支持更新）
+ * 3. 如果是外部纹理，直接返回（无操作）
+ * 4. 获取格式和类型（ES 2.0 特殊处理）
+ * 5. 设置像素解包参数（步长、对齐）
+ * 6. 计算缓冲区指针（考虑步长、对齐、偏移）
+ * 7. 根据纹理类型调用相应的 OpenGL API：
+ *    - SAMPLER_2D: glTexSubImage2D
+ *    - SAMPLER_3D: glTexSubImage3D
+ *    - SAMPLER_2D_ARRAY/CUBEMAP_ARRAY: glTexSubImage3D
+ *    - SAMPLER_CUBEMAP: 循环每个面，调用 glTexSubImage2D
+ * 8. 调度销毁缓冲区描述符
+ * 
+ * 注意：
+ * - 外部纹理不能更新（无操作）
+ * - 多采样纹理不支持更新
+ * - Cube 纹理需要逐面更新
+ * - ES 2.0 格式和类型必须匹配纹理格式
+ */
 void OpenGLDriver::setTextureData(GLTexture const* t, uint32_t const level,
         uint32_t const xoffset, uint32_t const yoffset, uint32_t const zoffset,
         uint32_t const width, uint32_t const height, uint32_t const depth,
@@ -2997,37 +5016,43 @@ void OpenGLDriver::setTextureData(GLTexture const* t, uint32_t const level,
     assert_invariant(yoffset + height <= std::max(1u, t->height >> level));
     assert_invariant(t->samples <= 1);
 
+    // 如果是外部纹理，直接返回（无操作）
     if (UTILS_UNLIKELY(t->gl.target == GL_TEXTURE_EXTERNAL_OES)) {
-        // this is in fact an external texture, this becomes a no-op.
         return;
     }
 
+    // 获取格式和类型
     GLenum glFormat;
     GLenum glType;
     if (mContext.isES2()) {
+        // ES 2.0：格式和类型必须匹配纹理格式
         auto const formatAndType = textureFormatToFormatAndType(t->format);
         glFormat = formatAndType.first;
         glType = formatAndType.second;
     } else {
+        // ES 3.0+：从描述符获取格式和类型
         glFormat = getFormat(p.format);
         glType = getType(p.type);
     }
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+    // ES 3.0+：设置行长度（步长）
     if (!gl.isES2()) {
         gl.pixelStore(GL_UNPACK_ROW_LENGTH, GLint(p.stride));
     }
 #endif
+    // 设置像素对齐
     gl.pixelStore(GL_UNPACK_ALIGNMENT, GLint(p.alignment));
 
-    // This is equivalent to using GL_UNPACK_SKIP_PIXELS and GL_UNPACK_SKIP_ROWS
+    // 这等价于使用 GL_UNPACK_SKIP_PIXELS 和 GL_UNPACK_SKIP_ROWS
     using PBD = PixelBufferDescriptor;
     size_t const stride = p.stride ? p.stride : width;
-    size_t const bpp = PBD::computeDataSize(p.format, p.type, 1, 1, 1);
-    size_t const bpr = PBD::computeDataSize(p.format, p.type, stride, 1, p.alignment);
-    size_t const bpl = bpr * height; // TODO: PBD should have a "layer stride"
+    size_t const bpp = PBD::computeDataSize(p.format, p.type, 1, 1, 1);  // 每像素字节数
+    size_t const bpr = PBD::computeDataSize(p.format, p.type, stride, 1, p.alignment);  // 每行字节数
+    size_t const bpl = bpr * height;  // TODO: PBD 应该有"层步长"
+    // 计算缓冲区指针（考虑偏移、步长、对齐）
     void const* const buffer = static_cast<char const*>(p.buffer)
-            + bpp* p.left + bpr * p.top + bpl * 0; // TODO: PBD should have a p.depth
+            + bpp* p.left + bpr * p.top + bpl * 0;  // TODO: PBD 应该有 p.depth
 
     switch (t->target) {
         case SamplerType::SAMPLER_EXTERNAL:
@@ -3095,6 +5120,39 @@ void OpenGLDriver::setTextureData(GLTexture const* t, uint32_t const level,
     CHECK_GL_ERROR()
 }
 
+/**
+ * 设置压缩纹理数据
+ * 
+ * 更新纹理的压缩像素数据（压缩格式，如 ETC2、S3TC 等）。
+ * 
+ * @param t 纹理指针
+ * @param level Mipmap 级别
+ * @param xoffset X 偏移
+ * @param yoffset Y 偏移
+ * @param zoffset Z 偏移（层索引）
+ * @param width 更新区域宽度
+ * @param height 更新区域高度
+ * @param depth 更新区域深度（层数）
+ * @param p 像素缓冲区描述符（包含压缩数据）
+ * 
+ * 执行流程：
+ * 1. 验证偏移和尺寸有效
+ * 2. 验证不是多采样纹理
+ * 3. 如果是外部纹理，直接返回（无操作）
+ * 4. 获取压缩图像大小
+ * 5. 根据纹理类型调用相应的 OpenGL API：
+ *    - SAMPLER_2D: glCompressedTexSubImage2D
+ *    - SAMPLER_3D: glCompressedTexSubImage3D
+ *    - SAMPLER_2D_ARRAY/CUBEMAP_ARRAY: glCompressedTexSubImage3D
+ *    - SAMPLER_CUBEMAP: 循环每个面，调用 glCompressedTexSubImage2D
+ * 6. 调度销毁缓冲区描述符
+ * 
+ * 注意：
+ * - 压缩格式使用内部格式（不是格式和类型）
+ * - 压缩数据大小由 format 和尺寸决定
+ * - TODO: 可能应该断言 CompressedPixelDataType 与 internalFormat 相同
+ * - TODO: 可能应该断言大小正确（因为我们可以自己计算）
+ */
 void OpenGLDriver::setCompressedTextureData(GLTexture const* t, uint32_t const level,
         uint32_t const xoffset, uint32_t const yoffset, uint32_t const zoffset,
         uint32_t const width, uint32_t const height, uint32_t const depth,
@@ -3106,16 +5164,16 @@ void OpenGLDriver::setCompressedTextureData(GLTexture const* t, uint32_t const l
     assert_invariant(zoffset + depth <= t->depth);
     assert_invariant(t->samples <= 1);
 
+    // 如果是外部纹理，直接返回（无操作）
     if (UTILS_UNLIKELY(t->gl.target == GL_TEXTURE_EXTERNAL_OES)) {
-        // this is in fact an external texture, this becomes a no-op.
         return;
     }
 
-    // TODO: maybe assert that the CompressedPixelDataType is the same as the internalFormat
+    // TODO: 可能应该断言 CompressedPixelDataType 与 internalFormat 相同
 
     GLsizei const imageSize = GLsizei(p.imageSize);
 
-    //  TODO: maybe assert the size is right (b/c we can compute it ourselves)
+    //  TODO: 可能应该断言大小正确（因为我们可以自己计算）
 
     switch (t->target) {
         case SamplerType::SAMPLER_EXTERNAL:
@@ -3181,16 +5239,60 @@ void OpenGLDriver::setCompressedTextureData(GLTexture const* t, uint32_t const l
     CHECK_GL_ERROR()
 }
 
+/**
+ * 设置外部图像（2）
+ * 
+ * 保留外部图像引用计数（防止图像被释放）。
+ * 
+ * @param image 外部图像句柄引用（平台特定）
+ * 
+ * 注意：
+ * - 用于外部图像的生命周期管理
+ * - 增加引用计数
+ */
 void OpenGLDriver::setupExternalImage2(Platform::ExternalImageHandleRef image) {
     mPlatform.retainExternalImage(image);
 }
 
+/**
+ * 设置外部图像
+ * 
+ * 保留外部图像引用计数（防止图像被释放）。
+ * 
+ * @param image 外部图像指针（平台特定）
+ * 
+ * 注意：
+ * - 用于外部图像的生命周期管理
+ * - 增加引用计数
+ */
 void OpenGLDriver::setupExternalImage(void* image) {
     mPlatform.retainExternalImage(image);
 }
 
+/**
+ * 设置外部流
+ * 
+ * 将纹理附加到外部流或从外部流分离。
+ * 外部流用于相机预览、视频播放等外部数据源。
+ * 
+ * @param th 纹理句柄
+ * @param sh 流句柄（nullptr 表示分离）
+ * 
+ * 执行流程：
+ * 1. 验证支持外部图像扩展（OES_EGL_image_external_essl3）
+ * 2. 如果流句柄非空：
+ *    - 如果纹理未附加流：附加流
+ *    - 如果附加到不同流：替换流（先分离旧流）
+ *    - 如果附加到相同流：无操作
+ * 3. 如果流句柄为空且纹理已附加流：分离流
+ * 
+ * 注意：
+ * - 需要 OES_EGL_image_external_essl3 扩展支持
+ * - 流用于外部数据源（相机、视频等）
+ */
 void OpenGLDriver::setExternalStream(Handle<HwTexture> th, Handle<HwStream> sh) {
     auto const& gl = mContext;
+    // 验证支持外部图像扩展
     if (gl.ext.OES_EGL_image_external_essl3) {
         DEBUG_MARKER()
 
@@ -3198,57 +5300,103 @@ void OpenGLDriver::setExternalStream(Handle<HwTexture> th, Handle<HwStream> sh) 
         if (UTILS_LIKELY(sh)) {
             GLStream* s = handle_cast<GLStream*>(sh);
             if (UTILS_LIKELY(!t->hwStream)) {
-                // we're not attached already
+                // 纹理未附加流，附加流
                 attachStream(t, s);
             } else {
+                // 如果附加到不同流，先分离旧流
                 if (s->stream != t->hwStream->stream) {
-                    // attaching to a different stream, detach the old one first
                     replaceStream(t, s);
                 }
             }
         } else if (t->hwStream) {
-            // do nothing if we're not attached already
+            // 流句柄为空且纹理已附加流，分离流
             detachStream(t);
         }
     }
 }
 
+/**
+ * 附加流到纹理
+ * 
+ * 将外部流附加到纹理，使纹理从外部数据源获取数据。
+ * 
+ * @param t 纹理指针
+ * @param hwStream 流指针
+ * 
+ * 执行流程：
+ * 1. 将纹理添加到附加流列表（用于上下文切换时重新附加）
+ * 2. 根据流类型处理：
+ *    - NATIVE 流：附加到平台（平台管理纹理 ID）
+ *    - ACQUIRED 流：无需操作（纹理 ID 在更新时设置）
+ * 3. 更新纹理的流指针
+ * 
+ * 注意：
+ * - NATIVE 流由平台管理纹理 ID
+ * - ACQUIRED 流的纹理 ID 在 updateStreams 时设置
+ */
 UTILS_NOINLINE
 void OpenGLDriver::attachStream(GLTexture* t, GLStream* hwStream) {
+    // 将纹理添加到附加流列表（用于上下文切换时重新附加）
     mTexturesWithStreamsAttached.push_back(t);
 
     switch (hwStream->streamType) {
         case StreamType::NATIVE:
+            // NATIVE 流：附加到平台（平台管理纹理 ID）
             mPlatform.attach(hwStream->stream, t->gl.id);
             mContext.updateTexImage(GL_TEXTURE_EXTERNAL_OES, t->gl.id);
             break;
         case StreamType::ACQUIRED:
+            // ACQUIRED 流：无需操作（纹理 ID 在 updateStreams 时设置）
             break;
     }
     t->hwStream = hwStream;
 }
 
+/**
+ * 从纹理分离流
+ * 
+ * 将外部流从纹理分离，停止从外部数据源获取数据。
+ * 
+ * @param t 纹理指针
+ * 
+ * 执行流程：
+ * 1. 从附加流列表中移除纹理
+ * 2. 根据流类型处理：
+ *    - NATIVE 流：从平台分离（这会删除纹理 ID）
+ *    - ACQUIRED 流：解绑并删除纹理
+ * 3. 重新生成纹理 ID（用于后续使用）
+ * 4. 清除纹理的流指针
+ * 
+ * 注意：
+ * - NATIVE 流分离时会删除纹理 ID（平台管理）
+ * - ACQUIRED 流分离时手动删除纹理
+ * - 分离后重新生成纹理 ID，以便后续使用
+ */
 UTILS_NOINLINE
 void OpenGLDriver::detachStream(GLTexture* t) noexcept {
     auto& gl = mContext;
     auto& texturesWithStreamsAttached = mTexturesWithStreamsAttached;
+    // 从附加流列表中移除纹理
     auto const pos = std::find(texturesWithStreamsAttached.begin(), texturesWithStreamsAttached.end(), t);
     if (pos != texturesWithStreamsAttached.end()) {
         texturesWithStreamsAttached.erase(pos);
     }
 
-    GLStream const* s = static_cast<GLStream*>(t->hwStream); // NOLINT(cppcoreguidelines-pro-type-static-cast-downcast)
+    GLStream const* s = static_cast<GLStream*>(t->hwStream);
+    
     switch (s->streamType) {
         case StreamType::NATIVE:
+            // NATIVE 流：从平台分离（这会删除纹理 ID）
             mPlatform.detach(t->hwStream->stream);
-            // ^ this deletes the texture id
             break;
         case StreamType::ACQUIRED:
+            // ACQUIRED 流：解绑并删除纹理
             gl.unbindTexture(t->gl.target, t->gl.id);
             glDeleteTextures(1, &t->gl.id);
             break;
     }
 
+    // 重新生成纹理 ID（用于后续使用）
     if (t->externalTexture) {
         glGenTextures(1, &t->externalTexture->id);
         t->gl.id = t->externalTexture->id;
@@ -3259,59 +5407,140 @@ void OpenGLDriver::detachStream(GLTexture* t) noexcept {
     t->hwStream = nullptr;
 }
 
+/**
+ * 替换纹理流
+ * 
+ * 将纹理的流从一个流替换为另一个流。
+ * 用于动态切换纹理的数据源（如从相机预览切换到视频播放）。
+ * 
+ * @param texture 纹理指针
+ * @param newStream 新流指针（不能为 nullptr）
+ * 
+ * 执行流程：
+ * 1. 验证新流非空（不能用于分离流，使用 detachStream）
+ * 2. 处理旧流：
+ *    - NATIVE 流：从平台分离（这会删除纹理 ID）
+ *    - ACQUIRED 流：无需操作
+ * 3. 处理新流：
+ *    - NATIVE 流：生成新纹理 ID，附加到平台，更新纹理图像
+ *    - ACQUIRED 流：重用旧纹理 ID
+ * 4. 更新纹理的流指针
+ * 
+ * 性能优化：
+ * - 内联实现，避免操作 mExternalStreams 列表
+ * - 可以优化为 detachStream + attachStream，但内联更高效
+ * 
+ * 注意：
+ * - 不能用于分离流（newStream 必须非空）
+ * - NATIVE 流分离时会删除纹理 ID，需要重新生成
+ * - ACQUIRED 流重用纹理 ID，无需重新生成
+ */
 UTILS_NOINLINE
 void OpenGLDriver::replaceStream(GLTexture* texture, GLStream* newStream) noexcept {
     assert_invariant(newStream && "Do not use replaceStream to detach a stream.");
 
-    // This could be implemented via detachStream + attachStream but inlining allows
-    // a few small optimizations, like not touching the mExternalStreams list.
+    // 这可以通过 detachStream + attachStream 实现，但内联允许一些小的优化
+    // 例如不操作 mExternalStreams 列表
 
-    GLStream const* oldStream = static_cast<GLStream*>(texture->hwStream); // NOLINT(cppcoreguidelines-pro-type-static-cast-downcast)
+    GLStream const* oldStream = static_cast<GLStream*>(texture->hwStream);
+    
+    // 处理旧流
     switch (oldStream->streamType) {
         case StreamType::NATIVE:
+            // 从平台分离（这会删除纹理 ID）
             mPlatform.detach(texture->hwStream->stream);
-            // ^ this deletes the texture id
             break;
         case StreamType::ACQUIRED:
+            // 无需操作
             break;
     }
 
+    // 处理新流
     switch (newStream->streamType) {
         case StreamType::NATIVE:
+            // 生成新纹理 ID
             if (texture->externalTexture) {
                 glGenTextures(1, &texture->externalTexture->id);
                 texture->gl.id = texture->externalTexture->id;
             } else {
                 glGenTextures(1, &texture->gl.id);
             }
+            // 附加到平台并更新纹理图像
             mPlatform.attach(newStream->stream, texture->gl.id);
             mContext.updateTexImage(GL_TEXTURE_EXTERNAL_OES, texture->gl.id);
             break;
         case StreamType::ACQUIRED:
-            // Just re-use the old texture id.
+            // 重用旧纹理 ID
             break;
     }
 
+    // 更新纹理的流指针
     texture->hwStream = newStream;
 }
 
+/**
+ * 开始定时器查询
+ * 
+ * 开始 GPU 定时器查询，用于测量 GPU 执行时间。
+ * 
+ * @param tqh 定时器查询句柄
+ * 
+ * 注意：
+ * - 定时器查询用于性能分析
+ * - 必须在 endTimerQuery 之前调用
+ */
 void OpenGLDriver::beginTimerQuery(Handle<HwTimerQuery> tqh) {
     DEBUG_MARKER()
     GLTimerQuery* tq = handle_cast<GLTimerQuery*>(tqh);
     mContext.beginTimeElapsedQuery(tq);
 }
 
+/**
+ * 结束定时器查询
+ * 
+ * 结束 GPU 定时器查询。
+ * 
+ * @param tqh 定时器查询句柄
+ * 
+ * 注意：
+ * - 必须在 beginTimerQuery 之后调用
+ * - 查询结果通过 getTimerQueryValue 获取
+ */
 void OpenGLDriver::endTimerQuery(Handle<HwTimerQuery> tqh) {
     DEBUG_MARKER()
     GLTimerQuery* tq = handle_cast<GLTimerQuery*>(tqh);
     mContext.endTimeElapsedQuery(*this, tq);
 }
 
+/**
+ * 获取定时器查询值
+ * 
+ * 获取定时器查询的结果（GPU 执行时间）。
+ * 
+ * @param tqh 定时器查询句柄
+ * @param elapsedTime 输出参数，返回经过的时间（纳秒）
+ * @return 查询结果状态（SUCCESS/ERROR/NOT_READY）
+ */
 TimerQueryResult OpenGLDriver::getTimerQueryValue(Handle<HwTimerQuery> tqh, uint64_t* elapsedTime) {
     GLTimerQuery* tq = handle_cast<GLTimerQuery*>(tqh);
     return TimerQueryFactoryInterface::getTimerQueryValue(tq, elapsedTime);
 }
 
+/**
+ * 编译着色器程序
+ * 
+ * 请求编译所有待编译的着色器程序，并在完成后调用回调。
+ * 
+ * @param 未使用的优先级队列参数（保持接口一致性）
+ * @param handler 回调处理器
+ * @param callback 回调函数（所有程序编译完成后调用）
+ * @param user 用户数据
+ * 
+ * 注意：
+ * - 着色器编译是异步的
+ * - 回调在所有程序编译完成后调用
+ * - 如果 callback 为 nullptr，不注册回调
+ */
 void OpenGLDriver::compilePrograms(CompilerPriorityQueue,
         CallbackHandler* handler, CallbackHandler::Callback const callback, void* user) {
     if (callback) {
@@ -3319,120 +5548,192 @@ void OpenGLDriver::compilePrograms(CompilerPriorityQueue,
     }
 }
 
+/**
+ * 开始一个渲染通道（Render Pass）
+ * 
+ * 渲染通道是渲染的基本单位，定义了：
+ * - 渲染目标（Framebuffer）
+ * - 视口和裁剪区域
+ * - 清除操作（颜色、深度、模板）
+ * - 丢弃操作（优化性能）
+ * 
+ * @param rth 渲染目标句柄（RenderTargetHandle）
+ * @param params 渲染通道参数
+ *              - viewport: 视口区域
+ *              - depthRange: 深度范围
+ *              - clearColor/clearDepth/clearStencil: 清除值
+ *              - flags.clear: 需要清除的缓冲区
+ *              - flags.discardStart: 开始时丢弃的缓冲区（优化）
+ *              - flags.discardEnd: 结束时丢弃的缓冲区（优化）
+ * 
+ * 执行流程：
+ * 1. 着色器编译服务 tick（处理异步编译任务）
+ * 2. 保存渲染目标和参数（用于 endRenderPass）
+ * 3. 确定输出色彩空间（默认 RT 使用 SwapChain 设置，否则线性）
+ * 4. 计算清除和丢弃标志
+ * 5. 绑定 Framebuffer（FBO）
+ * 6. 禁用裁剪测试（每个渲染通道开始时禁用）
+ * 7. 处理丢弃缓冲区（使用 glInvalidateFramebuffer 或 glClear）
+ * 8. 处理 MSAA resolve（如果有 fbo_read，需要处理多采样）
+ * 9. 清除缓冲区（颜色、深度、模板）
+ * 10. 设置视口和深度范围
+ * 11. 调试模式下清除丢弃的缓冲区（用红色标记）
+ * 
+ * 性能优化：
+ * - 使用 glInvalidateFramebuffer 丢弃不需要的缓冲区，避免回写，提高性能
+ * - 对于 MSAA RenderTarget，非多采样附件总是被丢弃（避免复杂的 load 操作）
+ */
 void OpenGLDriver::beginRenderPass(Handle<HwRenderTarget> rth,
         const RenderPassParams& params) {
     DEBUG_MARKER()
 
+    // 着色器编译服务 tick（处理异步编译任务）
     getShaderCompilerService().tick();
 
     auto& gl = mContext;
 
+    // 保存渲染目标和参数（用于 endRenderPass）
     mRenderPassTarget = rth;
     mRenderPassParams = params;
 
     GLRenderTarget const* rt = handle_cast<GLRenderTarget*>(rth);
 
-    // If we're rendering into the default render target (i.e. into the current SwapChain),
-    // get the value of the output colorspace from there, otherwise it's always linear.
+    // 如果渲染到默认渲染目标（即当前 SwapChain），从那里获取输出色彩空间
+    // 否则总是使用线性色彩空间
     assert_invariant(!rt->gl.isDefault || mCurrentDrawSwapChain);
     mRec709OutputColorspace = rt->gl.isDefault ? mCurrentDrawSwapChain->rec709 : false;
 
+    // 计算需要清除和丢弃的缓冲区标志
     const TargetBufferFlags clearFlags = params.flags.clear & rt->targets;
     TargetBufferFlags discardFlags = params.flags.discardStart & rt->targets;
 
+    // 绑定 Framebuffer（FBO = 0 表示默认帧缓冲区）
     GLuint const fbo = gl.bindFramebuffer(GL_FRAMEBUFFER, rt->gl.fbo);
     CHECK_GL_FRAMEBUFFER_STATUS(GL_FRAMEBUFFER)
 
-    // each render-pass starts with a disabled scissor
+    // 每个渲染通道开始时禁用裁剪测试
     gl.disable(GL_SCISSOR_TEST);
 
+    // 处理丢弃缓冲区（性能优化：避免回写不需要的缓冲区）
     if (gl.ext.EXT_discard_framebuffer
             && !gl.bugs.disable_invalidate_framebuffer) {
+        // 使用 glInvalidateFramebuffer 丢弃缓冲区（推荐，性能更好）
         AttachmentArray attachments; // NOLINT
         if (GLsizei const attachmentCount = getAttachments(attachments, discardFlags, !fbo)) {
             gl.procs.invalidateFramebuffer(GL_FRAMEBUFFER, attachmentCount, attachments.data());
         }
         CHECK_GL_ERROR()
     } else {
-        // It's important to clear the framebuffer before drawing, as it resets
-        // the fb to a known state (resets fb compression and possibly other things).
-        // So we use glClear instead of glInvalidateFramebuffer
+        // 如果不支持丢弃扩展，使用 glClear 清除缓冲区
+        // 清除帧缓冲区很重要，因为它将帧缓冲区重置为已知状态
+        // （重置帧缓冲区压缩和其他可能的状态）
         clearWithRasterPipe(discardFlags & ~clearFlags, { 0.0f }, 0.0f, 0);
     }
 
+    // 处理 MSAA RenderTarget 的特殊情况
     if (rt->gl.fbo_read) {
-        // we have a multi-sample RenderTarget with non multi-sample attachments (i.e. this is the
-        // EXT_multisampled_render_to_texture emulation).
-        // We would need to perform a "backward" resolve, i.e. load the resolved texture into the
-        // tile, everything must appear as though the multi-sample buffer was lost.
-        // However, Filament specifies that a non multi-sample attachment to a
-        // multi-sample RenderTarget is always discarded. We do this because implementing
-        // the load on Metal is not trivial, and it's not a feature we rely on at this time.
+        // 我们有一个多采样 RenderTarget，带有非多采样附件
+        // （即 EXT_multisampled_render_to_texture 模拟）
+        // 我们需要执行"向后"resolve，即将已解析的纹理加载到 tile 中
+        // 但 Filament 规定，多采样 RenderTarget 的非多采样附件总是被丢弃
+        // 这样做是因为在 Metal 上实现 load 并不简单，而且我们目前不依赖此功能
         discardFlags |= rt->gl.resolve;
     }
 
+    // 清除缓冲区（颜色、深度、模板）
     if (any(clearFlags)) {
         clearWithRasterPipe(clearFlags,
                 params.clearColor, GLfloat(params.clearDepth), GLint(params.clearStencil));
     }
 
-    // we need to reset those after we call clearWithRasterPipe()
+    // 在调用 clearWithRasterPipe() 后需要重置这些标志
     mRenderPassColorWrite   = any(clearFlags & TargetBufferFlags::COLOR_ALL);
     mRenderPassDepthWrite   = any(clearFlags & TargetBufferFlags::DEPTH);
     mRenderPassStencilWrite = any(clearFlags & TargetBufferFlags::STENCIL);
 
+    // 设置视口（注意：OpenGL 使用左下角为原点）
     static_assert(sizeof(GLsizei) >= sizeof(uint32_t));
     gl.viewport(params.viewport.left, params.viewport.bottom,
             GLsizei(std::min(uint32_t(std::numeric_limits<int32_t>::max()), params.viewport.width)),
             GLsizei(std::min(uint32_t(std::numeric_limits<int32_t>::max()), params.viewport.height)));
 
+    // 设置深度范围
     gl.depthRange(params.depthRange.near, params.depthRange.far);
 
 #ifndef NDEBUG
-    // clear the discarded (but not the cleared ones) buffers in debug builds
+    // 在调试构建中清除丢弃的（但不是已清除的）缓冲区（用红色标记，便于调试）
     clearWithRasterPipe(discardFlags & ~clearFlags,
             { 1, 0, 0, 1 }, 1.0, 0);
 #endif
 }
 
+/**
+ * 结束当前渲染通道
+ * 
+ * 在渲染通道结束时调用，主要职责：
+ * 1. 执行 MSAA resolve（如果有）
+ * 2. 处理结束时的丢弃缓冲区（性能优化）
+ * 3. 清理渲染通道状态
+ * 
+ * 执行流程：
+ * 1. 验证渲染通道已开始（必须有 beginRenderPass）
+ * 2. 计算结束时的丢弃标志
+ * 3. 执行 MSAA resolve（如果有 fbo_read，需要将多采样缓冲区解析到纹理）
+ * 4. 根据实际写入情况调整丢弃标志（未写入的缓冲区不需要丢弃）
+ * 5. 对于默认 RT，考虑平台保留标志（某些平台需要保留某些缓冲区）
+ * 6. 处理结束时的丢弃缓冲区（使用 glInvalidateFramebuffer 或 glClear）
+ * 7. 调试模式下清除丢弃的缓冲区（用绿色标记）
+ * 8. 清除渲染通道状态
+ * 
+ * 性能优化：
+ * - 只丢弃实际写入的缓冲区（避免无效操作）
+ * - 使用 glInvalidateFramebuffer 避免回写，提高性能
+ * - 某些驱动 bug 需要特殊处理（只在开始时丢弃时才在结束时丢弃）
+ */
 void OpenGLDriver::endRenderPass(int) {
     DEBUG_MARKER()
     auto& gl = mContext;
 
-    assert_invariant(mRenderPassTarget); // endRenderPass() called without beginRenderPass()?
+    // 验证渲染通道已开始
+    assert_invariant(mRenderPassTarget); // endRenderPass() 在没有 beginRenderPass() 的情况下被调用？
 
     GLRenderTarget const* const rt = handle_cast<GLRenderTarget*>(mRenderPassTarget);
 
+    // 计算结束时的丢弃标志
     TargetBufferFlags discardFlags = mRenderPassParams.flags.discardEnd & rt->targets;
+    
+    // 如果有 fbo_read，执行 MSAA resolve（将多采样缓冲区解析到纹理）
     if (rt->gl.fbo_read) {
         resolvePass(ResolveAction::STORE, rt, discardFlags);
     }
 
+    // 根据实际写入情况调整丢弃标志
+    // 如果缓冲区根本没有写入，忽略丢弃标志（避免无效操作）
     if (!mRenderPassColorWrite) {
-        // ignore discard flags if the buffer wasn't written at all
         discardFlags &= ~TargetBufferFlags::COLOR_ALL;
     }
     if (!mRenderPassDepthWrite) {
-        // ignore discard flags if the buffer wasn't written at all
         discardFlags &= ~TargetBufferFlags::DEPTH;
     }
     if (!mRenderPassStencilWrite) {
-        // ignore discard flags if the buffer wasn't written at all
         discardFlags &= ~TargetBufferFlags::STENCIL;
     }
 
+    // 对于默认 RT，考虑平台保留标志（某些平台需要保留某些缓冲区）
     if (rt->gl.isDefault) {
         assert_invariant(mCurrentDrawSwapChain);
         discardFlags &= ~mPlatform.getPreservedFlags(mCurrentDrawSwapChain->swapChain);
     }
 
+    // 处理结束时的丢弃缓冲区
     if (gl.ext.EXT_discard_framebuffer) {
         auto effectiveDiscardFlags = discardFlags;
+        // 某些驱动 bug：只在开始时丢弃时才在结束时丢弃
         if (gl.bugs.invalidate_end_only_if_invalidate_start) {
             effectiveDiscardFlags &= mRenderPassParams.flags.discardStart;
         }
         if (!gl.bugs.disable_invalidate_framebuffer) {
-            // we wouldn't have to bind the framebuffer if we had glInvalidateNamedFramebuffer()
+            // 如果我们有 glInvalidateNamedFramebuffer()，就不需要绑定帧缓冲区
             GLuint const fbo = gl.bindFramebuffer(GL_FRAMEBUFFER, rt->gl.fbo);
             AttachmentArray attachments; // NOLINT
             if (GLsizei const attachmentCount = getAttachments(attachments, effectiveDiscardFlags, !fbo)) {
@@ -3443,43 +5744,81 @@ void OpenGLDriver::endRenderPass(int) {
     }
 
 #ifndef NDEBUG
-    // clear the discarded buffers in debug builds
+    // 在调试构建中清除丢弃的缓冲区（用绿色标记，便于调试）
     mContext.bindFramebuffer(GL_FRAMEBUFFER, rt->gl.fbo);
     mContext.disable(GL_SCISSOR_TEST);
     clearWithRasterPipe(discardFlags,
             { 0, 1, 0, 1 }, 1.0, 0);
 #endif
 
+    // 清除渲染通道状态
     mRenderPassTarget.clear();
 }
 
 
+/**
+ * 下一个子通道
+ * 
+ * OpenGL 不支持子通道（Subpass），此方法为空实现。
+ * 子通道是 Vulkan 的概念，用于优化多通道渲染。
+ */
 void OpenGLDriver::nextSubpass(int) {}
 
-
+/**
+ * 执行 MSAA Resolve
+ * 
+ * 将多采样缓冲区解析到非多采样纹理。
+ * 用于 EXT_multisampled_render_to_texture 扩展的模拟。
+ * 
+ * @param action Resolve 操作（LOAD 或 STORE）
+ *              - LOAD: 从非多采样纹理加载到多采样缓冲区
+ *              - STORE: 从多采样缓冲区解析到非多采样纹理
+ * @param rt 渲染目标指针
+ * @param discardFlags 丢弃标志（被丢弃的缓冲区不进行 resolve）
+ * 
+ * 执行流程：
+ * 1. ES 2.0 不支持手动 resolve，直接返回
+ * 2. 验证 fbo_read 存在（必须有解析目标）
+ * 3. 计算需要 resolve 的缓冲区（排除被丢弃的）
+ * 4. 如果 mask 非空：
+ *    - 验证只 resolve COLOR0（当前限制）
+ *    - 根据 action 确定 read/draw FBO：
+ *      * STORE: read=多采样, draw=非多采样
+ *      * LOAD: read=非多采样, draw=多采样
+ *    - 绑定 read 和 draw framebuffer
+ *    - 禁用裁剪测试
+ *    - 使用 glBlitFramebuffer 执行 resolve
+ * 
+ * 注意：
+ * - 当前只支持 COLOR0 的 resolve
+ * - 使用 glBlitFramebuffer 进行 resolve（GL_NEAREST 过滤）
+ * - 这是 EXT_multisampled_render_to_texture 的模拟实现
+ */
 void OpenGLDriver::resolvePass(ResolveAction const action, GLRenderTarget const* rt,
         TargetBufferFlags const discardFlags) noexcept {
 
+    // ES 2.0 不支持手动 resolve
     if (UTILS_UNLIKELY(getContext().isES2())) {
-        // ES2 doesn't have manual resolve capabilities
         return;
     }
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
     assert_invariant(rt->gl.fbo_read);
     auto& gl = mContext;
+    // 计算需要 resolve 的缓冲区（排除被丢弃的）
     const TargetBufferFlags resolve = rt->gl.resolve & ~discardFlags;
     GLbitfield const mask = getAttachmentBitfield(resolve);
     if (UTILS_UNLIKELY(mask)) {
 
-        // we can only resolve COLOR0 at the moment
+        // 我们目前只能 resolve COLOR0
         assert_invariant(!(rt->targets &
                 (TargetBufferFlags::COLOR_ALL & ~TargetBufferFlags::COLOR0)));
 
         GLint read = GLint(rt->gl.fbo_read);
         GLint draw = GLint(rt->gl.fbo);
+        // 根据 action 确定 read/draw FBO
         if (action == ResolveAction::STORE) {
-            std::swap(read, draw);
+            std::swap(read, draw);  // STORE: 从多采样解析到非多采样
         }
         gl.bindFramebuffer(GL_READ_FRAMEBUFFER, read);
         gl.bindFramebuffer(GL_DRAW_FRAMEBUFFER, draw);
@@ -3487,6 +5826,7 @@ void OpenGLDriver::resolvePass(ResolveAction const action, GLRenderTarget const*
         CHECK_GL_FRAMEBUFFER_STATUS(GL_READ_FRAMEBUFFER)
         CHECK_GL_FRAMEBUFFER_STATUS(GL_DRAW_FRAMEBUFFER)
 
+        // 禁用裁剪测试并执行 resolve
         gl.disable(GL_SCISSOR_TEST);
         glBlitFramebuffer(0, 0, GLint(rt->width), GLint(rt->height),
                 0, 0, GLint(rt->width), GLint(rt->height), mask, GL_NEAREST);
@@ -3495,11 +5835,33 @@ void OpenGLDriver::resolvePass(ResolveAction const action, GLRenderTarget const*
 #endif
 }
 
+/**
+ * 获取附件数组
+ * 
+ * 将 TargetBufferFlags 转换为 OpenGL 附件常量数组。
+ * 用于 glInvalidateFramebuffer 等 API。
+ * 
+ * @param attachments 输出参数，附件常量数组
+ * @param buffers 目标缓冲区标志
+ * @param isDefaultFramebuffer 是否是默认帧缓冲区
+ * @return 附件数量
+ * 
+ * 执行流程：
+ * 1. 遍历所有颜色附件（COLOR0-COLOR7）
+ * 2. 处理深度附件（DEPTH）
+ * 3. 处理模板附件（STENCIL）
+ * 4. 注意：默认帧缓冲区使用不同的常量（GL_COLOR 而不是 GL_COLOR_ATTACHMENT0）
+ * 
+ * 注意：
+ * - 默认帧缓冲区和 FBO 使用不同的附件常量
+ * - ES 2.0 只支持 COLOR0
+ */
 GLsizei OpenGLDriver::getAttachments(AttachmentArray& attachments,
         TargetBufferFlags const buffers, bool const isDefaultFramebuffer) noexcept {
     GLsizei attachmentCount = 0;
-    // the default framebuffer uses different constants!!!
+    // 默认帧缓冲区使用不同的常量！！！
 
+    // COLOR0 附件
     if (any(buffers & TargetBufferFlags::COLOR0)) {
         attachments[attachmentCount++] = isDefaultFramebuffer ? GL_COLOR : GL_COLOR_ATTACHMENT0;
     }
@@ -3542,19 +5904,44 @@ GLsizei OpenGLDriver::getAttachments(AttachmentArray& attachments,
     return attachmentCount;
 }
 
-// Sets up a scissor rectangle that automatically gets clipped against the viewport.
+/**
+ * 设置裁剪矩形
+ * 
+ * 设置裁剪矩形，自动裁剪到视口范围内。
+ * 裁剪测试用于限制渲染区域，只渲染指定矩形内的像素。
+ * 
+ * @param scissor 裁剪矩形（视口坐标）
+ * 
+ * 执行流程：
+ * 1. 如果裁剪矩形覆盖整个有效区域（从 0,0 开始，尺寸 >= maxvalu）：
+ *    - 禁用裁剪测试（优化：避免不必要的裁剪）
+ *    - 直接返回
+ * 2. 否则：
+ *    - 设置裁剪矩形（通过 OpenGLContext，使用状态缓存）
+ *    - 启用裁剪测试
+ * 
+ * 性能优化：
+ * - 如果裁剪矩形覆盖整个区域，禁用裁剪测试（避免驱动开销）
+ * - 使用 OpenGLContext 的状态缓存，避免重复设置
+ * 
+ * 注意：
+ * - 裁剪矩形会自动裁剪到视口范围内
+ * - TODO: 当裁剪矩形大于当前表面时，是否应该禁用裁剪？
+ */
 void OpenGLDriver::setScissor(Viewport const& scissor) noexcept {
     constexpr uint32_t maxvalu = std::numeric_limits<int32_t>::max();
 
     auto& gl = mContext;
 
-    // TODO: disable scissor when it is bigger than the current surface?
+    // TODO: 当裁剪矩形大于当前表面时，是否应该禁用裁剪？
+    // 如果裁剪矩形覆盖整个有效区域，禁用裁剪测试（优化）
     if (scissor.left == 0 && scissor.bottom == 0 &&
         scissor.width >= maxvalu && scissor.height >= maxvalu) {
         gl.disable(GL_SCISSOR_TEST);
         return;
     }
 
+    // 设置裁剪矩形并启用裁剪测试
     gl.setScissor(
             GLint(scissor.left), GLint(scissor.bottom),
             GLint(scissor.width), GLint(scissor.height));
@@ -3565,6 +5952,17 @@ void OpenGLDriver::setScissor(Viewport const& scissor) noexcept {
 // Setting rendering state
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 插入事件标记
+ * 
+ * 在 OpenGL 命令队列中插入事件标记，用于调试工具（如 RenderDoc、Xcode GPU Debugger）。
+ * 
+ * @param string 标记名称
+ * 
+ * 注意：
+ * - 需要驱动支持 EXT_debug_marker 扩展
+ * - WebGL 不支持
+ */
 void OpenGLDriver::insertEventMarker(char const* string) {
 #ifndef __EMSCRIPTEN__
 #ifdef GL_EXT_debug_marker
@@ -3576,10 +5974,23 @@ void OpenGLDriver::insertEventMarker(char const* string) {
 #endif
 }
 
+/**
+ * 推送组标记
+ * 
+ * 开始一个调试组，用于在调试工具中组织命令。
+ * 必须与 popGroupMarker 配对使用。
+ * 
+ * @param string 组名称
+ * 
+ * 支持两种类型的标记：
+ * 1. OpenGL 调试标记（glPushGroupMarkerEXT）：需要驱动支持
+ * 2. 后端标记（Perfetto）：用于性能分析
+ */
 void OpenGLDriver::pushGroupMarker(char const* string) {
 #ifndef __EMSCRIPTEN__
 #ifdef GL_EXT_debug_marker
 #if DEBUG_GROUP_MARKER_LEVEL & DEBUG_GROUP_MARKER_OPENGL
+    // OpenGL 调试标记
     if (UTILS_LIKELY(mContext.ext.EXT_debug_marker)) {
         glPushGroupMarkerEXT(GLsizei(strlen(string)), string);
     }
@@ -3587,16 +5998,25 @@ void OpenGLDriver::pushGroupMarker(char const* string) {
 #endif
 
 #if DEBUG_GROUP_MARKER_LEVEL & DEBUG_GROUP_MARKER_BACKEND
+    // 后端标记（Perfetto）
     FILAMENT_TRACING_CONTEXT(FILAMENT_TRACING_CATEGORY_FILAMENT);
     FILAMENT_TRACING_NAME_BEGIN(FILAMENT_TRACING_CATEGORY_FILAMENT, string);
 #endif
 #endif
 }
 
+/**
+ * 弹出组标记
+ * 
+ * 结束一个调试组，与 pushGroupMarker 配对使用。
+ * 
+ * @param 未使用的参数（保持接口一致性）
+ */
 void OpenGLDriver::popGroupMarker(int) {
 #ifndef __EMSCRIPTEN__
 #ifdef GL_EXT_debug_marker
 #if DEBUG_GROUP_MARKER_LEVEL & DEBUG_GROUP_MARKER_OPENGL
+    // OpenGL 调试标记
     if (UTILS_LIKELY(mContext.ext.EXT_debug_marker)) {
         glPopGroupMarkerEXT();
     }
@@ -3604,15 +6024,32 @@ void OpenGLDriver::popGroupMarker(int) {
 #endif
 
 #if DEBUG_GROUP_MARKER_LEVEL & DEBUG_GROUP_MARKER_BACKEND
+    // 后端标记（Perfetto）
     FILAMENT_TRACING_CONTEXT(FILAMENT_TRACING_CATEGORY_FILAMENT);
     FILAMENT_TRACING_NAME_END(FILAMENT_TRACING_CATEGORY_FILAMENT);
 #endif
 #endif
 }
 
+/**
+ * 开始捕获
+ * 
+ * 开始 GPU 命令捕获（用于调试工具）。
+ * OpenGL 后端当前未实现，此方法为空。
+ * 
+ * @param 未使用的参数（保持接口一致性）
+ */
 void OpenGLDriver::startCapture(int) {
 }
 
+/**
+ * 停止捕获
+ * 
+ * 停止 GPU 命令捕获。
+ * OpenGL 后端当前未实现，此方法为空。
+ * 
+ * @param 未使用的参数（保持接口一致性）
+ */
 void OpenGLDriver::stopCapture(int) {
 }
 
@@ -3620,15 +6057,59 @@ void OpenGLDriver::stopCapture(int) {
 // Read-back ops
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 读取像素
+ * 
+ * 从渲染目标读取像素数据到 CPU 内存。
+ * 支持异步读取（使用 PBO）和同步读取（ES 2.0）。
+ * 
+ * @param src 源渲染目标句柄
+ * @param x 读取区域的 X 坐标
+ * @param y 读取区域的 Y 坐标
+ * @param width 读取区域的宽度
+ * @param height 读取区域的高度
+ * @param p 像素缓冲区描述符（格式、类型、对齐、步长等）
+ * 
+ * 执行流程：
+ * 1. 获取格式和类型（GLenum）
+ * 2. 设置像素打包对齐
+ * 3. ES 2.0 路径（同步读取）：
+ *    - 分配临时缓冲区
+ *    - 绑定 framebuffer（使用 fbo_read 如果有）
+ *    - 调用 glReadPixels（同步，可能阻塞）
+ *    - 垂直翻转缓冲区（OpenGL 使用左下角原点）
+ *    - 复制到用户缓冲区
+ * 4. ES 3.0+/GL 4.1+ 路径（异步读取）：
+ *    - 创建 PBO（Pixel Buffer Object）
+ *    - 绑定 PBO 并分配存储
+ *    - 调用 glReadPixels（异步，不阻塞）
+ *    - 调度回调，在 GPU 完成时：
+ *      * 映射 PBO 到 CPU 内存
+ *      * 垂直翻转缓冲区
+ *      * 复制到用户缓冲区
+ *      * 取消映射并删除 PBO
+ * 
+ * 性能优化：
+ * - ES 3.0+ 使用 PBO 实现异步读取，避免阻塞 CPU
+ * - 自动处理 MSAA resolve（使用 fbo_read）
+ * - 垂直翻转在 CPU 端完成（OpenGL 使用左下角原点）
+ * 
+ * 注意：
+ * - 图像垂直翻转：OpenGL 使用左下角原点，Filament 使用左上角原点
+ * - ES 2.0 使用同步读取（可能阻塞）
+ * - ES 3.0+ 使用异步读取（不阻塞）
+ */
 void OpenGLDriver::readPixels(Handle<HwRenderTarget> src,
         uint32_t const x, uint32_t const y, uint32_t width, uint32_t height,
         PixelBufferDescriptor&& p) {
     DEBUG_MARKER()
     auto& gl = mContext;
 
+    // 获取格式和类型（GLenum）
     GLenum const glFormat = getFormat(p.format);
     GLenum const glType = getType(p.type);
 
+    // 设置像素打包对齐
     gl.pixelStore(GL_PACK_ALIGNMENT, (GLint)p.alignment);
 
     /*
@@ -3664,14 +6145,17 @@ void OpenGLDriver::readPixels(Handle<HwRenderTarget> src,
     auto const pboSize = GLsizeiptr(PBD::computeDataSize(
             p.format, p.type, width, height, p.alignment));
 
+    // ES 2.0 路径：同步读取（可能阻塞）
     if (UTILS_UNLIKELY(gl.isES2())) {
         void* buffer = malloc(pboSize);
         if (buffer) {
+            // 绑定 framebuffer（使用 fbo_read 如果有，用于 MSAA resolve）
             gl.bindFramebuffer(GL_FRAMEBUFFER, s->gl.fbo_read ? s->gl.fbo_read : s->gl.fbo);
+            // 同步读取像素（可能阻塞 CPU）
             glReadPixels(GLint(x), GLint(y), GLint(width), GLint(height), glFormat, glType, buffer);
             CHECK_GL_ERROR()
 
-            // now we need to flip the buffer vertically to match our API
+            // 现在需要垂直翻转缓冲区以匹配我们的 API（OpenGL 使用左下角原点）
             size_t const stride = p.stride ? p.stride : width;
             size_t const bpp = PBD::computeDataSize(p.format, p.type, 1, 1, 1);
             size_t const dstBpr = PBD::computeDataSize(p.format, p.type, stride, 1, p.alignment);
@@ -3691,21 +6175,24 @@ void OpenGLDriver::readPixels(Handle<HwRenderTarget> src,
     }
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
-    // glReadPixel doesn't resolve automatically, but it does with the auto-resolve extension,
-    // which we're always emulating. So if we have a resolved fbo (fbo_read), use that instead.
+    // ES 3.0+/GL 4.1+ 路径：异步读取（使用 PBO）
+    // glReadPixels 不会自动 resolve，但我们总是模拟 auto-resolve 扩展
+    // 所以如果有已解析的 fbo（fbo_read），使用它
     gl.bindFramebuffer(GL_READ_FRAMEBUFFER, s->gl.fbo_read ? s->gl.fbo_read : s->gl.fbo);
 
+    // 创建 PBO（Pixel Buffer Object）用于异步读取
     GLuint pbo;
     glGenBuffers(1, &pbo);
     gl.bindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
     glBufferData(GL_PIXEL_PACK_BUFFER, pboSize, nullptr, GL_STATIC_DRAW);
+    // 异步读取像素（不阻塞 CPU，数据写入 PBO）
     glReadPixels(GLint(x), GLint(y), GLint(width), GLint(height), glFormat, glType, nullptr);
     gl.bindBuffer(GL_PIXEL_PACK_BUFFER, 0);
     CHECK_GL_ERROR()
 
-    // we're forced to make a copy on the heap because otherwise it deletes std::function<> copy
-    // constructor.
+    // 我们被迫在堆上创建副本，否则会删除 std::function<> 的复制构造函数
     auto* const pUserBuffer = new PixelBufferDescriptor(std::move(p));
+    // 调度回调，在 GPU 完成时执行
     whenGpuCommandsComplete([this, width, height, pbo, pboSize, pUserBuffer]() mutable {
         PixelBufferDescriptor& p = *pUserBuffer;
         auto& gl = mContext;
@@ -3746,6 +6233,34 @@ void OpenGLDriver::readPixels(Handle<HwRenderTarget> src,
 #endif
 }
 
+/**
+ * 读取缓冲区子数据
+ * 
+ * 从缓冲区对象读取数据到 CPU 内存。
+ * 使用 PBO 实现异步读取，避免阻塞 CPU。
+ * 
+ * @param boh 缓冲区对象句柄
+ * @param offset 读取偏移（字节）
+ * @param size 读取大小（字节）
+ * @param p 缓冲区描述符（包含用户缓冲区指针）
+ * 
+ * 执行流程：
+ * 1. 验证不是 ES 2.0（ES 2.0 不支持）
+ * 2. 创建 PBO（Pixel Buffer Object）
+ * 3. 使用 glCopyBufferSubData 将数据从源缓冲区复制到 PBO（异步，不阻塞）
+ * 4. 调度回调，在 GPU 完成时：
+ *    - 映射 PBO 到 CPU 内存
+ *    - 复制数据到用户缓冲区
+ *    - 取消映射并删除 PBO
+ * 
+ * 性能优化：
+ * - 使用 PBO 实现异步读取，避免阻塞 CPU
+ * - 使用 glCopyBufferSubData 而不是直接映射源缓冲区（避免锁定源缓冲区）
+ * 
+ * 注意：
+ * - ES 2.0 不支持此功能
+ * - 数据读取是异步的，回调在 GPU 完成时执行
+ */
 void OpenGLDriver::readBufferSubData(BufferObjectHandle boh,
         uint32_t const offset, uint32_t size, BufferDescriptor&& p) {
     UTILS_UNUSED_IN_RELEASE auto& gl = mContext;
@@ -3754,41 +6269,56 @@ void OpenGLDriver::readBufferSubData(BufferObjectHandle boh,
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
     GLBufferObject const* bo = handle_cast<GLBufferObject const*>(boh);
 
-    // TODO: measure the two solutions
+    // TODO: 测量两种解决方案的性能
     if constexpr (true) {
-        // schedule a copy of the buffer we're reading into a PBO, this *should* happen
-        // asynchronously without stalling the CPU.
+        // 方案 1：使用 PBO 异步读取（推荐）
+        // 创建 PBO（Pixel Buffer Object）用于异步数据传输
         GLuint pbo;
         glGenBuffers(1, &pbo);
+        // 绑定 PBO 并分配存储（GL_PIXEL_PACK_BUFFER 用于读取操作）
         gl.bindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
         glBufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)size, nullptr, GL_STATIC_DRAW);
+        // 绑定源缓冲区
         gl.bindBuffer(bo->gl.binding, bo->gl.id);
+        // 从源缓冲区复制到 PBO（异步，不阻塞 CPU）
+        // 这会将数据从源缓冲区复制到 PBO，但不会等待 GPU 完成
         glCopyBufferSubData(bo->gl.binding, GL_PIXEL_PACK_BUFFER, offset, 0, size);
+        // 解绑缓冲区
         gl.bindBuffer(bo->gl.binding, 0);
         gl.bindBuffer(GL_PIXEL_PACK_BUFFER, 0);
         CHECK_GL_ERROR()
 
-        // then, we schedule a mapBuffer of the PBO later, once the fence has signaled
+        // 调度回调：在 GPU 完成复制后映射 PBO 并复制到用户缓冲区
+        // 使用 shared_ptr 管理用户缓冲区生命周期（确保回调执行时缓冲区仍然有效）
         auto* pUserBuffer = new BufferDescriptor(std::move(p));
         whenGpuCommandsComplete([this, size, pbo, pUserBuffer]() mutable {
             BufferDescriptor& p = *pUserBuffer;
             auto& gl = mContext;
+            // 绑定 PBO
             gl.bindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
+            // 映射 PBO 到 CPU 内存（只读）
             if (void const* vaddr = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, size, GL_MAP_READ_BIT)) {
+                // 复制数据到用户缓冲区
                 memcpy(p.buffer, vaddr, size);
+                // 取消映射
                 glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
             }
+            // 解绑并删除 PBO
             gl.bindBuffer(GL_PIXEL_PACK_BUFFER, 0);
             glDeleteBuffers(1, &pbo);
+            // 调度销毁用户缓冲区
             scheduleDestroy(std::move(p));
             delete pUserBuffer;
             CHECK_GL_ERROR()
         });
     } else {
+        // 方案 2：直接映射源缓冲区（可能阻塞，不推荐）
         gl.bindBuffer(bo->gl.binding, bo->gl.id);
-        // TODO: this glMapBufferRange may stall. Ideally we want to use whenGpuCommandsComplete
-        //       but that's tricky because boh could be destroyed right after this call.
+        // TODO: 这个 glMapBufferRange 可能会阻塞
+        // 理想情况下我们想使用 whenGpuCommandsComplete，
+        // 但这很棘手，因为 boh 可能在此调用后立即被销毁
         if (void const* vaddr = glMapBufferRange(bo->gl.binding, offset, size, GL_MAP_READ_BIT)) {
+            // 直接复制数据到用户缓冲区（可能阻塞，等待 GPU 完成）
             memcpy(p.buffer, vaddr, size);
             glUnmapBuffer(bo->gl.binding);
         }
@@ -3800,56 +6330,151 @@ void OpenGLDriver::readBufferSubData(BufferObjectHandle boh,
 }
 
 
+/**
+ * 注册"偶尔执行"的操作
+ * 
+ * 注册一个操作，该操作会在每次 tick() 时执行，直到返回 true。
+ * 用于需要定期检查但不需要立即执行的任务（如定时器查询结果检查）。
+ * 
+ * @param fn 操作函数，返回 true 表示完成（会从队列中移除），false 表示继续执行
+ * 
+ * 注意：
+ * - 操作会在每次 tick() 时执行
+ * - 如果操作返回 true，会从队列中移除
+ * - 如果操作返回 false，会在下次 tick() 时再次执行
+ * - 用于延迟执行的任务（如等待 GPU 查询结果）
+ */
 void OpenGLDriver::runEveryNowAndThen(std::function<bool()> fn) {
     mEveryNowAndThenOps.push_back(std::move(fn));
 }
 
+/**
+ * 执行"偶尔执行"的操作
+ * 
+ * 遍历并执行所有注册的"偶尔执行"操作。
+ * 如果操作返回 true（表示完成），则从队列中移除。
+ * 
+ * 执行流程：
+ * 1. 遍历所有注册的操作
+ * 2. 执行每个操作
+ * 3. 如果操作返回 true（完成），从队列中移除
+ * 4. 如果操作返回 false（未完成），保留在队列中，下次继续执行
+ * 
+ * 注意：
+ * - 此方法在 tick() 中调用
+ * - 操作可能依赖独立线程发布结果（如定时器查询），所以可能不会立即完成
+ * - 即使调用了 glFinish()，某些操作可能仍然未完成
+ */
 void OpenGLDriver::executeEveryNowAndThenOps() noexcept { // NOLINT(*-exception-escape)
     auto& v = mEveryNowAndThenOps;
     auto it = v.begin();
     while (it != v.end()) {
+        // 执行操作，如果返回 true 表示完成，从队列中移除
         if ((*it)()) {
-            it = v.erase(it); // cannot throw by construction
+            it = v.erase(it);  // 不能抛出异常（通过构造保证）
         } else {
+            // 未完成，保留在队列中，下次继续执行
             ++it;
         }
     }
 }
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+/**
+ * 注册帧完成回调
+ * 
+ * 注册一个回调，在帧完成时执行（在 commit() 时调度）。
+ * 
+ * @param fn 回调函数
+ * 
+ * 注意：
+ * - 回调在 commit() 时调度到 GPU 完成时执行
+ * - 用于在帧完成时执行清理或统计任务
+ * - ES 2.0 不支持此功能
+ */
 void OpenGLDriver::whenFrameComplete(const std::function<void()>& fn) {
     mFrameCompleteOps.push_back(fn);
 }
 
+/**
+ * 注册 GPU 命令完成回调
+ * 
+ * 注册一个回调，在 GPU 完成所有已提交的命令时执行。
+ * 使用 GLsync 对象实现异步等待。
+ * 
+ * @param fn 回调函数
+ * 
+ * 执行流程：
+ * 1. 创建 GLsync 对象（glFenceSync），标记当前 GPU 命令位置
+ * 2. 将 sync 对象和回调添加到队列
+ * 3. 在 executeGpuCommandsCompleteOps() 中检查 sync 状态
+ * 4. 当 sync 信号时，执行回调
+ * 
+ * 性能优化：
+ * - 使用 GLsync 实现非阻塞等待
+ * - 回调在 tick() 时检查，不会阻塞主线程
+ * 
+ * 注意：
+ * - ES 2.0 不支持此功能
+ * - 回调是异步的，不会立即执行
+ * - 用于在 GPU 完成时执行清理或数据读取任务
+ */
 void OpenGLDriver::whenGpuCommandsComplete(const std::function<void()>& fn) {
+    // 创建 GLsync 对象，标记当前 GPU 命令位置
     GLsync sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    // 将 sync 对象和回调添加到队列
     mGpuCommandCompleteOps.emplace_back(sync, fn);
     CHECK_GL_ERROR()
 }
 
+/**
+ * 执行 GPU 命令完成回调
+ * 
+ * 检查所有 GLsync 对象的状态，如果已信号，执行对应的回调。
+ * 
+ * 执行流程：
+ * 1. 遍历所有注册的 sync 对象和回调
+ * 2. 使用 glClientWaitSync 检查 sync 状态（非阻塞，timeout=0）
+ * 3. 根据状态处理：
+ *    - GL_TIMEOUT_EXPIRED: 未就绪，保留在队列中
+ *    - GL_ALREADY_SIGNALED/GL_CONDITION_SATISFIED: 已就绪，执行回调并移除
+ *    - 其他: 错误情况，清理 sync 对象并移除（避免泄漏）
+ * 
+ * 性能优化：
+ * - 使用非阻塞检查（timeout=0），不会阻塞 CPU
+ * - 未就绪的 sync 对象保留在队列中，下次继续检查
+ * 
+ * 注意：
+ * - 此方法在 tick() 中调用
+ * - ES 2.0 不支持此功能
+ * - 错误情况下会清理 sync 对象，避免资源泄漏
+ */
 void OpenGLDriver::executeGpuCommandsCompleteOps() noexcept { // NOLINT(*-exception-escape)
     auto& v = mGpuCommandCompleteOps;
     auto it = v.begin();
     while (it != v.end()) {
         auto const& [sync, fn] = *it;
+        // 非阻塞检查 sync 状态（timeout=0，立即返回）
         GLenum const syncStatus = glClientWaitSync(sync, 0, 0u);
         switch (syncStatus) {
             case GL_TIMEOUT_EXPIRED:
-                // not ready
+                // 未就绪，保留在队列中，下次继续检查
                 ++it;
                 break;
             case GL_ALREADY_SIGNALED:
             case GL_CONDITION_SATISFIED:
-                // ready
+                // 已就绪，执行回调
                 it->second();
+                // 删除 sync 对象
                 glDeleteSync(sync);
-                it = v.erase(it); // cannot throw by construction
+                // 从队列中移除
+                it = v.erase(it);  // 不能抛出异常（通过构造保证）
                 break;
             default:
-                // This should never happen, but is very problematic if it does, as we might leak
-                // some data depending on what the callback does. However, we clean up our own state.
+                // 这不应该发生，但如果发生会非常有问题，因为可能会泄漏数据
+                // （取决于回调做什么）。但是我们会清理自己的状态。
                 glDeleteSync(sync);
-                it = v.erase(it); // cannot throw by construction
+                it = v.erase(it);  // 不能抛出异常（通过构造保证）
                 break;
         }
     }
@@ -3860,82 +6485,237 @@ void OpenGLDriver::executeGpuCommandsCompleteOps() noexcept { // NOLINT(*-except
 // Rendering ops
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 驱动 Tick
+ * 
+ * 每帧调用一次，执行驱动的定期维护任务。
+ * 包括检查 GPU 命令完成、执行延迟任务、更新着色器编译服务。
+ * 
+ * @param 未使用的参数（保持接口一致性）
+ * 
+ * 执行流程：
+ * 1. 执行 GPU 命令完成回调（检查 GLsync 对象，执行已完成的回调）
+ * 2. 执行"偶尔执行"的操作（如定时器查询结果检查）
+ * 3. Tick 着色器编译服务（检查异步编译完成情况）
+ * 
+ * 性能优化：
+ * - 所有操作都是非阻塞的
+ * - 用于定期维护，不会影响渲染性能
+ * 
+ * 注意：
+ * - 此方法在每帧调用（通常在 beginFrame 或 endFrame 时）
+ * - 所有操作都是异步的，不会阻塞主线程
+ */
 void OpenGLDriver::tick(int) {
     DEBUG_MARKER()
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+    // 检查并执行 GPU 命令完成回调
     executeGpuCommandsCompleteOps();
 #endif
+    // 执行"偶尔执行"的操作（如定时器查询结果检查）
     executeEveryNowAndThenOps();
+    // Tick 着色器编译服务（检查异步编译完成情况）
     getShaderCompilerService().tick();
 }
 
+/**
+ * 开始新的一帧渲染
+ * 
+ * 这是每帧渲染的入口点，在渲染循环开始时调用。主要职责：
+ * 1. 通知平台层开始新帧（用于帧同步、VSync 等）
+ * 2. 更新外部纹理流（如相机预览、视频流等）
+ * 3. 插入性能分析标记
+ * 
+ * @param monotonic_clock_ns 单调时钟时间戳（纳秒），用于帧同步
+ * @param refreshIntervalNs 刷新间隔（纳秒），用于 VSync 计算
+ * @param frameId 帧 ID，用于帧追踪和调试
+ * 
+ * 执行流程：
+ * 1. 插入性能分析标记（用于性能分析工具）
+ * 2. 通知平台层开始新帧（可能触发 VSync 等待）
+ * 3. 更新所有附加了外部流的纹理：
+ *    - 对于 NATIVE 类型流（如相机预览），调用平台接口更新纹理图像
+ *    - 更新纹理时间戳
+ *    - 绑定并更新外部纹理（GL_TEXTURE_EXTERNAL_OES）
+ * 
+ * 注意：
+ * - 外部纹理流通常来自相机、视频播放器等，需要在每帧更新
+ * - OpenGLPlatform::updateTexImage() 会绑定纹理，所以这里只需要更新图像
+ */
 void OpenGLDriver::beginFrame(
         UTILS_UNUSED int64_t const monotonic_clock_ns,
         UTILS_UNUSED int64_t const refreshIntervalNs,
         UTILS_UNUSED uint32_t const frameId) {
-    PROFILE_MARKER(PROFILE_NAME_BEGINFRAME)
+    PROFILE_MARKER(PROFILE_NAME_BEGINFRAME)  // 性能分析标记
     auto& gl = mContext;
-    insertEventMarker("beginFrame");
+    insertEventMarker("beginFrame");  // 插入调试事件标记
+    
+    // 通知平台层开始新帧（可能触发 VSync 等待、帧同步等）
     mPlatform.beginFrame(monotonic_clock_ns, refreshIntervalNs, frameId);
+    
+    // 更新所有附加了外部流的纹理（如相机预览、视频流等）
     if (UTILS_UNLIKELY(!mTexturesWithStreamsAttached.empty())) {
         OpenGLPlatform& platform = mPlatform;
         for (GLTexture const* t : mTexturesWithStreamsAttached) {
             assert_invariant(t && t->hwStream);
             if (t->hwStream->streamType == StreamType::NATIVE) {
                 assert_invariant(t->hwStream->stream);
+                // 更新外部纹理图像（从平台层获取最新帧）
                 platform.updateTexImage(t->hwStream->stream,
-                        &static_cast<GLStream*>(t->hwStream)->user_thread.timestamp); // NOLINT(cppcoreguidelines-pro-type-static-cast-downcast)
-                // NOTE: We assume that OpenGLPlatform::updateTexImage() binds the texture on our behalf
+                        &static_cast<GLStream*>(t->hwStream)->user_thread.timestamp);
+                // 注意：OpenGLPlatform::updateTexImage() 会绑定纹理，这里只需要更新图像
                 gl.updateTexImage(GL_TEXTURE_EXTERNAL_OES, t->gl.id);
             }
         }
     }
 }
 
+/**
+ * 设置帧调度回调
+ * 
+ * 设置交换链的帧调度回调，在帧被调度到显示队列时调用。
+ * 
+ * @param sch 交换链句柄
+ * @param handler 回调处理器
+ * @param callback 回调函数（nullptr 表示清除回调）
+ * @param flags 标志（未使用）
+ * 
+ * 执行流程：
+ * 1. 如果回调为空（nullptr）：
+ *    - 清除处理器和回调
+ *    - 返回
+ * 2. 否则：
+ *    - 保存处理器和回调（使用 shared_ptr 管理生命周期）
+ * 
+ * 注意：
+ * - 回调在 commit() 时调度（在渲染线程执行）
+ * - 回调用于通知帧已调度到显示队列
+ * - 使用 shared_ptr 确保回调生命周期正确
+ */
 void OpenGLDriver::setFrameScheduledCallback(Handle<HwSwapChain> sch, CallbackHandler* handler,
         FrameScheduledCallback&& callback, uint64_t /*flags*/) {
     DEBUG_MARKER()
     GLSwapChain* sc = handle_cast<GLSwapChain*>(sch);
     if (!callback) {
+        // 清除回调
         sc->frameScheduled.handler = nullptr;
         sc->frameScheduled.callback.reset();
         return;
     }
+    // 保存回调（使用 shared_ptr 管理生命周期）
     sc->frameScheduled.handler = handler;
     sc->frameScheduled.callback = std::make_shared<FrameScheduledCallback>(std::move(callback));
 }
 
+/**
+ * 设置帧完成回调
+ * 
+ * 设置交换链的帧完成回调，在帧完成渲染时调用。
+ * OpenGL 后端当前未实现，此方法为空。
+ * 
+ * @param 交换链句柄（未使用）
+ * @param 回调处理器（未使用）
+ * @param 回调函数（未使用）
+ * 
+ * 注意：
+ * - OpenGL 后端当前未实现此功能
+ * - 帧完成通知通过其他机制实现（如 Fence）
+ */
 void OpenGLDriver::setFrameCompletedCallback(Handle<HwSwapChain>,
         CallbackHandler*, Invocable<void()>&& /*callback*/) {
     DEBUG_MARKER()
 }
 
+/**
+ * 设置呈现时间
+ * 
+ * 设置交换链的呈现时间，用于帧同步和时序控制。
+ * 
+ * @param monotonic_clock_ns 单调时钟时间（纳秒）
+ * 
+ * 注意：
+ * - 呈现时间用于帧同步（如 Vsync）
+ * - 使用单调时钟（不受系统时间调整影响）
+ * - 委托给平台层实现
+ */
 void OpenGLDriver::setPresentationTime(int64_t const monotonic_clock_ns) {
     DEBUG_MARKER()
     mPlatform.setPresentationTime(monotonic_clock_ns);
 }
 
+/**
+ * 结束当前帧的渲染
+ * 
+ * 这是每帧渲染的出口点，在渲染循环结束时调用。主要职责：
+ * 1. 通知平台层结束帧（交换缓冲区、呈现到屏幕）
+ * 2. 在 WebGL 环境下重置 OpenGL 状态（单线程环境需要）
+ * 3. 插入性能分析标记
+ * 
+ * @param frameId 帧 ID，用于帧追踪和调试
+ * 
+ * 执行流程：
+ * 1. 插入性能分析标记
+ * 2. WebGL 特殊处理：重置 OpenGL 状态
+ *    - 绑定 VAO 为 0（避免状态泄漏）
+ *    - 解绑所有纹理单元（避免状态泄漏）
+ *    - 重置渲染状态（裁剪、深度测试等）
+ * 3. 通知平台层结束帧（交换前后缓冲区，呈现到屏幕）
+ * 4. 插入调试事件标记
+ * 
+ * 注意：
+ * - WebGL 是单线程的，用户可能在帧结束后操作 GL 状态，所以需要重置
+ * - 桌面 OpenGL 是多线程的，不需要重置状态
+ * - 通常不调用 glFinish()，让 GPU 异步执行，提高性能
+ */
 void OpenGLDriver::endFrame(UTILS_UNUSED uint32_t const frameId) {
-    PROFILE_MARKER(PROFILE_NAME_ENDFRAME)
+    PROFILE_MARKER(PROFILE_NAME_ENDFRAME)  // 性能分析标记
+    
 #if defined(__EMSCRIPTEN__)
-    // WebGL builds are single-threaded so users might manipulate various GL state after we're
-    // done with the frame. We do NOT officially support using Filament in this way, but we can
-    // at least do some minimal safety things here, such as resetting the VAO to 0.
+    // WebGL 构建是单线程的，用户可能在帧结束后操作 GL 状态
+    // 我们不正式支持这种方式，但至少可以做一些基本的安全处理
+    // 例如重置 VAO 为 0，避免状态泄漏
     auto& gl = mContext;
-    gl.bindVertexArray(nullptr);
+    gl.bindVertexArray(nullptr);  // 重置 VAO
+    // 解绑所有纹理单元
     for (int unit = OpenGLContext::DUMMY_TEXTURE_BINDING; unit >= 0; unit--) {
         gl.bindTexture(unit, GL_TEXTURE_2D, 0, false);
     }
+    // 重置渲染状态
     gl.disable(GL_CULL_FACE);
     gl.depthFunc(GL_LESS);
     gl.disable(GL_SCISSOR_TEST);
 #endif
+    
+    // 注意：通常不调用 glFinish()，让 GPU 异步执行，提高性能
     //FILAMENT_TRACING_NAME(FILAMENT_TRACING_CATEGORY_FILAMENT, "glFinish");
     //glFinish();
+    
+    // 通知平台层结束帧（交换前后缓冲区，呈现到屏幕）
     mPlatform.endFrame(frameId);
-    insertEventMarker("endFrame");
+    insertEventMarker("endFrame");  // 插入调试事件标记
 }
 
+/**
+ * 更新描述符集中的缓冲区绑定
+ * 
+ * 更新描述符集中指定绑定的缓冲区对象。
+ * 
+ * @param dsh 描述符集句柄
+ * @param binding 绑定索引
+ * @param boh 缓冲区对象句柄（nullptr 表示解绑）
+ * @param offset 缓冲区偏移（字节）
+ * @param size 缓冲区大小（字节）
+ * 
+ * 执行流程：
+ * 1. 获取描述符集对象
+ * 2. 获取缓冲区对象（如果句柄有效）
+ * 3. 调用描述符集的 update 方法更新绑定
+ * 
+ * 注意：
+ * - 用于更新 uniform 缓冲区、存储缓冲区等
+ * - 偏移和大小用于动态 uniform 缓冲区
+ * - nullptr 句柄表示解绑
+ */
 void OpenGLDriver::updateDescriptorSetBuffer(
         DescriptorSetHandle dsh,
         descriptor_binding_t const binding,
@@ -3946,6 +6726,25 @@ void OpenGLDriver::updateDescriptorSetBuffer(
     ds->update(mContext, binding, bo, offset, size);
 }
 
+/**
+ * 更新描述符集中的纹理绑定
+ * 
+ * 更新描述符集中指定绑定的纹理和采样器参数。
+ * 
+ * @param dsh 描述符集句柄
+ * @param binding 绑定索引
+ * @param th 纹理句柄
+ * @param params 采样器参数（过滤、包装等）
+ * 
+ * 执行流程：
+ * 1. 获取描述符集对象
+ * 2. 调用描述符集的 update 方法更新绑定
+ * 
+ * 注意：
+ * - 用于更新纹理和采样器绑定
+ * - 采样器参数定义纹理采样方式（过滤、包装等）
+ * - 纹理和采样器可以分别绑定（ES 3.0+）或组合绑定（ES 2.0）
+ */
 void OpenGLDriver::updateDescriptorSetTexture(
         DescriptorSetHandle dsh,
         descriptor_binding_t const binding,
@@ -3955,40 +6754,148 @@ void OpenGLDriver::updateDescriptorSetTexture(
     ds->update(mContext, mHandleAllocator, binding, th, params);
 }
 
+/**
+ * 复制数据到内存映射缓冲区
+ * 
+ * 将数据复制到内存映射缓冲区中。
+ * 内存映射缓冲区允许 CPU 直接访问 GPU 缓冲区。
+ * 
+ * @param mmbh 内存映射缓冲区句柄
+ * @param offset 目标偏移（字节）
+ * @param data 要复制的数据
+ * 
+ * 执行流程：
+ * 1. 获取内存映射缓冲区对象
+ * 2. 调用缓冲区的 copy 方法复制数据
+ * 
+ * 注意：
+ * - 内存映射缓冲区允许 CPU 直接访问 GPU 缓冲区
+ * - 复制操作可能需要同步（取决于映射模式）
+ * - 数据在复制后会被销毁（移动语义）
+ */
 void OpenGLDriver::copyToMemoryMappedBuffer(MemoryMappedBufferHandle mmbh, size_t offset,
         BufferDescriptor&& data) {
     GLMemoryMappedBuffer* const mmb = handle_cast<GLMemoryMappedBuffer*>(mmbh);
     mmb->copy(mContext, *this, offset, std::move(data));
 }
 
+/**
+ * 刷新命令缓冲区
+ * 
+ * 将当前命令缓冲区中的 OpenGL 命令提交给 GPU 执行。
+ * 注意：这不会等待 GPU 完成，只是提交命令。
+ * 
+ * 执行流程：
+ * 1. 调用 glFlush() 提交命令给 GPU
+ * 2. 某些驱动有 bug，需要禁用 glFlush（通过配置）
+ * 
+ * 与 finish() 的区别：
+ * - flush(): 提交命令，不等待完成（非阻塞）
+ * - finish(): 提交命令并等待完成（阻塞）
+ * 
+ * 使用场景：
+ * - 在帧结束时调用，确保命令被提交
+ * - 在需要同步时调用（但通常使用 Fence 更好）
+ */
 void OpenGLDriver::flush(int) {
     DEBUG_MARKER()
     auto const& gl = mContext;
+    // 某些驱动有 bug，需要禁用 glFlush
     if (!gl.bugs.disable_glFlush) {
-        glFlush();
+        glFlush();  // 提交命令给 GPU，但不等待完成
     }
 }
 
+/**
+ * 完成所有 GPU 命令
+ * 
+ * 等待 GPU 完成所有已提交的命令（阻塞调用）。
+ * 与 flush() 不同，此方法会阻塞直到所有命令完成。
+ * 
+ * @param 未使用的参数（保持接口一致性）
+ * 
+ * 执行流程：
+ * 1. 调用 glFinish() 等待 GPU 完成所有命令
+ * 2. 执行所有 GPU 命令完成回调（如果支持）
+ * 3. 验证 GPU 命令完成回调已清空（因为调用了 glFinish）
+ * 4. 执行所有"偶尔执行"的回调
+ * 
+ * 注意：
+ * - 此方法会阻塞直到 GPU 完成所有工作
+ * - 某些任务依赖独立线程发布结果（如 endTimerQuery），
+ *   所以结果可能尚未准备好，任务会再停留一段时间
+ * - 这只适用于 mEveryNowAndThenOps 任务
+ * - 因此不能断言 mEveryNowAndThenOps 为空
+ * 
+ * 与 flush() 的区别：
+ * - flush(): 提交命令，不等待完成（非阻塞）
+ * - finish(): 提交命令并等待完成（阻塞）
+ * 
+ * 使用场景：
+ * - 在需要确保所有 GPU 工作完成时调用
+ * - 通常使用 Fence 更好（非阻塞）
+ */
 void OpenGLDriver::finish(int) {
     DEBUG_MARKER()
+    // 等待 GPU 完成所有命令（阻塞）
     glFinish();
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+    // 执行所有 GPU 命令完成回调
     executeGpuCommandsCompleteOps();
+    // 因为调用了 glFinish，所有 GPU 命令应该已完成
     assert_invariant(mGpuCommandCompleteOps.empty());
 #endif
+    // 执行所有"偶尔执行"的回调
     executeEveryNowAndThenOps();
-    // Note: since we executed a glFinish(), all pending tasks should be done
-
-    // However, some tasks rely on a separated thread to publish their result (e.g.
-    // endTimerQuery), so the result could very well not be ready, and the task will
-    // linger a bit longer, this is only true for mEveryNowAndThenOps tasks.
-    // The fallout of this is that we can't assert that mEveryNowAndThenOps is empty.
+    // 注意：由于我们执行了 glFinish()，所有待处理的任务应该已完成
+    
+    // 但是，某些任务依赖独立线程发布结果（如 endTimerQuery），
+    // 所以结果可能尚未准备好，任务会再停留一段时间
+    // 这只适用于 mEveryNowAndThenOps 任务
+    // 因此不能断言 mEveryNowAndThenOps 为空
 }
 
+/**
+ * 使用光栅化管线清除缓冲区
+ * 
+ * 使用 OpenGL 的清除命令清除指定的缓冲区。
+ * 支持多渲染目标（MRT）和 ES 2.0 兼容模式。
+ * 
+ * @param clearFlags 要清除的缓冲区标志（COLOR、DEPTH、STENCIL）
+ * @param linearColor 清除颜色（线性空间，RGBA）
+ * @param depth 清除深度值
+ * @param stencil 清除模板值
+ * 
+ * 执行流程：
+ * 1. 根据清除标志启用相应的写入掩码：
+ *    - COLOR: 启用颜色写入掩码
+ *    - DEPTH: 启用深度写入掩码
+ *    - STENCIL: 启用模板写入掩码（前后面）
+ * 2. ES 3.0+/GL 4.1+ 路径（支持 MRT）：
+ *    - 使用 glClearBufferfv/iv/fi 清除每个颜色缓冲区（COLOR0-7）
+ *    - 使用 glClearBufferfi 同时清除深度和模板
+ *    - 或分别清除深度和模板
+ * 3. ES 2.0 路径（单渲染目标）：
+ *    - 设置清除颜色（glClearColor）
+ *    - 设置清除深度（glClearDepthf）
+ *    - 设置清除模板（glClearStencil）
+ *    - 使用 glClear 清除（组合掩码）
+ * 
+ * 性能优化：
+ * - ES 3.0+ 使用 glClearBuffer* 可以精确控制每个缓冲区
+ * - ES 2.0 使用 glClear 组合清除（一次调用）
+ * 
+ * 注意：
+ * - 清除前必须确保写入掩码已启用
+ * - ES 2.0 只支持单渲染目标（COLOR0）
+ * - ES 3.0+ 支持多渲染目标（COLOR0-7）
+ * - 深度和模板可以同时清除（更高效）
+ */
 UTILS_NOINLINE
 void OpenGLDriver::clearWithRasterPipe(TargetBufferFlags const clearFlags,
         float4 const& linearColor, GLfloat const depth, GLint const stencil) noexcept {
 
+    // 根据清除标志启用相应的写入掩码
     if (any(clearFlags & TargetBufferFlags::COLOR_ALL)) {
         mContext.colorMask(GL_TRUE);
     }
@@ -4000,57 +6907,68 @@ void OpenGLDriver::clearWithRasterPipe(TargetBufferFlags const clearFlags,
     }
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+    // ES 3.0+/GL 4.1+ 路径：使用 glClearBuffer* 精确控制每个缓冲区（支持 MRT）
     if (UTILS_LIKELY(!mContext.isES2())) {
+        // 清除每个颜色缓冲区（COLOR0-7，支持多渲染目标）
         if (any(clearFlags & TargetBufferFlags::COLOR0)) {
-            glClearBufferfv(GL_COLOR, 0, linearColor.v);
+            glClearBufferfv(GL_COLOR, 0, linearColor.v);  // 清除颜色缓冲区 0
         }
         if (any(clearFlags & TargetBufferFlags::COLOR1)) {
-            glClearBufferfv(GL_COLOR, 1, linearColor.v);
+            glClearBufferfv(GL_COLOR, 1, linearColor.v);  // 清除颜色缓冲区 1
         }
         if (any(clearFlags & TargetBufferFlags::COLOR2)) {
-            glClearBufferfv(GL_COLOR, 2, linearColor.v);
+            glClearBufferfv(GL_COLOR, 2, linearColor.v);  // 清除颜色缓冲区 2
         }
         if (any(clearFlags & TargetBufferFlags::COLOR3)) {
-            glClearBufferfv(GL_COLOR, 3, linearColor.v);
+            glClearBufferfv(GL_COLOR, 3, linearColor.v);  // 清除颜色缓冲区 3
         }
         if (any(clearFlags & TargetBufferFlags::COLOR4)) {
-            glClearBufferfv(GL_COLOR, 4, linearColor.v);
+            glClearBufferfv(GL_COLOR, 4, linearColor.v);  // 清除颜色缓冲区 4
         }
         if (any(clearFlags & TargetBufferFlags::COLOR5)) {
-            glClearBufferfv(GL_COLOR, 5, linearColor.v);
+            glClearBufferfv(GL_COLOR, 5, linearColor.v);  // 清除颜色缓冲区 5
         }
         if (any(clearFlags & TargetBufferFlags::COLOR6)) {
-            glClearBufferfv(GL_COLOR, 6, linearColor.v);
+            glClearBufferfv(GL_COLOR, 6, linearColor.v);  // 清除颜色缓冲区 6
         }
         if (any(clearFlags & TargetBufferFlags::COLOR7)) {
-            glClearBufferfv(GL_COLOR, 7, linearColor.v);
+            glClearBufferfv(GL_COLOR, 7, linearColor.v);  // 清除颜色缓冲区 7
         }
+        // 清除深度和模板缓冲区
         if ((clearFlags & TargetBufferFlags::DEPTH_AND_STENCIL) == TargetBufferFlags::DEPTH_AND_STENCIL) {
+            // 同时清除深度和模板（更高效，一次调用）
             glClearBufferfi(GL_DEPTH_STENCIL, 0, depth, stencil);
         } else {
+            // 分别清除深度和模板
             if (any(clearFlags & TargetBufferFlags::DEPTH)) {
-                glClearBufferfv(GL_DEPTH, 0, &depth);
+                glClearBufferfv(GL_DEPTH, 0, &depth);  // 清除深度缓冲区
             }
             if (any(clearFlags & TargetBufferFlags::STENCIL)) {
-                glClearBufferiv(GL_STENCIL, 0, &stencil);
+                glClearBufferiv(GL_STENCIL, 0, &stencil);  // 清除模板缓冲区
             }
         }
     } else
 #endif
     {
+        // ES 2.0 路径：使用 glClear 组合清除（单渲染目标）
+        // 构建清除掩码并设置清除值
         GLbitfield mask = 0;
         if (any(clearFlags & TargetBufferFlags::COLOR0)) {
+            // 设置清除颜色（RGBA）
             glClearColor(linearColor.r, linearColor.g, linearColor.b, linearColor.a);
-            mask |= GL_COLOR_BUFFER_BIT;
+            mask |= GL_COLOR_BUFFER_BIT;  // 添加颜色缓冲区到掩码
         }
         if (any(clearFlags & TargetBufferFlags::DEPTH)) {
+            // 设置清除深度值
             glClearDepthf(depth);
-            mask |= GL_DEPTH_BUFFER_BIT;
+            mask |= GL_DEPTH_BUFFER_BIT;  // 添加深度缓冲区到掩码
         }
         if (any(clearFlags & TargetBufferFlags::STENCIL)) {
+            // 设置清除模板值
             glClearStencil(stencil);
-            mask |= GL_STENCIL_BUFFER_BIT;
+            mask |= GL_STENCIL_BUFFER_BIT;  // 添加模板缓冲区到掩码
         }
+        // 如果掩码非空，执行组合清除（一次调用清除所有缓冲区）
         if (mask) {
             glClear(mask);
         }
@@ -4059,6 +6977,31 @@ void OpenGLDriver::clearWithRasterPipe(TargetBufferFlags const clearFlags,
     CHECK_GL_ERROR()
 }
 
+/**
+ * 解析多重采样纹理
+ * 
+ * 将多重采样纹理解析为单采样纹理（MSAA resolve）。
+ * 这是 blit 的便捷方法，用于从多采样纹理解析到单采样纹理。
+ * 
+ * @param dst 目标纹理句柄（单采样）
+ * @param srcLevel 源 Mipmap 级别
+ * @param srcLayer 源层索引（用于数组纹理）
+ * @param src 源纹理句柄（多采样）
+ * @param dstLevel 目标 Mipmap 级别
+ * @param dstLayer 目标层索引（用于数组纹理）
+ * 
+ * 执行流程：
+ * 1. 验证源和目标纹理有效
+ * 2. 验证尺寸匹配（宽度和高度必须相同）
+ * 3. 验证源是多采样，目标是单采样
+ * 4. 调用 blit 执行解析（从源到目标，全尺寸）
+ * 
+ * 注意：
+ * - 源纹理必须是多采样（samples > 1）
+ * - 目标纹理必须是单采样（samples == 1）
+ * - 源和目标尺寸必须匹配
+ * - 这是 blit 的便捷方法，专门用于 MSAA resolve
+ */
 void OpenGLDriver::resolve(
         Handle<HwTexture> dst, uint8_t const srcLevel, uint8_t const srcLayer,
         Handle<HwTexture> src, uint8_t const dstLevel, uint8_t const dstLayer) {
@@ -4068,17 +7011,62 @@ void OpenGLDriver::resolve(
     assert_invariant(s);
     assert_invariant(d);
 
+    // 验证尺寸匹配
     FILAMENT_CHECK_PRECONDITION(d->width == s->width && d->height == s->height)
             << "invalid resolve: src and dst sizes don't match";
 
+    // 验证源是多采样，目标是单采样
     FILAMENT_CHECK_PRECONDITION(s->samples > 1 && d->samples == 1)
             << "invalid resolve: src.samples=" << +s->samples << ", dst.samples=" << +d->samples;
 
+    // 调用 blit 执行解析（从源到目标，全尺寸）
     blit(   dst, dstLevel, dstLayer, {},
             src, srcLevel, srcLayer, {},
             { d->width, d->height });
 }
 
+/**
+ * 纹理块传输
+ * 
+ * 在两个纹理之间传输像素数据（blit）。
+ * 支持不同 Mipmap 级别、不同层、不同区域的传输。
+ * 可用于 MSAA resolve、纹理复制、格式转换等。
+ * 
+ * @param dst 目标纹理句柄
+ * @param srcLevel 源 Mipmap 级别
+ * @param srcLayer 源层索引（用于数组纹理）
+ * @param dstOrigin 目标区域原点（像素坐标）
+ * @param src 源纹理句柄
+ * @param dstLevel 目标 Mipmap 级别
+ * @param dstLayer 目标层索引（用于数组纹理）
+ * @param srcOrigin 源区域原点（像素坐标）
+ * @param size 传输区域大小（像素）
+ * 
+ * 执行流程：
+ * 1. 验证不是 ES 2.0（ES 2.0 不支持 blit）
+ * 2. 验证纹理有效
+ * 3. 验证纹理使用标志（BLIT_SRC/BLIT_DST）
+ * 4. 验证格式匹配（源和目标格式必须相同）
+ * 5. 确定附件类型（COLOR/DEPTH/STENCIL/DEPTH_STENCIL）
+ * 6. 创建临时 FBO（读取和绘制各一个）
+ * 7. 将源纹理附加到读取 FBO
+ * 8. 将目标纹理附加到绘制 FBO
+ * 9. 禁用裁剪测试
+ * 10. 调用 glBlitFramebuffer 执行传输
+ * 11. 清理临时 FBO
+ * 
+ * 性能优化：
+ * - 使用临时 FBO 避免修改现有绑定
+ * - 禁用裁剪测试以提高性能
+ * - 使用 GL_NEAREST 过滤（最快）
+ * 
+ * 注意：
+ * - ES 2.0 不支持此方法
+ * - 源和目标格式必须匹配
+ * - 纹理必须具有相应的使用标志
+ * - 支持 2D、3D、Array、Cube 纹理
+ * - 支持颜色、深度、模板缓冲区
+ */
 void OpenGLDriver::blit(
         Handle<HwTexture> dst, uint8_t const srcLevel, uint8_t const srcLayer, uint2 const dstOrigin,
         Handle<HwTexture> src, uint8_t const dstLevel, uint8_t const dstLayer, uint2 const srcOrigin,
@@ -4094,248 +7082,410 @@ void OpenGLDriver::blit(
     assert_invariant(d);
     assert_invariant(s);
 
+    // 验证目标纹理具有 BLIT_DST 使用标志
     ASSERT_PRECONDITION_NON_FATAL(any(d->usage & TextureUsage::BLIT_DST),
             "texture doesn't have BLIT_DST");
 
+    // 验证源纹理具有 BLIT_SRC 使用标志
     ASSERT_PRECONDITION_NON_FATAL(any(s->usage & TextureUsage::BLIT_SRC),
             "texture doesn't have BLIT_SRC");
 
+    // 验证格式匹配
     ASSERT_PRECONDITION_NON_FATAL(s->format == d->format,
             "src and dst texture format don't match");
 
+    // 附件类型枚举：定义 FBO 附件的类型（颜色、深度、模板等）
     enum class AttachmentType : GLenum {
-        COLOR = GL_COLOR_ATTACHMENT0,
-        DEPTH = GL_DEPTH_ATTACHMENT,
-        STENCIL = GL_STENCIL_ATTACHMENT,
-        DEPTH_STENCIL = GL_DEPTH_STENCIL_ATTACHMENT,
+        COLOR = GL_COLOR_ATTACHMENT0,           // 颜色附件
+        DEPTH = GL_DEPTH_ATTACHMENT,            // 深度附件
+        STENCIL = GL_STENCIL_ATTACHMENT,        // 模板附件
+        DEPTH_STENCIL = GL_DEPTH_STENCIL_ATTACHMENT,  // 深度模板组合附件
     };
 
+    // Lambda 函数：根据纹理格式确定附件类型
+    // 用于判断纹理是颜色、深度、模板还是深度模板组合格式
     auto getFormatType = [](TextureFormat const format) -> AttachmentType {
-        bool const depth = isDepthFormat(format);
-        bool const stencil = isStencilFormat(format);
-        if (depth && stencil) return AttachmentType::DEPTH_STENCIL;
-        if (depth) return AttachmentType::DEPTH;
-        if (stencil) return AttachmentType::STENCIL;
-        return AttachmentType::COLOR;
+        bool const depth = isDepthFormat(format);      // 是否为深度格式
+        bool const stencil = isStencilFormat(format);  // 是否为模板格式
+        if (depth && stencil) return AttachmentType::DEPTH_STENCIL;  // 深度模板组合
+        if (depth) return AttachmentType::DEPTH;       // 仅深度
+        if (stencil) return AttachmentType::STENCIL;   // 仅模板
+        return AttachmentType::COLOR;                  // 颜色
     };
 
+    // 确定附件类型（源和目标必须相同）
     AttachmentType const type = getFormatType(d->format);
     assert_invariant(type == getFormatType(s->format));
 
-    // GL_INVALID_OPERATION is generated if mask contains any of the GL_DEPTH_BUFFER_BIT or
-    // GL_STENCIL_BUFFER_BIT and filter is not GL_NEAREST.
+    // 确定 blit 掩码：根据附件类型设置要传输的缓冲区位
+    // 注意：如果掩码包含 GL_DEPTH_BUFFER_BIT 或 GL_STENCIL_BUFFER_BIT，
+    // 过滤模式必须是 GL_NEAREST（不能使用 GL_LINEAR）
     GLbitfield mask = {};
     switch (type) {
         case AttachmentType::COLOR:
-            mask = GL_COLOR_BUFFER_BIT;
+            mask = GL_COLOR_BUFFER_BIT;  // 传输颜色缓冲区
             break;
         case AttachmentType::DEPTH:
-            mask = GL_DEPTH_BUFFER_BIT;
+            mask = GL_DEPTH_BUFFER_BIT;  // 传输深度缓冲区
             break;
         case AttachmentType::STENCIL:
-            mask = GL_STENCIL_BUFFER_BIT;
+            mask = GL_STENCIL_BUFFER_BIT;  // 传输模板缓冲区
             break;
         case AttachmentType::DEPTH_STENCIL:
-            mask = GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT;
+            mask = GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT;  // 同时传输深度和模板
             break;
     };
 
+    // 创建临时 FBO（读取和绘制各一个）
     GLuint fbo[2] = {};
     glGenFramebuffers(2, fbo);
 
+    // 绑定目标纹理到绘制 FBO
     gl.bindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo[0]);
     switch (d->target) {
         case SamplerType::SAMPLER_2D:
+            // 2D 纹理：根据使用标志选择纹理或渲染缓冲区
             if (any(d->usage & TextureUsage::SAMPLEABLE)) {
+                // 可采样纹理：附加纹理到 FBO
                 glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GLenum(type),
                         GL_TEXTURE_2D, d->gl.id, dstLevel);
             } else {
+                // 不可采样：附加渲染缓冲区到 FBO
                 glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GLenum(type),
                         GL_RENDERBUFFER, d->gl.id);
             }
             break;
         case SamplerType::SAMPLER_CUBEMAP:
+            // Cube 纹理：附加指定的面到 FBO
             glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GLenum(type),
                     GL_TEXTURE_CUBE_MAP_POSITIVE_X + dstLayer, d->gl.id, dstLevel);
             break;
         case SamplerType::SAMPLER_2D_ARRAY:
         case SamplerType::SAMPLER_CUBEMAP_ARRAY:
         case SamplerType::SAMPLER_3D:
+            // 数组纹理或 3D 纹理：使用纹理层附加
             glFramebufferTextureLayer(GL_DRAW_FRAMEBUFFER, GLenum(type),
                     d->gl.id, dstLevel, dstLayer);
             break;
         case SamplerType::SAMPLER_EXTERNAL:
+            // 外部纹理：不支持 blit
             break;
     }
+    // 验证绘制 FBO 状态
     CHECK_GL_FRAMEBUFFER_STATUS(GL_DRAW_FRAMEBUFFER)
 
+    // 绑定源纹理到读取 FBO
     gl.bindFramebuffer(GL_READ_FRAMEBUFFER, fbo[1]);
     switch (s->target) {
         case SamplerType::SAMPLER_2D:
+            // 2D 纹理：根据使用标志选择纹理或渲染缓冲区
             if (any(s->usage & TextureUsage::SAMPLEABLE)) {
+                // 可采样纹理：附加纹理到 FBO
                 glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GLenum(type),
                         GL_TEXTURE_2D, s->gl.id, srcLevel);
             } else {
+                // 不可采样：附加渲染缓冲区到 FBO
                 glFramebufferRenderbuffer(GL_READ_FRAMEBUFFER, GLenum(type),
                         GL_RENDERBUFFER, s->gl.id);
             }
             break;
         case SamplerType::SAMPLER_CUBEMAP:
+            // Cube 纹理：附加指定的面到 FBO
             glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GLenum(type),
                     GL_TEXTURE_CUBE_MAP_POSITIVE_X + srcLayer, s->gl.id, srcLevel);
             break;
         case SamplerType::SAMPLER_2D_ARRAY:
         case SamplerType::SAMPLER_CUBEMAP_ARRAY:
         case SamplerType::SAMPLER_3D:
+            // 数组纹理或 3D 纹理：使用纹理层附加
             glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GLenum(type),
                     s->gl.id, srcLevel, srcLayer);
             break;
         case SamplerType::SAMPLER_EXTERNAL:
+            // 外部纹理：不支持 blit
             break;
     }
+    // 验证读取 FBO 状态
     CHECK_GL_FRAMEBUFFER_STATUS(GL_READ_FRAMEBUFFER)
 
+    // 禁用裁剪测试（blit 不受裁剪影响）
     gl.disable(GL_SCISSOR_TEST);
+    // 执行 blit 操作：从源区域传输到目标区域
+    // 使用 GL_NEAREST 过滤（深度/模板必须使用 NEAREST）
     glBlitFramebuffer(
-            GLint(srcOrigin.x), GLint(srcOrigin.y), GLint(srcOrigin.x + size.x), GLint(srcOrigin.y + size.y),
-            GLint(dstOrigin.x), GLint(dstOrigin.y), GLint(dstOrigin.x + size.x), GLint(dstOrigin.y + size.y),
-            mask, GL_NEAREST);
+            GLint(srcOrigin.x), GLint(srcOrigin.y), GLint(srcOrigin.x + size.x), GLint(srcOrigin.y + size.y),  // 源区域
+            GLint(dstOrigin.x), GLint(dstOrigin.y), GLint(dstOrigin.x + size.x), GLint(dstOrigin.y + size.y),  // 目标区域
+            mask, GL_NEAREST);  // 传输掩码和过滤模式
     CHECK_GL_ERROR()
 
+    // 清理：解绑并删除临时 FBO
     gl.unbindFramebuffer(GL_DRAW_FRAMEBUFFER);
     gl.unbindFramebuffer(GL_READ_FRAMEBUFFER);
     glDeleteFramebuffers(2, fbo);
 #endif
 }
 
+/**
+ * 渲染目标块传输（已弃用）
+ * 
+ * 在两个渲染目标之间传输像素数据（blit）。
+ * 此方法已弃用，仅由 Renderer::copyFrame 使用。
+ * 
+ * @param buffers 要传输的缓冲区标志（仅支持 COLOR0）
+ * @param dst 目标渲染目标句柄
+ * @param dstRect 目标区域（视口坐标）
+ * @param src 源渲染目标句柄
+ * @param srcRect 源区域（视口坐标）
+ * @param filter 过滤模式（NEAREST/LINEAR）
+ * 
+ * 执行流程：
+ * 1. 验证不是 ES 2.0（ES 2.0 不支持 blit）
+ * 2. 验证只支持 COLOR0（不支持多渲染目标）
+ * 3. 验证矩形坐标为正数
+ * 4. 对于 MSAA 渲染目标，从 MSAA 侧缓冲区复制
+ *    （这应该产生与从解析纹理复制相同的输出）
+ * 5. 验证目标不是多采样（GLES 3.x 要求）
+ * 6. 如果源是多采样，验证源和目标矩形相同
+ * 7. 绑定源和目标 FBO
+ * 8. 禁用裁剪测试
+ * 9. 调用 glBlitFramebuffer 执行传输
+ * 
+ * 注意：
+ * - 此方法已弃用，仅由 Renderer::copyFrame 使用
+ * - ES 2.0 不支持此方法
+ * - 只支持 COLOR0（不支持多渲染目标）
+ * - 对于 MSAA 渲染目标，从 MSAA 侧缓冲区复制
+ * - 源是多采样时，源和目标矩形必须相同
+ * - 目标不能是多采样
+ */
 void OpenGLDriver::blitDEPRECATED(TargetBufferFlags const buffers,
         Handle<HwRenderTarget> dst, Viewport const dstRect,
         Handle<HwRenderTarget> src, Viewport const srcRect,
         SamplerMagFilter const filter) {
 
-    // Note: blitDEPRECATED is only used by Renderer::copyFrame
+    // 注意：blitDEPRECATED 仅由 Renderer::copyFrame 使用
 
     DEBUG_MARKER()
     UTILS_UNUSED_IN_RELEASE auto& gl = mContext;
     assert_invariant(!gl.isES2());
 
+    // 验证只支持 COLOR0
     FILAMENT_CHECK_PRECONDITION(buffers == TargetBufferFlags::COLOR0)
             << "blitDEPRECATED only supports COLOR0";
 
+    // 验证矩形坐标为正数
     FILAMENT_CHECK_PRECONDITION(
             srcRect.left >= 0 && srcRect.bottom >= 0 && dstRect.left >= 0 && dstRect.bottom >= 0)
             << "Source and destination rects must be positive.";
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
 
+    // 转换过滤模式：从 Filament 枚举转换为 OpenGL 常量
     GLenum const glFilterMode = (filter == SamplerMagFilter::NEAREST) ? GL_NEAREST : GL_LINEAR;
 
-    // note: for msaa RenderTargets with non-msaa attachments, we copy from the msaa sidecar
-    // buffer -- this should produce the same output that if we copied from the resolved
-    // texture. EXT_multisampled_render_to_texture seems to allow both behaviours, and this
-    // is an emulation of that.  We cannot use the resolved texture easily because it's not
-    // actually attached to the RenderTarget. Another implementation would be to do a
-    // reverse-resolve, but that wouldn't buy us anything.
+    // 注意：对于具有非 MSAA 附件的 MSAA 渲染目标，我们从 MSAA 侧缓冲区复制
+    // 这应该产生与从解析纹理复制相同的输出
+    // EXT_multisampled_render_to_texture 似乎允许这两种行为，这是对它的模拟
+    // 我们不能轻易使用解析纹理，因为它实际上没有附加到 RenderTarget
+    // 另一种实现是进行反向解析，但这不会给我们带来任何好处
     GLRenderTarget const* s = handle_cast<GLRenderTarget const*>(src);
     GLRenderTarget const* d = handle_cast<GLRenderTarget const*>(dst);
 
-    // With GLES 3.x, GL_INVALID_OPERATION is generated if the value of GL_SAMPLE_BUFFERS
-    // for the draw buffer is greater than zero. This works with OpenGL, so we want to
-    // make sure to catch this scenario.
+    // GLES 3.x 限制：如果绘制缓冲区的 GL_SAMPLE_BUFFERS 值大于零，会生成 GL_INVALID_OPERATION
+    // 这在 OpenGL 上可以工作，所以我们要确保捕获这种情况
+    // 目标不能是多采样（必须是单采样）
     assert_invariant(d->gl.samples <= 1);
 
-    // GL_INVALID_OPERATION is generated if GL_SAMPLE_BUFFERS for the read buffer is greater
-    // than zero and the formats of draw and read buffers are not identical.
-    // However, it's not well-defined in the spec what "format" means. So it's difficult
-    // to have an assert here -- especially when dealing with the default framebuffer
+    // GLES 3.x 限制：如果读取缓冲区的 GL_SAMPLE_BUFFERS 大于零，
+    // 且绘制和读取缓冲区的格式不完全相同，会生成 GL_INVALID_OPERATION
+    // 但是规范中没有明确定义"格式"的含义，所以很难在这里断言
+    // 特别是在处理默认 framebuffer 时
 
-    // GL_INVALID_OPERATION is generated if GL_SAMPLE_BUFFERS for the read buffer is greater
-    // than zero and (...) the source and destination rectangles are not defined with the
-    // same (X0, Y0) and (X1, Y1) bounds.
+    // GLES 3.x 限制：如果读取缓冲区的 GL_SAMPLE_BUFFERS 大于零，
+    // 且源和目标矩形没有定义相同的 (X0, Y0) 和 (X1, Y1) 边界，会生成 GL_INVALID_OPERATION
 
-    // Additionally, the EXT_multisampled_render_to_texture extension doesn't specify what
-    // happens when blitting from an "implicit" resolve render target (does it work?), so
-    // to ere on the safe side, we don't allow it.
+    // 此外，EXT_multisampled_render_to_texture 扩展没有指定
+    // 从"隐式"解析渲染目标进行 blit 时会发生什么（它有效吗？）
+    // 所以为了安全起见，我们不允许它
+    // 如果源是多采样，源和目标矩形必须完全相同
     if (s->gl.samples > 1) {
         assert_invariant(!memcmp(&dstRect, &srcRect, sizeof(srcRect)));
     }
 
+    // 绑定源和目标 FBO（使用渲染目标已有的 FBO，不需要创建临时 FBO）
     gl.bindFramebuffer(GL_READ_FRAMEBUFFER, s->gl.fbo);
     gl.bindFramebuffer(GL_DRAW_FRAMEBUFFER, d->gl.fbo);
 
+    // 验证 FBO 状态（确保绑定成功）
     CHECK_GL_FRAMEBUFFER_STATUS(GL_READ_FRAMEBUFFER)
     CHECK_GL_FRAMEBUFFER_STATUS(GL_DRAW_FRAMEBUFFER)
 
+    // 禁用裁剪测试（blit 不受裁剪影响）
     gl.disable(GL_SCISSOR_TEST);
+    // 执行 blit 操作：从源区域传输颜色缓冲区到目标区域
+    // 注意：OpenGL 使用左下角原点，所以 bottom 和 top 的顺序
     glBlitFramebuffer(
-            srcRect.left, srcRect.bottom, srcRect.right(), srcRect.top(),
-            dstRect.left, dstRect.bottom, dstRect.right(), dstRect.top(),
-            GL_COLOR_BUFFER_BIT, glFilterMode);
+            srcRect.left, srcRect.bottom, srcRect.right(), srcRect.top(),  // 源区域（左下角到右上角）
+            dstRect.left, dstRect.bottom, dstRect.right(), dstRect.top(),  // 目标区域（左下角到右上角）
+            GL_COLOR_BUFFER_BIT, glFilterMode);  // 只传输颜色缓冲区，使用指定的过滤模式
     CHECK_GL_ERROR()
 #endif
 }
 
+/**
+ * 绑定渲染管线
+ * 
+ * 绑定完整的渲染管线状态，包括：
+ * - 光栅化状态（culling、blending、depth test 等）
+ * - 模板状态（stencil test、functions、operations）
+ * - 多边形偏移（用于阴影贴图等）
+ * - 着色器程序
+ * - 推送常量
+ * - 管线布局（描述符集布局）
+ * 
+ * @param state 管线状态（包含所有渲染状态）
+ * 
+ * 执行流程：
+ * 1. 设置光栅化状态（culling、blending、depth test 等）
+ * 2. 设置模板状态（stencil test、functions、operations）
+ * 3. 设置多边形偏移（slope 和 constant）
+ * 4. 绑定着色器程序（如果程序无效，标记为无效）
+ * 5. 更新推送常量（从程序获取）
+ * 6. 保存管线布局（描述符集布局）
+ * 
+ * 性能优化：
+ * - 状态缓存：OpenGLContext 会缓存状态，避免重复设置
+ * - 延迟绑定：描述符集在绘制时才绑定
+ * 
+ * 注意：
+ * - 如果程序编译/链接失败，mValidProgram 会被设置为 false
+ * - 推送常量从程序获取（在编译时确定）
+ * - TODO: 应该验证管线布局与程序的布局匹配
+ */
 void OpenGLDriver::bindPipeline(PipelineState const& state) {
     DEBUG_MARKER()
     auto& gl = mContext;
+    // 设置光栅化状态（culling、blending、depth test 等）
     setRasterState(state.rasterState);
+    // 设置模板状态（stencil test、functions、operations）
     setStencilState(state.stencilState);
+    // 设置多边形偏移（用于阴影贴图等）
     gl.polygonOffset(state.polygonOffset.slope, state.polygonOffset.constant);
+    // 绑定着色器程序（如果程序无效，标记为无效）
     OpenGLProgram* const p = handle_cast<OpenGLProgram*>(state.program);
     mValidProgram = useProgram(p);
+    // 更新推送常量（从程序获取）
     (*mCurrentPushConstants) = p->getPushConstants();
+    // 保存管线布局（描述符集布局）
     mCurrentSetLayout = state.pipelineLayout.setLayout;
-    // TODO: we should validate that the pipeline layout matches the program's
+    // TODO: 应该验证管线布局与程序的布局匹配
 }
 
+/**
+ * 绑定渲染图元
+ * 
+ * 绑定渲染图元（Render Primitive），包括：
+ * - 顶点数组对象（VAO）
+ * - 顶点缓冲区（VBO）
+ * - 索引缓冲区（IBO）
+ * 
+ * @param rph 渲染图元句柄
+ * 
+ * 执行流程：
+ * 1. 获取渲染图元对象
+ * 2. 检查顶点缓冲区是否有效（如果未设置，优雅地返回）
+ * 3. 绑定 VAO（如果 VAO 已过期，会重新创建）
+ * 4. 更新 VAO 中的顶点缓冲区绑定（如果缓冲区改变）
+ * 5. 保存当前绑定的渲染图元
+ * 
+ * 性能优化：
+ * - VAO 缓存：VAO 在创建时记录状态版本，如果状态未改变，直接使用
+ * - 延迟更新：只在缓冲区改变时更新 VAO 绑定
+ * 
+ * 注意：
+ * - VAO 包含顶点属性配置和索引缓冲区绑定
+ * - 顶点缓冲区绑定在 draw 时更新（因为可能动态改变）
+ */
 void OpenGLDriver::bindRenderPrimitive(Handle<HwRenderPrimitive> rph) {
     DEBUG_MARKER()
     auto& gl = mContext;
 
     GLRenderPrimitive* const rp = handle_cast<GLRenderPrimitive*>(rph);
 
-    // Gracefully do nothing if the render primitive has not been set up.
+    // 如果渲染图元未设置，优雅地返回（不做任何操作）
     VertexBufferHandle vb = rp->gl.vertexBufferWithObjects;
     if (UTILS_UNLIKELY(!vb)) {
         mBoundRenderPrimitive = nullptr;
         return;
     }
 
-    // If necessary, mutate the bindings in the VAO.
+    // 如果需要，更新 VAO 中的绑定
+    // bindVertexArray 会检查 VAO 是否过期，如果过期会重新创建
     gl.bindVertexArray(&rp->gl);
     GLVertexBuffer const* const glvb = handle_cast<GLVertexBuffer*>(vb);
+    // 更新 VAO 中的顶点缓冲区绑定（如果缓冲区改变）
     updateVertexArrayObject(rp, glvb);
 
+    // 保存当前绑定的渲染图元
     mBoundRenderPrimitive = rp;
 }
 
+/**
+ * 绑定描述符集
+ * 
+ * 将描述符集绑定到指定的槽位，用于后续绘制调用。
+ * 描述符集包含纹理、采样器、缓冲区等资源绑定。
+ * 
+ * @param dsh 描述符集句柄（nullptr 表示解绑）
+ * @param set 描述符集槽位（0, 1, 2, ...）
+ * @param offsets 动态偏移数组（用于动态 uniform 缓冲区）
+ * 
+ * 执行流程：
+ * 1. 如果描述符集为空（nullptr）：
+ *    - 标记绑定无效（需要重新绑定）
+ *    - 标记偏移无效（需要重新设置）
+ *    - 返回
+ * 2. 如果描述符集与之前绑定的不同：
+ *    - 标记绑定无效（在下次绘制时重新绑定）
+ * 3. 如果偏移发生变化：
+ *    - 标记偏移无效（在下次绘制时重新设置）
+ * 4. 保存描述符集句柄和偏移数组（复制数据，因为原数据生命周期在 CommandStream 中）
+ * 
+ * 性能优化：
+ * - 延迟绑定：标记无效，在绘制时才实际绑定（避免不必要的状态切换）
+ * - 偏移复制：复制偏移数据以确保生命周期正确
+ * 
+ * 注意：
+ * - 绑定不会立即生效，在绘制时才会应用
+ * - 偏移数组用于动态 uniform 缓冲区（允许在同一绑定点使用缓冲区的不同部分）
+ */
 void OpenGLDriver::bindDescriptorSet(
         DescriptorSetHandle dsh,
         descriptor_set_t const set,
         DescriptorSetOffsetArray&& offsets) {
 
     if (UTILS_UNLIKELY(!dsh)) {
+        // 描述符集为空，标记绑定和偏移无效
         mBoundDescriptorSets[set].dsh = dsh;
         mInvalidDescriptorSetBindings.set(set, true);
         mInvalidDescriptorSetBindingOffsets.set(set, true);
         return;
     }
 
-    // handle_cast<> here also serves to validate the handle (it actually cannot return nullptr)
+    // handle_cast<> 也用于验证句柄（实际上不能返回 nullptr）
     if (GLDescriptorSet const* const ds = handle_cast<GLDescriptorSet*>(dsh)) {
         assert_invariant(set < MAX_DESCRIPTOR_SET_COUNT);
         if (mBoundDescriptorSets[set].dsh != dsh) {
-            // if the descriptor itself changed, we mark this descriptor binding
-            // invalid -- it will be re-bound at the next draw.
+            // 如果描述符集本身改变，标记绑定无效
+            // 将在下次绘制时重新绑定
             mInvalidDescriptorSetBindings.set(set, true);
         } else if (!offsets.empty()) {
-            // if we reset offsets, we mark the offsets invalid so these descriptors only can
-            // be re-bound at the next draw.
+            // 如果重置偏移，标记偏移无效，这些描述符只能在下次绘制时重新绑定
             mInvalidDescriptorSetBindingOffsets.set(set, true);
         }
 
-        // `offsets` data's lifetime will end when this function returns. We have to make a copy.
-        // (the data is allocated inside the CommandStream)
+        // `offsets` 数据的生命周期在此函数返回时结束，我们必须复制
+        // （数据在 CommandStream 内分配）
         mBoundDescriptorSets[set].dsh = dsh;
         assert_invariant(offsets.data() != nullptr || ds->getDynamicBufferCount() == 0);
         std::copy_n(offsets.data(), ds->getDynamicBufferCount(),
@@ -4343,9 +7493,35 @@ void OpenGLDriver::bindDescriptorSet(
     }
 }
 
+/**
+ * 更新描述符
+ * 
+ * 将无效的描述符集绑定到 OpenGL 上下文。
+ * 此方法在绘制前调用，确保所有描述符集绑定是最新的。
+ * 
+ * @param invalidDescriptorSets 无效描述符集的位掩码（每位表示一个槽位）
+ * 
+ * 执行流程：
+ * 1. 计算只有偏移无效的描述符集（绑定未改变，只有偏移改变）
+ * 2. 遍历所有无效的描述符集：
+ *    - 如果描述符集句柄有效：
+ *      * 调试模式下验证描述符集布局与管线布局匹配（只在绑定改变时检查）
+ *      * 调用描述符集的 bind 方法绑定到 OpenGL 上下文
+ * 3. 清除所有无效标记
+ * 
+ * 性能优化：
+ * - 只更新无效的描述符集（避免不必要的状态切换）
+ * - 只有偏移改变时跳过布局验证（减少开销）
+ * 
+ * 注意：
+ * - 此方法在每次绘制前调用
+ * - 必须在绑定程序后调用（描述符绑定依赖于程序）
+ */
 void OpenGLDriver::updateDescriptors(bitset8 const invalidDescriptorSets) noexcept {
     assert_invariant(mBoundProgram);
+    // 计算只有偏移无效的描述符集（绑定未改变，只有偏移改变）
     auto const offsetOnly = mInvalidDescriptorSetBindingOffsets & ~mInvalidDescriptorSetBindings;
+    // 遍历所有无效的描述符集
     invalidDescriptorSets.forEachSetBit([this, offsetOnly,
             &boundDescriptorSets = mBoundDescriptorSets,
             &context = mContext,
@@ -4355,25 +7531,57 @@ void OpenGLDriver::updateDescriptors(bitset8 const invalidDescriptorSets) noexce
         if (entry.dsh) {
             GLDescriptorSet const* const ds = handle_cast<GLDescriptorSet*>(entry.dsh);
 #ifndef NDEBUG
+            // 调试模式下验证描述符集布局与管线布局匹配
             if (UTILS_UNLIKELY(!offsetOnly[set])) {
-                // validate that this descriptor-set layout matches the layout set in the pipeline
-                // we don't need to do the check if only the offset is changing
+                // 验证此描述符集布局与管线中设置的布局匹配
+                // 如果只有偏移改变，则不需要检查
                 ds->validate(mHandleAllocator, mCurrentSetLayout[set]);
             }
 #endif
+            // 绑定描述符集到 OpenGL 上下文
             ds->bind(context, mHandleAllocator, boundProgram,
                     set, entry.offsets.data(), offsetOnly[set]);
         }
     });
+    // 清除所有无效标记
     mInvalidDescriptorSetBindings.clear();
     mInvalidDescriptorSetBindingOffsets.clear();
 }
 
+/**
+ * 绘制（实例化）
+ * 
+ * 执行 GPU 绘制调用，绘制索引几何体（支持实例化）。
+ * 
+ * @param indexOffset 索引缓冲区偏移（索引数量，不是字节）
+ * @param indexCount 索引数量
+ * @param instanceCount 实例数量（1 表示非实例化绘制）
+ * 
+ * 执行流程：
+ * 1. 验证前提条件：
+ *    - 不是 ES 2.0（ES 2.0 不支持实例化绘制）
+ *    - 渲染图元已绑定
+ *    - 程序已绑定且有效
+ * 2. 如果描述符集无效（程序改变或绑定改变）：
+ *    - 更新描述符（重新绑定纹理、采样器、缓冲区等）
+ * 3. 调用 glDrawElementsInstanced 执行绘制
+ * 
+ * 性能优化：
+ * - 延迟描述符绑定：只在需要时更新描述符（避免不必要的状态切换）
+ * - 实例化绘制：一次调用绘制多个实例（减少 CPU 开销）
+ * 
+ * 注意：
+ * - ES 2.0 不支持此方法（不支持实例化绘制）
+ * - 索引偏移是索引数量，不是字节偏移
+ * - 实例数量 >= 1（1 表示非实例化绘制）
+ * - 材质调试模式下程序无效时不绘制
+ */
 void OpenGLDriver::draw2(uint32_t const indexOffset, uint32_t const indexCount, uint32_t const instanceCount) {
     DEBUG_MARKER()
     assert_invariant(!mContext.isES2());
     assert_invariant(mBoundRenderPrimitive);
 #if FILAMENT_ENABLE_MATDBG
+    // 材质调试模式：程序无效时不绘制
     if (UTILS_UNLIKELY(!mValidProgram)) {
         return;
     }
@@ -4381,7 +7589,7 @@ void OpenGLDriver::draw2(uint32_t const indexOffset, uint32_t const indexCount, 
     assert_invariant(mBoundProgram);
     assert_invariant(mValidProgram);
 
-    // When the program changes, we might have to rebind all or some descriptors
+    // 当程序改变时，我们可能需要重新绑定所有或部分描述符
     auto const invalidDescriptorSets =
             mInvalidDescriptorSetBindings | mInvalidDescriptorSetBindingOffsets;
     if (UTILS_UNLIKELY(invalidDescriptorSets.any())) {
@@ -4389,6 +7597,7 @@ void OpenGLDriver::draw2(uint32_t const indexOffset, uint32_t const indexCount, 
     }
 
 #ifndef FILAMENT_SILENCE_NOT_SUPPORTED_BY_ES2
+    // 执行 GPU 绘制调用
     GLRenderPrimitive const* const rp = mBoundRenderPrimitive;
     glDrawElementsInstanced(GLenum(rp->type), GLsizei(indexCount),
             rp->gl.getIndicesType(),
@@ -4403,12 +7612,37 @@ void OpenGLDriver::draw2(uint32_t const indexOffset, uint32_t const indexCount, 
 #endif
 }
 
-// This is the ES2 version of draw2().
+/**
+ * 绘制（ES 2.0 版本）
+ * 
+ * 这是 draw2() 的 ES 2.0 版本，不支持实例化绘制。
+ * 执行 GPU 绘制调用，绘制索引几何体（非实例化）。
+ * 
+ * @param indexOffset 索引缓冲区偏移（索引数量，不是字节）
+ * @param indexCount 索引数量
+ * @param instanceCount 实例数量（ES 2.0 必须为 1）
+ * 
+ * 执行流程：
+ * 1. 验证前提条件：
+ *    - 是 ES 2.0
+ *    - 渲染图元已绑定
+ *    - 程序已绑定且有效
+ *    - 实例数量为 1（ES 2.0 不支持实例化）
+ * 2. 如果描述符集无效：
+ *    - 更新描述符（重新绑定纹理、采样器、缓冲区等）
+ * 3. 调用 glDrawElements 执行绘制（非实例化版本）
+ * 
+ * 注意：
+ * - 这是 ES 2.0 专用版本
+ * - ES 2.0 不支持实例化绘制，instanceCount 必须为 1
+ * - 使用 glDrawElements 而不是 glDrawElementsInstanced
+ */
 void OpenGLDriver::draw2GLES2(uint32_t const indexOffset, uint32_t const indexCount, uint32_t const instanceCount) {
     DEBUG_MARKER()
     assert_invariant(mContext.isES2());
     assert_invariant(mBoundRenderPrimitive);
 #if FILAMENT_ENABLE_MATDBG
+    // 材质调试模式：程序无效时不绘制
     if (UTILS_UNLIKELY(!mValidProgram)) {
         return;
     }
@@ -4416,7 +7650,7 @@ void OpenGLDriver::draw2GLES2(uint32_t const indexOffset, uint32_t const indexCo
     assert_invariant(mBoundProgram);
     assert_invariant(mValidProgram);
 
-    // When the program changes, we might have to rebind all or some descriptors
+    // 当程序改变时，我们可能需要重新绑定所有或部分描述符
     auto const invalidDescriptorSets =
             mInvalidDescriptorSetBindings | mInvalidDescriptorSetBindingOffsets;
     if (UTILS_UNLIKELY(invalidDescriptorSets.any())) {
@@ -4424,7 +7658,9 @@ void OpenGLDriver::draw2GLES2(uint32_t const indexOffset, uint32_t const indexCo
     }
 
     GLRenderPrimitive const* const rp = mBoundRenderPrimitive;
+    // ES 2.0 不支持实例化绘制，实例数量必须为 1
     assert_invariant(instanceCount == 1);
+    // 调用 glDrawElements（非实例化版本）
     glDrawElements(GLenum(rp->type), GLsizei(indexCount), rp->gl.getIndicesType(),
             reinterpret_cast<const void*>(indexOffset << rp->gl.indicesShift));
 
@@ -4435,48 +7671,124 @@ void OpenGLDriver::draw2GLES2(uint32_t const indexOffset, uint32_t const indexCo
 #endif
 }
 
+/**
+ * 设置裁剪区域
+ * 
+ * 设置裁剪测试的矩形区域。
+ * 只有在裁剪区域内的像素才会被渲染。
+ * 
+ * @param scissor 裁剪区域（视口坐标）
+ * 
+ * 注意：
+ * - 裁剪区域在视口坐标系中
+ * - 委托给 setScissor 实现
+ */
 void OpenGLDriver::scissor(Viewport const scissor) {
     DEBUG_MARKER()
     setScissor(scissor);
 }
 
+/**
+ * 执行绘制调用
+ * 
+ * 这是渲染的核心方法，执行实际的绘制操作。主要职责：
+ * 1. 绑定渲染管线状态（着色器程序、渲染状态等）
+ * 2. 绑定渲染图元（顶点/索引缓冲区、VAO）
+ * 3. 执行绘制调用（glDrawElementsInstanced 或 glDrawElements）
+ * 
+ * @param state 管线状态（包含着色器程序、渲染状态等）
+ * @param rph 渲染图元句柄（包含顶点/索引缓冲区信息）
+ * @param indexOffset 索引缓冲区偏移（以索引为单位）
+ * @param indexCount 要绘制的索引数量
+ * @param instanceCount 实例数量（用于实例化渲染）
+ * 
+ * 执行流程：
+ * 1. 从渲染图元获取图元类型和顶点缓冲区信息
+ * 2. 更新管线状态（设置图元类型和顶点缓冲区信息）
+ * 3. 绑定管线（着色器程序、渲染状态等）
+ * 4. 绑定渲染图元（VAO、顶点/索引缓冲区）
+ * 5. 根据 OpenGL 版本选择绘制方法：
+ *    - ES 2.0: 使用 draw2GLES2（不支持实例化）
+ *    - ES 3.0+/GL 4.1+: 使用 draw2（支持实例化）
+ * 
+ * 注意：
+ * - OpenGL ES 2.0 不支持实例化渲染，instanceCount 必须为 1
+ * - 索引偏移需要根据索引类型（16位/32位）进行转换
+ */
 void OpenGLDriver::draw(PipelineState state, Handle<HwRenderPrimitive> rph,
         uint32_t const indexOffset, uint32_t const indexCount, uint32_t const instanceCount) {
     DEBUG_MARKER()
     GLRenderPrimitive const* const rp = handle_cast<GLRenderPrimitive*>(rph);
+    
+    // 从渲染图元获取图元类型和顶点缓冲区信息
     state.primitiveType = rp->type;
     state.vertexBufferInfo = rp->vbih;
+    
+    // 绑定管线（着色器程序、渲染状态等）
     bindPipeline(state);
+    
+    // 绑定渲染图元（VAO、顶点/索引缓冲区）
     bindRenderPrimitive(rph);
+    
+    // 根据 OpenGL 版本选择绘制方法
     if (UTILS_UNLIKELY(mContext.isES2())) {
+        // ES 2.0：不支持实例化渲染
         draw2GLES2(indexOffset, indexCount, instanceCount);
     } else {
+        // ES 3.0+/GL 4.1+：支持实例化渲染
         draw2(indexOffset, indexCount, instanceCount);
     }
 }
 
+/**
+ * 调度计算着色器
+ * 
+ * 执行计算着色器程序，用于 GPGPU 计算任务。
+ * 
+ * @param program 计算着色器程序句柄
+ * @param workGroupCount 工作组数量（x, y, z 维度）
+ * 
+ * 执行流程：
+ * 1. Tick 着色器编译服务（检查异步编译完成情况）
+ * 2. 绑定计算着色器程序
+ * 3. 如果程序无效（编译/链接失败）：
+ *    - 直接返回（避免致命错误或级联错误）
+ *    - 着色器编译错误已经输出到控制台
+ * 4. 调用 glDispatchCompute 执行计算
+ * 
+ * 性能优化：
+ * - 异步着色器编译：在绘制前 tick 编译服务
+ * 
+ * 注意：
+ * - 需要 ES 3.1 或 GL 4.3+ 支持（计算着色器）
+ * - Android 上 GLES 3.1+ 入口点定义在 glext 中（临时，直到淘汰 API < 21）
+ * - 工作组数量是三维的（x, y, z）
+ * - 计算着色器程序与渲染着色器程序不同
+ */
 void OpenGLDriver::dispatchCompute(Handle<HwProgram> program, uint3 const workGroupCount) {
     DEBUG_MARKER()
+    // Tick 着色器编译服务（检查异步编译完成情况）
     getShaderCompilerService().tick();
 
     OpenGLProgram* const p = handle_cast<OpenGLProgram*>(program);
 
+    // 绑定计算着色器程序
     bool const success = useProgram(p);
     if (UTILS_UNLIKELY(!success)) {
-        // Avoid fatal (or cascading) errors that can occur during the draw call when the program
-        // is invalid. The shader compile error has already been dumped to the console at this
-        // point, so it's fine to simply return early.
+        // 避免在程序无效时发生致命错误或级联错误
+        // 着色器编译错误已经输出到控制台，可以直接返回
         return;
     }
 
 #if defined(BACKEND_OPENGL_LEVEL_GLES31)
 
 #if defined(__ANDROID__)
-    // on Android, GLES3.1 and above entry-points are defined in glext
-    // (this is temporary, until we phase-out API < 21)
+    // Android 上 GLES 3.1+ 入口点定义在 glext 中
+    // （这是临时的，直到我们淘汰 API < 21）
     using glext::glDispatchCompute;
 #endif
 
+    // 调用计算着色器
     glDispatchCompute(workGroupCount.x, workGroupCount.y, workGroupCount.z);
 #endif // BACKEND_OPENGL_LEVEL_GLES31
 
@@ -4487,7 +7799,7 @@ void OpenGLDriver::dispatchCompute(Handle<HwProgram> program, uint3 const workGr
 #endif
 }
 
-// explicit instantiation of the Dispatcher
+// 显式实例化 Dispatcher
 template class ConcreteDispatcher<OpenGLDriver>;
 
 } // namespace filament::backend

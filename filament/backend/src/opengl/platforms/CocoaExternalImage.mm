@@ -24,6 +24,11 @@
 
 namespace filament::backend {
 
+/**
+ * 顶点着色器源码
+ * 
+ * 使用 gl_VertexID 生成全屏三角形，无需顶点缓冲区。
+ */
 static const char *s_vertex = R"SHADER(#version 410 core
 void main() {
     float x = -1.0 + float(((gl_VertexID & 1) <<2));
@@ -32,6 +37,11 @@ void main() {
 }
 )SHADER";
 
+/**
+ * 片段着色器源码
+ * 
+ * 从矩形纹理（GL_TEXTURE_RECTANGLE）采样到 2D 纹理。
+ */
 static const char *s_fragment = R"SHADER(#version 410 core
 precision mediump float;
 
@@ -43,6 +53,15 @@ void main() {
 }
 )SHADER";
 
+/**
+ * SharedGl 构造函数
+ * 
+ * 初始化共享 GL 对象，包括：
+ * 1. 创建采样器对象（最近邻过滤，边缘夹紧）
+ * 2. 编译顶点和片段着色器
+ * 3. 链接着色器程序
+ * 4. 设置 uniform 变量
+ */
 CocoaExternalImage::SharedGl::SharedGl() noexcept {
     glGenSamplers(1, &sampler);
     glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -84,6 +103,11 @@ CocoaExternalImage::SharedGl::SharedGl() noexcept {
     glUseProgram(currentProgram);
 }
 
+/**
+ * SharedGl 析构函数
+ * 
+ * 清理共享 GL 对象。
+ */
 CocoaExternalImage::SharedGl::~SharedGl() noexcept {
     glDeleteSamplers(1, &sampler);
     glDetachShader(program, vertexShader);
@@ -93,19 +117,45 @@ CocoaExternalImage::SharedGl::~SharedGl() noexcept {
     glDeleteProgram(program);
 }
 
+/**
+ * CocoaExternalImage 构造函数
+ * 
+ * @param textureCache CoreVideo 纹理缓存
+ * @param sharedGl 共享 GL 对象引用
+ */
 CocoaExternalImage::CocoaExternalImage(const CVOpenGLTextureCacheRef textureCache,
         const SharedGl &sharedGl) noexcept : mSharedGl(sharedGl), mTextureCache(textureCache) {
     glGenFramebuffers(1, &mFBO);
     CHECK_GL_ERROR()
 }
 
+/**
+ * CocoaExternalImage 析构函数
+ * 
+ * 清理帧缓冲区和外部图像资源。
+ */
 CocoaExternalImage::~CocoaExternalImage() noexcept {
     glDeleteFramebuffers(1, &mFBO);
     release();
 }
 
+/**
+ * 设置外部图像
+ * 
+ * 将 CVPixelBuffer 转换为 OpenGL 纹理。
+ * 
+ * @param image CVPixelBuffer 指针
+ * @return 如果成功返回 true
+ * 
+ * 执行流程：
+ * 1. 释放之前的外部图像引用
+ * 2. 验证像素格式（必须是 32BGRA）
+ * 3. 锁定像素缓冲区
+ * 4. 从图像创建矩形纹理
+ * 5. 将矩形纹理复制到 2D 纹理
+ */
 bool CocoaExternalImage::set(CVPixelBufferRef image) noexcept {
-    // Release references to a previous external image, if we're holding any.
+    // 释放之前的外部图像引用（如果有）
     release();
 
     if (!image) {
@@ -116,13 +166,13 @@ bool CocoaExternalImage::set(CVPixelBufferRef image) noexcept {
     FILAMENT_CHECK_POSTCONDITION(formatType == kCVPixelFormatType_32BGRA)
             << "macOS external images must be 32BGRA format.";
 
-    // The pixel buffer must be locked whenever we do rendering with it. We'll unlock it before
-    // releasing.
+    // 像素缓冲区在进行渲染时必须锁定。我们会在释放前解锁。
     UTILS_UNUSED_IN_RELEASE CVReturn lockStatus = CVPixelBufferLockBaseAddress(image, 0);
     assert_invariant(lockStatus == kCVReturnSuccess);
 
     mImage = image;
     mTexture = createTextureFromImage(image);
+    // 将矩形纹理复制到 2D 纹理
     mRgbaTexture = encodeCopyRectangleToTexture2D(CVOpenGLTextureGetName(mTexture),
             CVPixelBufferGetWidth(image), CVPixelBufferGetHeight(image));
     CHECK_GL_ERROR()
@@ -148,6 +198,11 @@ GLuint CocoaExternalImage::getTarget() const noexcept {
     return 0;
 }
 
+/**
+ * 释放资源
+ * 
+ * 释放当前持有的纹理和像素缓冲区引用。
+ */
 void CocoaExternalImage::release() noexcept {
     if (mImage) {
         CVPixelBufferUnlockBaseAddress(mImage, 0);
@@ -162,6 +217,14 @@ void CocoaExternalImage::release() noexcept {
     }
 }
 
+/**
+ * 从图像创建纹理
+ * 
+ * 使用 CoreVideo 纹理缓存从 CVPixelBuffer 创建 OpenGL 矩形纹理。
+ * 
+ * @param image CVPixelBuffer 指针
+ * @return CVOpenGLTextureRef，失败返回 nullptr
+ */
 CVOpenGLTextureRef CocoaExternalImage::createTextureFromImage(CVPixelBufferRef image) noexcept {
     CVOpenGLTextureRef texture = nullptr;
     UTILS_UNUSED_IN_RELEASE CVReturn success =
@@ -172,6 +235,24 @@ CVOpenGLTextureRef CocoaExternalImage::createTextureFromImage(CVPixelBufferRef i
     return texture;
 }
 
+/**
+ * 编码复制矩形纹理到 2D 纹理
+ * 
+ * 使用渲染通道将矩形纹理（GL_TEXTURE_RECTANGLE）复制到 2D 纹理（GL_TEXTURE_2D）。
+ * 
+ * @param rectangle 矩形纹理 ID
+ * @param width 宽度
+ * @param height 高度
+ * @return 2D 纹理 ID
+ * 
+ * 执行流程：
+ * 1. 保存当前 GL 状态
+ * 2. 创建目标 2D 纹理
+ * 3. 绑定源矩形纹理
+ * 4. 设置帧缓冲区
+ * 5. 执行全屏三角形绘制
+ * 6. 恢复 GL 状态
+ */
 GLuint CocoaExternalImage::encodeCopyRectangleToTexture2D(GLuint rectangle,
         size_t width, size_t height) noexcept {
     GLuint texture;
@@ -179,18 +260,18 @@ GLuint CocoaExternalImage::encodeCopyRectangleToTexture2D(GLuint rectangle,
 
     mState.save();
 
-    // Create a texture to hold the result of the blit image.
+    // 创建纹理以保存 blit 图像的结果
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width, height);
     CHECK_GL_ERROR()
 
-    // source textures
+    // 源纹理
     glBindSampler(0, mSharedGl.sampler);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_RECTANGLE, rectangle);
     CHECK_GL_ERROR()
 
-    // destination texture
+    // 目标纹理
     glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
     CHECK_GL_ERROR()
@@ -198,13 +279,13 @@ GLuint CocoaExternalImage::encodeCopyRectangleToTexture2D(GLuint rectangle,
     CHECK_GL_FRAMEBUFFER_STATUS(GL_FRAMEBUFFER)
     CHECK_GL_ERROR()
 
-    // draw
+    // 绘制
     glViewport(0, 0, width, height);
     CHECK_GL_ERROR()
     glUseProgram(mSharedGl.program);
     CHECK_GL_ERROR()
     glDisableVertexAttribArray(0);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glDrawArrays(GL_TRIANGLES, 0, 3);  // 全屏三角形
     CHECK_GL_ERROR()
 
     mState.restore();
@@ -213,6 +294,11 @@ GLuint CocoaExternalImage::encodeCopyRectangleToTexture2D(GLuint rectangle,
     return texture;
 }
 
+/**
+ * 保存当前 GL 状态
+ * 
+ * 保存活动纹理单元、纹理绑定、采样器绑定、帧缓冲区绑定、视口和顶点属性状态。
+ */
 void CocoaExternalImage::State::save() noexcept {
     glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &textureBinding);
@@ -222,6 +308,11 @@ void CocoaExternalImage::State::save() noexcept {
     glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &vertexAttrib);
 }
 
+/**
+ * 恢复之前保存的 GL 状态
+ * 
+ * 恢复活动纹理单元、纹理绑定、采样器绑定、帧缓冲区绑定、视口和顶点属性状态。
+ */
 void CocoaExternalImage::State::restore() noexcept {
     glActiveTexture(activeTexture);
     glBindTexture(GL_TEXTURE_2D, textureBinding);

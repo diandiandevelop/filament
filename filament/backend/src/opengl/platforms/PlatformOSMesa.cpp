@@ -34,22 +34,44 @@ using namespace backend;
 
 namespace {
 
+/**
+ * 后备类型
+ * 
+ * OSMesa 使用的像素格式类型。
+ */
 using BackingType = GLfloat;
 #define BACKING_GL_TYPE GL_FLOAT
 
+/**
+ * OSMesa 交换链结构
+ * 
+ * 存储 OSMesa 渲染的像素缓冲区。
+ */
 struct OSMesaSwapchain {
+    /**
+     * 构造函数
+     * 
+     * @param width 宽度
+     * @param height 高度
+     */
     OSMesaSwapchain(uint32_t width, uint32_t height)
         : width(width),
           height(height),
           buffer(new uint8_t[width * height * 4 * sizeof(BackingType)]) {}
 
-    uint32_t width = 0;
-    uint32_t height = 0;
-    std::unique_ptr<uint8_t[]> buffer;
+    uint32_t width = 0;                    // 宽度
+    uint32_t height = 0;                   // 高度
+    std::unique_ptr<uint8_t[]> buffer;     // 像素缓冲区（RGBA，每个通道 float）
 };
 
+/**
+ * OSMesa API 结构
+ * 
+ * 存储 OSMesa 函数指针，使用动态加载。
+ */
 struct OSMesaAPI {
 private:
+    // 函数指针类型定义
     using CreateContextAttribsFunc = OSMesaContext (*)(const int *, OSMesaContext);
     using DestroyContextFunc = GLboolean (*)(OSMesaContext);
     using MakeCurrentFunc = GLboolean (*)(OSMesaContext ctx, void* buffer, GLenum type,
@@ -57,10 +79,10 @@ private:
     using GetProcAddressFunc = OSMESAproc (*)(const char* funcName);
 
 public:
-    CreateContextAttribsFunc fOSMesaCreateContextAttribs;
-    DestroyContextFunc fOSMesaDestroyContext;
-    MakeCurrentFunc fOSMesaMakeCurrent;
-    GetProcAddressFunc fOSMesaGetProcAddress;
+    CreateContextAttribsFunc fOSMesaCreateContextAttribs;  // 创建上下文（带属性）
+    DestroyContextFunc fOSMesaDestroyContext;              // 销毁上下文
+    MakeCurrentFunc fOSMesaMakeCurrent;                    // 设置当前上下文
+    GetProcAddressFunc fOSMesaGetProcAddress;              // 获取函数地址
 
     OSMesaAPI() {
         static constexpr char const* libraryNames[] = {

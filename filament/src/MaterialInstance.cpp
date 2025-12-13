@@ -45,44 +45,114 @@ using namespace backend;
 
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 设置参数（无类型版本，模板实现）
+ * 
+ * 这是 setParameter 的无类型/大小版本，用于处理如 vec4<int> 和 vec4<float> 等类型。
+ * 此函数不能内联（这是关键点）。
+ * 
+ * @tparam Size 参数大小（字节）
+ * @param name 参数名称
+ * @param value 参数值指针
+ */
 // This is the untyped/sized version of the setParameter: we end up here for e.g. vec4<int> and
 // vec4<float>. This must not be inlined (this is the whole point).
 template<size_t Size>
 UTILS_NOINLINE
 void FMaterialInstance::setParameterUntypedImpl(std::string_view const name, const void* value) {
+    /**
+     * 获取统一缓冲区中字段的偏移量
+     */
     ssize_t offset = mMaterial->getUniformInterfaceBlock().getFieldOffset(name, 0);
+    /**
+     * 如果偏移量有效（>= 0），设置统一缓冲区值
+     */
     if (UTILS_LIKELY(offset >= 0)) {
+        /**
+         * 设置统一缓冲区值（处理 mat3f 的特化）
+         */
         mUniforms.setUniformUntyped<Size>(size_t(offset), value);  // handles specialization for mat3f
     }
 }
 
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 设置参数实现（类型化版本）
+ * 
+ * 将类型化调用转换为无类型-大小调用。
+ * 
+ * @tparam T 参数类型（不能是 mat3f）
+ * @param name 参数名称
+ * @param value 参数值引用
+ */
 // this converts typed calls into the untyped-sized call.
 template<typename T>
 UTILS_ALWAYS_INLINE
 inline void FMaterialInstance::setParameterImpl(std::string_view const name, T const& value) {
+    /**
+     * 确保 T 不是 mat3f（mat3f 有特化版本）
+     */
     static_assert(!std::is_same_v<T, mat3f>);
+    /**
+     * 调用无类型版本，传递类型大小
+     */
     setParameterUntypedImpl<sizeof(T)>(name, &value);
 }
 
+/**
+ * 设置参数实现（mat3f 特化）
+ * 
+ * mat3f 的特化版本，使用专门的统一缓冲区设置函数。
+ * 
+ * @param name 参数名称
+ * @param value mat3f 值引用
+ */
 // specialization for mat3f
 template<>
 inline void FMaterialInstance::setParameterImpl(std::string_view const name, mat3f const& value) {
+    /**
+     * 获取统一缓冲区中字段的偏移量
+     */
     ssize_t offset = mMaterial->getUniformInterfaceBlock().getFieldOffset(name, 0);
+    /**
+     * 如果偏移量有效，设置统一缓冲区值
+     */
     if (UTILS_LIKELY(offset >= 0)) {
+        /**
+         * 使用专门的 mat3f 设置函数
+         */
         mUniforms.setUniform(size_t(offset), value);
     }
 }
 
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 设置参数数组（无类型版本，模板实现）
+ * 
+ * 设置参数数组的无类型/大小版本。
+ * 
+ * @tparam Size 单个元素大小（字节）
+ * @param name 参数名称
+ * @param value 参数值数组指针
+ * @param count 数组元素数量
+ */
 template<size_t Size>
 UTILS_NOINLINE
 void FMaterialInstance::setParameterUntypedImpl(std::string_view const name,
         const void* value, size_t const count) {
+    /**
+     * 获取统一缓冲区中字段的偏移量
+     */
     ssize_t offset = mMaterial->getUniformInterfaceBlock().getFieldOffset(name, 0);
+    /**
+     * 如果偏移量有效，设置统一缓冲区数组值
+     */
     if (UTILS_LIKELY(offset >= 0)) {
+        /**
+         * 设置统一缓冲区数组值
+         */
         mUniforms.setUniformArrayUntyped<Size>(size_t(offset), value, count);
     }
 }

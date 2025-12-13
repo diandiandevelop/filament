@@ -72,16 +72,38 @@ namespace filament {
 using namespace backend;
 using namespace math;
 
+/**
+ * ShadowMapManager 构造函数
+ * 
+ * 初始化阴影贴图管理器，检查深度夹紧支持，注册调试属性。
+ * 
+ * @param engine 引擎引用
+ */
 ShadowMapManager::ShadowMapManager(FEngine& engine)
-    : mIsDepthClampSupported(engine.getDriverApi().isDepthClampSupported()) {
+    : mIsDepthClampSupported(engine.getDriverApi().isDepthClampSupported()) {  // 检查是否支持深度夹紧
+    /**
+     * 注册调试属性
+     */
     FDebugRegistry& debugRegistry = engine.getDebugRegistry();
+    /**
+     * 注册是否可视化级联的属性
+     */
     debugRegistry.registerProperty("d.shadowmap.visualize_cascades",
             &engine.debug.shadowmap.visualize_cascades);
+    /**
+     * 注册是否禁用光源视锥对齐的属性
+     */
     debugRegistry.registerProperty("d.shadowmap.disable_light_frustum_align",
             &engine.debug.shadowmap.disable_light_frustum_align);
+    /**
+     * 注册深度夹紧属性
+     */
     debugRegistry.registerProperty("d.shadowmap.depth_clamp",
             &engine.debug.shadowmap.depth_clamp);
 
+    /**
+     * 检查是否使用阴影图集分配器功能
+     */
     mFeatureShadowAllocator = engine.features.engine.shadows.use_shadow_atlas;
 }
 
@@ -95,8 +117,19 @@ ShadowMapManager::~ShadowMapManager() {
     }
 }
 
+/**
+ * 如果需要则创建阴影贴图管理器
+ * 
+ * 如果管理器不存在，则创建新的实例。
+ * 
+ * @param engine 引擎引用
+ * @param inOutShadowMapManager 输入/输出阴影贴图管理器唯一指针引用
+ */
 void ShadowMapManager::createIfNeeded(FEngine& engine,
         std::unique_ptr<ShadowMapManager>& inOutShadowMapManager) {
+    /**
+     * 如果管理器不存在，创建新实例
+     */
     if (UTILS_UNLIKELY(!inOutShadowMapManager)) {
         inOutShadowMapManager.reset(new ShadowMapManager(engine));
     }
@@ -109,7 +142,18 @@ void ShadowMapManager::terminate(FEngine& engine,
     }
 }
 
+/**
+ * 获取最大阴影贴图数量
+ * 
+ * 根据是否使用阴影图集分配器返回不同的最大值。
+ * 
+ * @return 最大阴影贴图数量
+ */
 size_t ShadowMapManager::getMaxShadowMapCount() const noexcept {
+    /**
+     * 如果使用阴影图集分配器，返回最大阴影贴图数
+     * 否则返回最大阴影层数
+     */
     return mFeatureShadowAllocator ? CONFIG_MAX_SHADOWMAPS : CONFIG_MAX_SHADOW_LAYERS;
 }
 
@@ -124,6 +168,20 @@ void ShadowMapManager::terminate(FEngine& engine) {
     }
 }
 
+/**
+ * 更新阴影贴图管理器
+ * 
+ * 构建阴影贴图列表并执行每个阴影的剔除。
+ * 返回当前激活的阴影技术。
+ * 
+ * @param builder 构建器
+ * @param engine 引擎引用
+ * @param view 视图引用
+ * @param cameraInfo 相机信息
+ * @param renderableData 可渲染数据（SOA 格式）
+ * @param lightData 光源数据（SOA 格式）
+ * @return 阴影技术枚举值
+ */
 // Build shadow-map list and perform per-shadow culling; returns what shadow techniques are active.
 ShadowMapManager::ShadowTechnique ShadowMapManager::update(
         Builder const& builder,
@@ -131,6 +189,9 @@ ShadowMapManager::ShadowTechnique ShadowMapManager::update(
         CameraInfo const& cameraInfo,
         FScene::RenderableSoa& renderableData, FScene::LightSoa const& lightData) noexcept {
 
+    /**
+     * 如果没有方向光阴影贴图和聚光灯阴影贴图，返回无阴影
+     */
     if (!builder.mDirectionalShadowMapCount && !builder.mSpotShadowMapCount) {
         // no shadows were recorder
         return ShadowTechnique::NONE;

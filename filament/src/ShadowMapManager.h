@@ -67,36 +67,63 @@ class FrameGraph;
 class RenderPass;
 class RenderPassBuilder;
 
+/**
+ * 阴影映射 Uniform 结构
+ * 
+ * 包含传递给着色器的阴影映射参数。
+ */
 struct ShadowMappingUniforms {
-    math::float4 cascadeSplits;
-    float ssContactShadowDistance;
-    uint32_t directionalShadows;
-    uint32_t cascades;
+    math::float4 cascadeSplits;  // 级联分割点
+    float ssContactShadowDistance;  // 屏幕空间接触阴影距离
+    uint32_t directionalShadows;  // 方向光阴影数量
+    uint32_t cascades;  // 级联数量
 };
 
+/**
+ * ShadowMapManager 类
+ * 
+ * 管理阴影贴图的集合，处理它们的创建、更新和剔除。
+ */
 class ShadowMapManager {
 public:
 
+    /**
+     * 阴影映射 Uniform 类型
+     */
     using ShadowMappingUniforms = ShadowMappingUniforms;
 
+    /**
+     * 阴影类型
+     */
     using ShadowType = ShadowMap::ShadowType;
 
+    /**
+     * 阴影技术枚举
+     */
     enum class ShadowTechnique : uint8_t {
-        NONE = 0x0u,
-        SHADOW_MAP = 0x1u,
-        SCREEN_SPACE = 0x2u,
+        NONE = 0x0u,  // 无阴影
+        SHADOW_MAP = 0x1u,  // 阴影贴图
+        SCREEN_SPACE = 0x2u,  // 屏幕空间阴影
     };
 
+    /**
+     * 构建器类
+     * 
+     * 用于构建 ShadowMapManager 的配置。
+     */
     class Builder {
         friend class ShadowMapManager;
-        uint32_t mDirectionalShadowMapCount = 0;
-        uint32_t mSpotShadowMapCount = 0;
+        uint32_t mDirectionalShadowMapCount = 0;  // 方向光阴影贴图数量
+        uint32_t mSpotShadowMapCount = 0;  // 聚光灯阴影贴图数量
+        /**
+         * 阴影贴图结构
+         */
         struct ShadowMap {
-            size_t lightIndex;
-            ShadowType shadowType;
-            uint16_t shadowIndex;
-            uint8_t face;
-            LightManager::ShadowOptions const* options;
+            size_t lightIndex;  // 光源索引
+            ShadowType shadowType;  // 阴影类型
+            uint16_t shadowIndex;  // 阴影索引
+            uint8_t face;  // 立方体贴图面（点光源使用）
+            LightManager::ShadowOptions const* options;  // 阴影选项
         };
         std::vector<ShadowMap> mShadowMaps;
     public:

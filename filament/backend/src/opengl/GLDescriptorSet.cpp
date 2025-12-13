@@ -52,11 +52,11 @@ namespace filament::backend {
 /**
  * 构造函数
  * 
- * 从描述符集布局创建描述符集，初始化所有描述符。
+ * 从描述符堆布局创建描述符堆，初始化所有描述符。
  * 
  * @param gl OpenGLContext 引用，用于检查 ES2
- * @param dslh 描述符集布局句柄
- * @param layout 描述符集布局指针
+ * @param dslh 描述符堆布局句柄
+ * @param layout 描述符堆布局指针
  * 
  * 执行流程：
  * 1. 根据布局分配描述符数组（maxDescriptorBinding + 1）
@@ -168,7 +168,7 @@ GLDescriptorSet::GLDescriptorSet(OpenGLContext& gl, DescriptorSetLayoutHandle ds
 /**
  * 更新缓冲区描述符
  * 
- * 更新描述符集中的缓冲区绑定（Uniform 缓冲区或存储缓冲区）。
+ * 更新描述符堆中的缓冲区绑定（Uniform 缓冲区或存储缓冲区）。
  * 
  * @param gl OpenGLContext 引用（当前未使用）
  * @param binding 绑定索引
@@ -212,7 +212,7 @@ void GLDescriptorSet::update(OpenGLContext&,
 /**
  * 更新采样器描述符
  * 
- * 更新描述符集中的纹理和采样器绑定。
+ * 更新描述符堆中的纹理和采样器绑定。
  * 
  * @param gl OpenGLContext 引用，用于获取采样器对象
  * @param handleAllocator Handle 分配器，用于获取纹理对象
@@ -360,15 +360,15 @@ void GLDescriptorSet::updateTextureView(OpenGLContext& gl,
 }
 
 /**
- * 绑定描述符集
+ * 绑定描述符堆
  * 
- * 概念上将描述符集绑定到命令缓冲区。
+ * 概念上将描述符堆绑定到命令缓冲区。
  * 实际执行所有描述符的 OpenGL 绑定操作。
  * 
  * @param gl OpenGLContext 引用，用于绑定缓冲区和纹理
  * @param handleAllocator Handle 分配器，用于获取资源对象
  * @param p OpenGLProgram 引用，用于获取绑定点和纹理单元
- * @param set 描述符集索引
+ * @param set 描述符堆索引
  * @param offsets 动态偏移数组（用于动态缓冲区）
  * @param offsetsOnly 是否仅更新动态偏移（true 时只绑定动态缓冲区）
  * 
@@ -410,7 +410,7 @@ void GLDescriptorSet::bind(
             (size_t binding) {
 
         // 如果我们试图设置程序中不存在的描述符，这里会失败。
-        // 换句话说，程序布局与此描述符集不匹配。
+        // 换句话说，程序布局与此描述符堆不匹配。
         assert_invariant(binding < descriptors.size());
 
         auto const& entry = descriptors[binding];
@@ -504,9 +504,9 @@ void GLDescriptorSet::bind(
 }
 
 /**
- * 验证描述符集
+ * 验证描述符堆
  * 
- * 验证描述符集布局是否与管线布局匹配。
+ * 验证描述符堆布局是否与管线布局匹配。
  * 
  * @param allocator Handle 分配器，用于获取布局对象
  * @param pipelineLayout 管线布局句柄

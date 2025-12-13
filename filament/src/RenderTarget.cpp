@@ -22,22 +22,51 @@ namespace filament {
 
 using namespace backend;
 
+/**
+ * 获取附件点处的纹理
+ * 
+ * @param attachment 附件点
+ * @return 纹理指针
+ */
 Texture* RenderTarget::getTexture(AttachmentPoint const attachment) const noexcept {
     return downcast(this)->getAttachment(attachment).texture;
 }
 
+/**
+ * 获取附件点处的 Mip 级别
+ * 
+ * @param attachment 附件点
+ * @return Mip 级别
+ */
 uint8_t RenderTarget::getMipLevel(AttachmentPoint const attachment) const noexcept {
     return downcast(this)->getAttachment(attachment).mipLevel;
 }
 
+/**
+ * 获取附件点处的立方体贴图面
+ * 
+ * @param attachment 附件点
+ * @return 立方体贴图面
+ */
 RenderTarget::CubemapFace RenderTarget::getFace(AttachmentPoint const attachment) const noexcept {
     return downcast(this)->getAttachment(attachment).face;
 }
 
+/**
+ * 获取附件点处的层索引
+ * 
+ * @param attachment 附件点
+ * @return 层索引
+ */
 uint32_t RenderTarget::getLayer(AttachmentPoint const attachment) const noexcept {
     return downcast(this)->getAttachment(attachment).layer;
 }
 
+/**
+ * 获取支持的颜色附件数量
+ * 
+ * @return 支持的颜色附件数量
+ */
 uint8_t RenderTarget::getSupportedColorAttachmentsCount() const noexcept {
     return downcast(this)->getSupportedColorAttachmentsCount();
 }

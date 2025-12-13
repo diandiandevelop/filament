@@ -713,7 +713,7 @@ void OpenGLDriver::bindTexture(GLuint const unit, GLTexture const* t) noexcept {
  * 1. 如果程序已绑定，直接返回成功
  * 2. 否则，编译/链接程序（如果需要）并调用 glUseProgram
  * 3. 如果成功：
- *    - 标记所有描述符集为无效（需要重新绑定）
+ *    - 标记所有描述符堆为无效（需要重新绑定）
  *    - 保存当前绑定的程序
  * 4. ES 2.0 特殊处理：设置输出色彩空间（linear 或 rec709）
  * 
@@ -722,7 +722,7 @@ void OpenGLDriver::bindTexture(GLuint const unit, GLTexture const* t) noexcept {
  * - 使用程序状态缓存，避免重复绑定
  * 
  * 注意：
- * - 程序改变时，所有描述符集都需要重新绑定
+ * - 程序改变时，所有描述符堆都需要重新绑定
  * - ES 2.0 不支持 sRGB 交换链时，需要手动设置色彩空间
  */
 bool OpenGLDriver::useProgram(OpenGLProgram* p) noexcept {
@@ -732,7 +732,7 @@ bool OpenGLDriver::useProgram(OpenGLProgram* p) noexcept {
         success = p->use(this, mContext);
         assert_invariant(success == p->isValid());
         if (success) {
-            // TODO: 如果程序能告诉我们哪些描述符集绑定实际改变了，可以进一步优化
+            // TODO: 如果程序能告诉我们哪些描述符堆绑定实际改变了，可以进一步优化
             //       实际上，set 0 或 1 可能不会经常改变
             decltype(mInvalidDescriptorSetBindings) changed;
             changed.setValue((1 << MAX_DESCRIPTOR_SET_COUNT) - 1);
@@ -1074,16 +1074,16 @@ Handle<HwTimerQuery> OpenGLDriver::createTimerQueryS() noexcept {
 }
 
 /**
- * 创建描述符集布局句柄
- * 描述符集布局定义了描述符集的绑定结构
+ * 创建描述符堆布局句柄
+ * 描述符堆布局定义了描述符堆的绑定结构
  */
 Handle<HwDescriptorSetLayout> OpenGLDriver::createDescriptorSetLayoutS() noexcept {
     return initHandle<GLDescriptorSetLayout>();
 }
 
 /**
- * 创建描述符集句柄
- * 描述符集包含纹理、缓冲区等资源的绑定
+ * 创建描述符堆句柄
+ * 描述符堆包含纹理、缓冲区等资源的绑定
  */
 Handle<HwDescriptorSet> OpenGLDriver::createDescriptorSetS() noexcept {
     return initHandle<GLDescriptorSet>();
@@ -3006,18 +3006,18 @@ void OpenGLDriver::createTimerQueryR(Handle<HwTimerQuery> tqh, ImmutableCString&
 }
 
 /**
- * 创建描述符集布局（渲染线程）
+ * 创建描述符堆布局（渲染线程）
  * 
- * 在渲染线程中创建描述符集布局对象。
- * 描述符集布局定义了描述符集的绑定结构（哪些槽位绑定什么类型的资源）。
+ * 在渲染线程中创建描述符堆布局对象。
+ * 描述符堆布局定义了描述符堆的绑定结构（哪些槽位绑定什么类型的资源）。
  * 
- * @param dslh 描述符集布局句柄（已在主线程分配）
- * @param info 描述符集布局信息（绑定数组）
+ * @param dslh 描述符堆布局句柄（已在主线程分配）
+ * @param info 描述符堆布局信息（绑定数组）
  * @param tag 调试标签
  * 
  * 注意：
  * - 此方法在渲染线程调用
- * - 描述符集布局定义资源绑定结构
+ * - 描述符堆布局定义资源绑定结构
  */
 void OpenGLDriver::createDescriptorSetLayoutR(Handle<HwDescriptorSetLayout> dslh,
         DescriptorSetLayout&& info, ImmutableCString&& tag) {
@@ -3027,18 +3027,18 @@ void OpenGLDriver::createDescriptorSetLayoutR(Handle<HwDescriptorSetLayout> dslh
 }
 
 /**
- * 创建描述符集（渲染线程）
+ * 创建描述符堆（渲染线程）
  * 
- * 在渲染线程中创建描述符集对象。
- * 描述符集包含实际的资源绑定（纹理、缓冲区等）。
+ * 在渲染线程中创建描述符堆对象。
+ * 描述符堆包含实际的资源绑定（纹理、缓冲区等）。
  * 
- * @param dsh 描述符集句柄（已在主线程分配）
- * @param dslh 描述符集布局句柄（定义绑定结构）
+ * @param dsh 描述符堆句柄（已在主线程分配）
+ * @param dslh 描述符堆布局句柄（定义绑定结构）
  * @param tag 调试标签
  * 
  * 注意：
  * - 此方法在渲染线程调用
- * - 描述符集基于描述符集布局创建
+ * - 描述符堆基于描述符堆布局创建
  * - 资源绑定通过 updateDescriptorSet* 方法设置
  */
 void OpenGLDriver::createDescriptorSetR(Handle<HwDescriptorSet> dsh,
@@ -3480,11 +3480,11 @@ void OpenGLDriver::destroyTimerQuery(Handle<HwTimerQuery> tqh) {
 }
 
 /**
- * 销毁描述符集布局
+ * 销毁描述符堆布局
  * 
- * 销毁描述符集布局对象。
+ * 销毁描述符堆布局对象。
  * 
- * @param dslh 描述符集布局句柄
+ * @param dslh 描述符堆布局句柄
  */
 void OpenGLDriver::destroyDescriptorSetLayout(Handle<HwDescriptorSetLayout> dslh) {
     DEBUG_MARKER()
@@ -3495,20 +3495,20 @@ void OpenGLDriver::destroyDescriptorSetLayout(Handle<HwDescriptorSetLayout> dslh
 }
 
 /**
- * 销毁描述符集
+ * 销毁描述符堆
  * 
- * 销毁描述符集对象。
+ * 销毁描述符堆对象。
  * 
- * @param dsh 描述符集句柄
+ * @param dsh 描述符堆句柄
  * 
  * 执行流程：
- * 1. 解绑描述符集（避免 use-after-free）
+ * 1. 解绑描述符堆（避免 use-after-free）
  * 2. 销毁对象
  */
 void OpenGLDriver::destroyDescriptorSet(Handle<HwDescriptorSet> dsh) {
     DEBUG_MARKER()
     if (dsh) {
-        // 解绑描述符集，避免 use-after-free
+        // 解绑描述符堆，避免 use-after-free
         for (auto& bound : mBoundDescriptorSets) {
             if (bound.dsh == dsh) {
                 bound = {};
@@ -4555,7 +4555,7 @@ bool OpenGLDriver::queryFrameTimestamps(SwapChainHandle swapChain, uint64_t cons
  *    - 解绑所有 OpenGL 对象（避免上下文切换问题）
  * 2. 上下文切换后回调：
  *    - 重新附加所有 NATIVE 流（生成新纹理 ID）
- *    - 强制所有绑定的描述符集失效（需要重新绑定）
+ *    - 强制所有绑定的描述符堆失效（需要重新绑定）
  *    - 同步状态和缓存（上下文切换后状态可能改变）
  * 3. 保存当前绘制交换链
  * 4. 重置视口和裁剪区域（上下文切换后可能改变）
@@ -4599,7 +4599,7 @@ void OpenGLDriver::makeCurrent(Handle<HwSwapChain> schDraw, Handle<HwSwapChain> 
                     }
                 }
 
-                // 强制所有绑定的描述符集失效（需要重新绑定）
+                // 强制所有绑定的描述符堆失效（需要重新绑定）
                 decltype(mInvalidDescriptorSetBindings) changed;
                 changed.setValue((1 << MAX_DESCRIPTOR_SET_COUNT) - 1);
                 mInvalidDescriptorSetBindings |= changed;
@@ -6696,20 +6696,20 @@ void OpenGLDriver::endFrame(UTILS_UNUSED uint32_t const frameId) {
 }
 
 /**
- * 更新描述符集中的缓冲区绑定
+ * 更新描述符堆中的缓冲区绑定
  * 
- * 更新描述符集中指定绑定的缓冲区对象。
+ * 更新描述符堆中指定绑定的缓冲区对象。
  * 
- * @param dsh 描述符集句柄
+ * @param dsh 描述符堆句柄
  * @param binding 绑定索引
  * @param boh 缓冲区对象句柄（nullptr 表示解绑）
  * @param offset 缓冲区偏移（字节）
  * @param size 缓冲区大小（字节）
  * 
  * 执行流程：
- * 1. 获取描述符集对象
+ * 1. 获取描述符堆对象
  * 2. 获取缓冲区对象（如果句柄有效）
- * 3. 调用描述符集的 update 方法更新绑定
+ * 3. 调用描述符堆的 update 方法更新绑定
  * 
  * 注意：
  * - 用于更新 uniform 缓冲区、存储缓冲区等
@@ -6727,18 +6727,18 @@ void OpenGLDriver::updateDescriptorSetBuffer(
 }
 
 /**
- * 更新描述符集中的纹理绑定
+ * 更新描述符堆中的纹理绑定
  * 
- * 更新描述符集中指定绑定的纹理和采样器参数。
+ * 更新描述符堆中指定绑定的纹理和采样器参数。
  * 
- * @param dsh 描述符集句柄
+ * @param dsh 描述符堆句柄
  * @param binding 绑定索引
  * @param th 纹理句柄
  * @param params 采样器参数（过滤、包装等）
  * 
  * 执行流程：
- * 1. 获取描述符集对象
- * 2. 调用描述符集的 update 方法更新绑定
+ * 1. 获取描述符堆对象
+ * 2. 调用描述符堆的 update 方法更新绑定
  * 
  * 注意：
  * - 用于更新纹理和采样器绑定
@@ -7341,7 +7341,7 @@ void OpenGLDriver::blitDEPRECATED(TargetBufferFlags const buffers,
  * - 多边形偏移（用于阴影贴图等）
  * - 着色器程序
  * - 推送常量
- * - 管线布局（描述符集布局）
+ * - 管线布局（描述符堆布局）
  * 
  * @param state 管线状态（包含所有渲染状态）
  * 
@@ -7351,11 +7351,11 @@ void OpenGLDriver::blitDEPRECATED(TargetBufferFlags const buffers,
  * 3. 设置多边形偏移（slope 和 constant）
  * 4. 绑定着色器程序（如果程序无效，标记为无效）
  * 5. 更新推送常量（从程序获取）
- * 6. 保存管线布局（描述符集布局）
+ * 6. 保存管线布局（描述符堆布局）
  * 
  * 性能优化：
  * - 状态缓存：OpenGLContext 会缓存状态，避免重复设置
- * - 延迟绑定：描述符集在绘制时才绑定
+ * - 延迟绑定：描述符堆在绘制时才绑定
  * 
  * 注意：
  * - 如果程序编译/链接失败，mValidProgram 会被设置为 false
@@ -7376,7 +7376,7 @@ void OpenGLDriver::bindPipeline(PipelineState const& state) {
     mValidProgram = useProgram(p);
     // 更新推送常量（从程序获取）
     (*mCurrentPushConstants) = p->getPushConstants();
-    // 保存管线布局（描述符集布局）
+    // 保存管线布局（描述符堆布局）
     mCurrentSetLayout = state.pipelineLayout.setLayout;
     // TODO: 应该验证管线布局与程序的布局匹配
 }
@@ -7431,25 +7431,25 @@ void OpenGLDriver::bindRenderPrimitive(Handle<HwRenderPrimitive> rph) {
 }
 
 /**
- * 绑定描述符集
+ * 绑定描述符堆
  * 
- * 将描述符集绑定到指定的槽位，用于后续绘制调用。
- * 描述符集包含纹理、采样器、缓冲区等资源绑定。
+ * 将描述符堆绑定到指定的槽位，用于后续绘制调用。
+ * 描述符堆包含纹理、采样器、缓冲区等资源绑定。
  * 
- * @param dsh 描述符集句柄（nullptr 表示解绑）
- * @param set 描述符集槽位（0, 1, 2, ...）
+ * @param dsh 描述符堆句柄（nullptr 表示解绑）
+ * @param set 描述符堆槽位（0, 1, 2, ...）
  * @param offsets 动态偏移数组（用于动态 uniform 缓冲区）
  * 
  * 执行流程：
- * 1. 如果描述符集为空（nullptr）：
+ * 1. 如果描述符堆为空（nullptr）：
  *    - 标记绑定无效（需要重新绑定）
  *    - 标记偏移无效（需要重新设置）
  *    - 返回
- * 2. 如果描述符集与之前绑定的不同：
+ * 2. 如果描述符堆与之前绑定的不同：
  *    - 标记绑定无效（在下次绘制时重新绑定）
  * 3. 如果偏移发生变化：
  *    - 标记偏移无效（在下次绘制时重新设置）
- * 4. 保存描述符集句柄和偏移数组（复制数据，因为原数据生命周期在 CommandStream 中）
+ * 4. 保存描述符堆句柄和偏移数组（复制数据，因为原数据生命周期在 CommandStream 中）
  * 
  * 性能优化：
  * - 延迟绑定：标记无效，在绘制时才实际绑定（避免不必要的状态切换）
@@ -7465,7 +7465,7 @@ void OpenGLDriver::bindDescriptorSet(
         DescriptorSetOffsetArray&& offsets) {
 
     if (UTILS_UNLIKELY(!dsh)) {
-        // 描述符集为空，标记绑定和偏移无效
+        // 描述符堆为空，标记绑定和偏移无效
         mBoundDescriptorSets[set].dsh = dsh;
         mInvalidDescriptorSetBindings.set(set, true);
         mInvalidDescriptorSetBindingOffsets.set(set, true);
@@ -7476,7 +7476,7 @@ void OpenGLDriver::bindDescriptorSet(
     if (GLDescriptorSet const* const ds = handle_cast<GLDescriptorSet*>(dsh)) {
         assert_invariant(set < MAX_DESCRIPTOR_SET_COUNT);
         if (mBoundDescriptorSets[set].dsh != dsh) {
-            // 如果描述符集本身改变，标记绑定无效
+            // 如果描述符堆本身改变，标记绑定无效
             // 将在下次绘制时重新绑定
             mInvalidDescriptorSetBindings.set(set, true);
         } else if (!offsets.empty()) {
@@ -7496,21 +7496,21 @@ void OpenGLDriver::bindDescriptorSet(
 /**
  * 更新描述符
  * 
- * 将无效的描述符集绑定到 OpenGL 上下文。
- * 此方法在绘制前调用，确保所有描述符集绑定是最新的。
+ * 将无效的描述符堆绑定到 OpenGL 上下文。
+ * 此方法在绘制前调用，确保所有描述符堆绑定是最新的。
  * 
- * @param invalidDescriptorSets 无效描述符集的位掩码（每位表示一个槽位）
+ * @param invalidDescriptorSets 无效描述符堆的位掩码（每位表示一个槽位）
  * 
  * 执行流程：
- * 1. 计算只有偏移无效的描述符集（绑定未改变，只有偏移改变）
- * 2. 遍历所有无效的描述符集：
- *    - 如果描述符集句柄有效：
- *      * 调试模式下验证描述符集布局与管线布局匹配（只在绑定改变时检查）
- *      * 调用描述符集的 bind 方法绑定到 OpenGL 上下文
+ * 1. 计算只有偏移无效的描述符堆（绑定未改变，只有偏移改变）
+ * 2. 遍历所有无效的描述符堆：
+ *    - 如果描述符堆句柄有效：
+ *      * 调试模式下验证描述符堆布局与管线布局匹配（只在绑定改变时检查）
+ *      * 调用描述符堆的 bind 方法绑定到 OpenGL 上下文
  * 3. 清除所有无效标记
  * 
  * 性能优化：
- * - 只更新无效的描述符集（避免不必要的状态切换）
+ * - 只更新无效的描述符堆（避免不必要的状态切换）
  * - 只有偏移改变时跳过布局验证（减少开销）
  * 
  * 注意：
@@ -7519,9 +7519,9 @@ void OpenGLDriver::bindDescriptorSet(
  */
 void OpenGLDriver::updateDescriptors(bitset8 const invalidDescriptorSets) noexcept {
     assert_invariant(mBoundProgram);
-    // 计算只有偏移无效的描述符集（绑定未改变，只有偏移改变）
+    // 计算只有偏移无效的描述符堆（绑定未改变，只有偏移改变）
     auto const offsetOnly = mInvalidDescriptorSetBindingOffsets & ~mInvalidDescriptorSetBindings;
-    // 遍历所有无效的描述符集
+    // 遍历所有无效的描述符堆
     invalidDescriptorSets.forEachSetBit([this, offsetOnly,
             &boundDescriptorSets = mBoundDescriptorSets,
             &context = mContext,
@@ -7531,14 +7531,14 @@ void OpenGLDriver::updateDescriptors(bitset8 const invalidDescriptorSets) noexce
         if (entry.dsh) {
             GLDescriptorSet const* const ds = handle_cast<GLDescriptorSet*>(entry.dsh);
 #ifndef NDEBUG
-            // 调试模式下验证描述符集布局与管线布局匹配
+            // 调试模式下验证描述符堆布局与管线布局匹配
             if (UTILS_UNLIKELY(!offsetOnly[set])) {
-                // 验证此描述符集布局与管线中设置的布局匹配
+                // 验证此描述符堆布局与管线中设置的布局匹配
                 // 如果只有偏移改变，则不需要检查
                 ds->validate(mHandleAllocator, mCurrentSetLayout[set]);
             }
 #endif
-            // 绑定描述符集到 OpenGL 上下文
+            // 绑定描述符堆到 OpenGL 上下文
             ds->bind(context, mHandleAllocator, boundProgram,
                     set, entry.offsets.data(), offsetOnly[set]);
         }
@@ -7562,7 +7562,7 @@ void OpenGLDriver::updateDescriptors(bitset8 const invalidDescriptorSets) noexce
  *    - 不是 ES 2.0（ES 2.0 不支持实例化绘制）
  *    - 渲染图元已绑定
  *    - 程序已绑定且有效
- * 2. 如果描述符集无效（程序改变或绑定改变）：
+ * 2. 如果描述符堆无效（程序改变或绑定改变）：
  *    - 更新描述符（重新绑定纹理、采样器、缓冲区等）
  * 3. 调用 glDrawElementsInstanced 执行绘制
  * 
@@ -7628,7 +7628,7 @@ void OpenGLDriver::draw2(uint32_t const indexOffset, uint32_t const indexCount, 
  *    - 渲染图元已绑定
  *    - 程序已绑定且有效
  *    - 实例数量为 1（ES 2.0 不支持实例化）
- * 2. 如果描述符集无效：
+ * 2. 如果描述符堆无效：
  *    - 更新描述符（重新绑定纹理、采样器、缓冲区等）
  * 3. 调用 glDrawElements 执行绘制（非实例化版本）
  * 

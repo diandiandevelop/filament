@@ -47,11 +47,22 @@ namespace filament {
 using namespace utils;
 using namespace backend;
 
+/**
+ * FrameInfoManager 构造函数
+ * 
+ * 初始化帧信息管理器，创建计时查询池（如果支持）。
+ * 
+ * @param engine 引擎引用
+ * @param driver 驱动 API 引用
+ */
 FrameInfoManager::FrameInfoManager(FEngine& engine, DriverApi& driver) noexcept
-    : mJobQueue("FrameInfoGpuComplete", JobSystem::Priority::URGENT_DISPLAY),
-      mHasTimerQueries(driver.isFrameTimeSupported()),
-      mDisableGpuFrameComplete(engine.features.engine.frame_info.disable_gpu_frame_complete_metric) {
+    : mJobQueue("FrameInfoGpuComplete", JobSystem::Priority::URGENT_DISPLAY),  // 异步任务队列，用于等待 GPU 完成
+      mHasTimerQueries(driver.isFrameTimeSupported()),  // 检查是否支持计时查询
+      mDisableGpuFrameComplete(engine.features.engine.frame_info.disable_gpu_frame_complete_metric) {  // 检查是否禁用 GPU 帧完成指标
     if (mHasTimerQueries) {
+        /**
+         * 如果支持计时查询，创建查询池
+         */
         for (auto& query : mQueries) {
             query.handle = driver.createTimerQuery();
         }
@@ -60,9 +71,19 @@ FrameInfoManager::FrameInfoManager(FEngine& engine, DriverApi& driver) noexcept
 
 FrameInfoManager::~FrameInfoManager() noexcept = default;
 
+/**
+ * 终止帧信息管理器
+ * 
+ * 清理所有资源，包括计时查询、栅栏和任务队列。
+ * 
+ * @param engine 引擎引用
+ */
 void FrameInfoManager::terminate(FEngine& engine) noexcept {
     DriverApi& driver = engine.getDriverApi();
 
+    /**
+     * 销毁所有计时查询
+     */
     if (mHasTimerQueries) {
         for (auto const& query : mQueries) {
             driver.destroyTimerQuery(query.handle);
@@ -70,21 +91,28 @@ void FrameInfoManager::terminate(FEngine& engine) noexcept {
     }
 
     if (!mDisableGpuFrameComplete) {
-        // remove all pending callbacks. This is okay to do because they have no
-        // side effect.
+        /**
+         * 移除所有待处理的回调。这样做是可以的，因为它们没有副作用。
+         */
         mJobQueue.cancelAll();
 
-        // request cancel for all the fences, which may speed up drainAndExit() below
+        /**
+         * 请求取消所有栅栏，这可能会加速下面的 drainAndExit()
+         */
         for (auto& info : mFrameTimeHistory) {
             if (info.fence) {
                 driver.fenceCancel(info.fence);
             }
         }
 
-        // wait for all pending callbacks to be called & terminate the thread
+        /**
+         * 等待所有待处理的回调被调用并终止线程
+         */
         mJobQueue.drainAndExit();
 
-        // Destroy the fences that are still alive, they will error out.
+        /**
+         * 销毁仍然存活的栅栏，它们会出错。
+         */
         for (size_t i = 0, c = mFrameTimeHistory.size(); i < c; i++) {
             auto& info = mFrameTimeHistory[i];
             if (info.fence) {
@@ -94,26 +122,42 @@ void FrameInfoManager::terminate(FEngine& engine) noexcept {
     }
 }
 
+/**
+ * 开始帧
+ * 
+ * 在 "make current" 之后立即调用，记录帧开始时间并启动计时查询。
+ * 
+ * @param swapChain 交换链指针
+ * @param driver 驱动 API 引用
+ * @param config 配置
+ * @param frameId 帧 ID
+ * @param vsync 垂直同步时间点
+ */
 void FrameInfoManager::beginFrame(FSwapChain* swapChain, DriverApi& driver,
         Config const& config, uint32_t frameId, std::chrono::steady_clock::time_point const vsync) noexcept {
     auto const now = std::chrono::steady_clock::now();
 
     auto& history = mFrameTimeHistory;
-    // don't exceed the capacity, drop the oldest entry
+    /**
+     * 不要超过容量，丢弃最旧的条目
+     */
     if (UTILS_LIKELY(history.size() == history.capacity())) {
         FrameInfoImpl& frameInfo = history.back();
         if (frameInfo.ready.load(std::memory_order_relaxed)) {
+            /**
+             * 最旧的条目已处理，可以安全删除
+             */
             if (!mDisableGpuFrameComplete) {
                 assert_invariant(frameInfo.fence);
                 driver.destroyFence(std::move(frameInfo.fence));
             }
             history.pop_back();
         } else {
-            // This is a big problem, we ran out of space in the circular queue and that entry
-            // hasn't been processed yet. Because the code below keeps a reference to the
-            // front element of the queue, we can't pop/push. Our only option is to not record
-            // a new entry for this frame, which will create a false skipped frame in the
-            // data.
+            /**
+             * 这是一个大问题：循环队列已满，但该条目尚未处理。
+             * 因为下面的代码保持对队列前端元素的引用，我们不能 pop/push。
+             * 我们唯一的选择是不为此帧记录新条目，这会在数据中创建一个虚假的跳过帧。
+             */
             LOG(WARNING) << "FrameInfo's circular queue is full, but the oldest item hasn't "
                             "been processed yet. Skipping this frame, id = " << frameId;
             mLastBeginFrameSkipped = true;
@@ -121,14 +165,20 @@ void FrameInfoManager::beginFrame(FSwapChain* swapChain, DriverApi& driver,
         }
     }
 
-    // create a new entry
+    /**
+     * 创建新条目
+     */
     FrameInfoImpl& front = history.emplace_front(frameId);
 
-    // store the current time
+    /**
+     * 存储当前时间
+     */
     front.vsync = vsync;
     front.beginFrame = now;
 
-    // store compositor timings if supported
+    /**
+     * 如果支持，存储合成器时序
+     */
     CompositorTiming compositorTiming{};
     if (driver.isCompositorTimingSupported() &&
         driver.queryCompositorTiming(swapChain->getHwHandle(), &compositorTiming)) {
@@ -137,41 +187,61 @@ void FrameInfoManager::beginFrame(FSwapChain* swapChain, DriverApi& driver,
         front.compositionToPresentLatency = compositorTiming.compositeToPresentLatency;
         front.expectedPresentTime = compositorTiming.expectedPresentTime;
         if (compositorTiming.frameTime != CompositorTiming::INVALID) {
-            // of we have a vsync time from the compositor, ignore the one from the user
+            /**
+             * 如果我们有来自合成器的 vsync 时间，忽略用户提供的
+             */
             front.vsync = FrameInfoImpl::time_point{
                 std::chrono::nanoseconds(compositorTiming.frameTime) };
         }
     }
 
     if (mHasTimerQueries) {
-        // references are not invalidated by CircularQueue<>, so we can associate a reference to
-        // the slot we created to the timer query used to find the frame time.
+        /**
+         * CircularQueue<> 不会使引用失效，所以我们可以将创建的槽位的引用
+         * 关联到用于查找帧时间的计时查询。
+         */
         mQueries[mIndex].pInfo = std::addressof(front);
-        // issue the timer query
+        /**
+         * 发出计时查询
+         */
         driver.beginTimerQuery(mQueries[mIndex].handle);
     }
 
-    // issue the custom backend command to get the backend time
+    /**
+     * 发出自定义后端命令以获取后端时间
+     */
     driver.queueCommand([&front](){
         front.backendBeginFrame = std::chrono::steady_clock::now();
     });
 
     if (mHasTimerQueries) {
-        // now is a good time to check the oldest active query
+        /**
+         * 现在是检查最旧活动查询的好时机
+         */
         while (mLast != mIndex) {
             uint64_t elapsed = 0;
             TimerQueryResult const result = driver.getTimerQueryValue(mQueries[mLast].handle, &elapsed);
             switch (result) {
                 case TimerQueryResult::NOT_READY:
-                    // nothing to do
+                    /**
+                     * 查询尚未就绪，无需操作
+                     */
                     break;
                 case TimerQueryResult::ERROR:
+                    /**
+                     * 查询出错，跳过
+                     */
                     mLast = (mLast + 1) % POOL_COUNT;
                     break;
                 case TimerQueryResult::AVAILABLE: {
+                    /**
+                     * 查询结果可用，更新帧信息并去噪
+                     */
                     FILAMENT_TRACING_CONTEXT(FILAMENT_TRACING_CATEGORY_FILAMENT);
                     FILAMENT_TRACING_VALUE(FILAMENT_TRACING_CATEGORY_FILAMENT, "FrameInfo::elapsed", uint32_t(elapsed));
-                    // conversion to our duration happens here
+                    /**
+                     * 转换为我们的 duration 类型
+                     */
                     pFront = mQueries[mLast].pInfo;
                     pFront->gpuFrameDuration = std::chrono::duration<uint64_t, std::nano>(elapsed);
                     mLast = (mLast + 1) % POOL_COUNT;
@@ -182,9 +252,14 @@ void FrameInfoManager::beginFrame(FSwapChain* swapChain, DriverApi& driver,
             if (result != TimerQueryResult::AVAILABLE) {
                 break;
             }
-            // read the pending timer queries until we find one that's not ready
+            /**
+             * 读取待处理的计时查询，直到找到一个未就绪的
+             */
         }
     } else {
+        /**
+         * 不支持计时查询，只需更新索引
+         */
         if (mLast != mIndex) {
             mLast = (mLast + 1) % POOL_COUNT;
         }
@@ -205,11 +280,20 @@ void FrameInfoManager::beginFrame(FSwapChain* swapChain, DriverApi& driver,
 #endif
 }
 
+/**
+ * 结束帧
+ * 
+ * 在 "swap buffers" 之前立即调用，记录帧结束时间并创建栅栏以捕获 GPU 完成时间。
+ * 
+ * @param driver 驱动 API 引用
+ */
 void FrameInfoManager::endFrame(DriverApi& driver) noexcept {
     if (mLastBeginFrameSkipped) {
-        // if we had to skip the last beginFrame(), endFrame() needs to be skipped too
-        // because history.front() now references the wrong frame.
-        // It is guaranteed that if beginFrame() is called, endFrame() will be called too.
+        /**
+         * 如果我们必须跳过上次的 beginFrame()，endFrame() 也需要跳过
+         * 因为 history.front() 现在引用了错误的帧。
+         * 保证：如果调用了 beginFrame()，也会调用 endFrame()。
+         */
         mLastBeginFrameSkipped = false;
         return;
     }
@@ -218,20 +302,28 @@ void FrameInfoManager::endFrame(DriverApi& driver) noexcept {
     front.endFrame = std::chrono::steady_clock::now();
 
     if (!mDisableGpuFrameComplete) {
-        // create a Fence to capture the GPU complete time
+        /**
+         * 创建栅栏以捕获 GPU 完成时间
+         */
         FenceHandle const fence = driver.createFence();
         front.fence = fence;
     }
 
     if (mHasTimerQueries) {
-        // close the timer query
+        /**
+         * 关闭计时查询
+         */
         driver.endTimerQuery(mQueries[mIndex].handle);
     }
 
-    // queue custom backend command to query the current time
+    /**
+     * 排队自定义后端命令以查询当前时间
+     */
     driver.queueCommand([&jobQueue = mJobQueue, &driver, &front,
             disableGpuFrameComplete = mDisableGpuFrameComplete] {
-        // backend frame end-time
+        /**
+         * 后端帧结束时间
+         */
         front.backendEndFrame = std::chrono::steady_clock::now();
 
         if (UTILS_UNLIKELY(disableGpuFrameComplete || !jobQueue.isValid())) {
@@ -241,33 +333,57 @@ void FrameInfoManager::endFrame(DriverApi& driver) noexcept {
         }
 
         if (!disableGpuFrameComplete) {
-            // now launch a job that'll wait for the gpu to complete
+            /**
+             * 现在启动一个任务，等待 GPU 完成
+             */
             jobQueue.push([&driver, &front] {
                 FenceStatus const status = driver.fenceWait(front.fence, FENCE_WAIT_FOR_EVER);
                 if (status == FenceStatus::CONDITION_SATISFIED) {
+                    /**
+                     * 栅栏条件满足，记录 GPU 完成时间
+                     */
                     front.gpuFrameComplete = std::chrono::steady_clock::now();
                 } else if (status == FenceStatus::TIMEOUT_EXPIRED) {
-                    // that should never happen because:
-                    // - we wait forever
-                    // - made sure that the createFence() command was processed on the backed
-                    //   (because we're inside a custom command)
+                    /**
+                     * 这不应该发生，因为：
+                     * - 我们永远等待
+                     * - 确保 createFence() 命令已在后端处理
+                     *   （因为我们在自定义命令内部）
+                     */
                 } else {
-                    // We got an error, fenceWait might not be supported
+                    /**
+                     * 我们遇到了错误，fenceWait 可能不受支持
+                     */
                     front.gpuFrameComplete = {};
                 }
-                // finally, signal that the data is available
+                /**
+                 * 最后，发出信号表示数据可用
+                 */
                 front.ready.store(true, std::memory_order_release);
             });
         }
     });
 
+    /**
+     * 更新查询索引
+     */
     mIndex = (mIndex + 1) % POOL_COUNT;
 }
 
+/**
+ * 去噪帧时间
+ * 
+ * 使用中值滤波器对帧时间进行去噪，以减少异常值的影响。
+ * 
+ * @param history 帧历史队列
+ * @param config 配置
+ */
 void FrameInfoManager::denoiseFrameTime(FrameHistoryQueue& history, Config const& config) noexcept {
     assert_invariant(!history.empty());
 
-    // find the first slot that has a valid frame duration
+    /**
+     * 查找第一个具有有效帧持续时间的槽位
+     */
     size_t first = history.size();
     for (size_t i = 0, c = history.size(); i < c; ++i) {
         if (history[i].gpuFrameDuration != duration(0)) {
@@ -277,29 +393,52 @@ void FrameInfoManager::denoiseFrameTime(FrameHistoryQueue& history, Config const
     }
     assert_invariant(first != history.size());
 
-    // we need at least 3 valid frame time to calculate the median
+    /**
+     * 我们需要至少 3 个有效帧时间来计算中值
+     */
     if (history.size() >= first + 3) {
-        // apply a median filter to get a good representation of the frame time of the last
-        // N frames.
-        std::array<duration, MAX_FRAMETIME_HISTORY> median; // NOLINT -- it's initialized below
+        /**
+         * 应用中值滤波器以获得最后 N 帧的帧时间的良好表示
+         */
+        std::array<duration, MAX_FRAMETIME_HISTORY> median; // NOLINT -- 它会在下面初始化
         size_t const size = std::min({
             history.size() - first,
             median.size(),
             size_t(config.historySize) });
 
+        /**
+         * 复制帧持续时间到中值数组
+         */
         for (size_t i = 0; i < size; ++i) {
             median[i] = history[first + i].gpuFrameDuration;
         }
+        /**
+         * 排序并取中值
+         */
         std::sort(median.begin(), median.begin() + size);
         duration const denoisedFrameTime = median[size / 2];
 
+        /**
+         * 存储去噪后的帧时间并标记为有效
+         */
         history[first].denoisedFrameTime = denoisedFrameTime;
         history[first].valid = true;
      }
 }
 
+/**
+ * 更新用户历史
+ * 
+ * 更新用户可见的帧信息历史，包括查询显示呈现时间。
+ * 
+ * @param swapChain 交换链指针
+ * @param driver 驱动 API 引用
+ */
 void FrameInfoManager::updateUserHistory(FSwapChain* swapChain, DriverApi& driver) {
 
+    /**
+     * 如果没有提供交换链，使用最后看到的交换链
+     */
     if (!swapChain) {
         swapChain = mLastSeenSwapChain;
     } else {
@@ -310,25 +449,39 @@ void FrameInfoManager::updateUserHistory(FSwapChain* swapChain, DriverApi& drive
     auto& history = mFrameTimeHistory;
     size_t i = 0;
     size_t const c = history.size();
+    
+    /**
+     * 查找第一个就绪的条目
+     */
     for (; i < c; ++i) {
         auto const& entry = history[i];
         if (entry.ready.load(std::memory_order_acquire) && (entry.valid || !mHasTimerQueries)) {
-            // once we found an entry ready,
-            // we know by construction that all following ones are too
+            /**
+             * 一旦我们找到一个就绪的条目，
+             * 根据构造，我们知道所有后续的也都就绪
+             */
             break;
         }
     }
+    
+    /**
+     * 从第一个就绪的条目开始，收集帧信息
+     */
     size_t historySize = MAX_FRAMETIME_HISTORY;
     for (; i < c && historySize; ++i, --historySize) {
         auto& entry = history[i];
 
-        // retrieve the displayPresentTime only we don't already have it
+        /**
+         * 仅在我们还没有 displayPresentTime 时检索它
+         */
         if (entry.displayPresent == Renderer::FrameInfo::PENDING) {
             FrameTimestamps frameTimestamps{
                 .displayPresentTime = FrameTimestamps::INVALID
             };
             if (swapChain && driver.isCompositorTimingSupported()) {
-                // queryFrameTimestamps could fail if this frameid is no longer available
+                /**
+                 * queryFrameTimestamps 可能会失败，如果此 frameId 不再可用
+                 */
                 bool const success = driver.queryFrameTimestamps(swapChain->getHwHandle(),
                         entry.frameId, &frameTimestamps);
                 if (success) {
@@ -341,17 +494,29 @@ void FrameInfoManager::updateUserHistory(FSwapChain* swapChain, DriverApi& drive
             }
         }
 
+        /**
+         * 转换时间类型到纳秒
+         */
         using namespace std::chrono;
-        // can't throw by construction
+        // 根据构造，这不会抛出异常
 
+        /**
+         * 将 duration 转换为纳秒数
+         */
         auto toDuration = [](details::FrameInfo::duration const d) {
             return duration_cast<nanoseconds>(d).count();
         };
 
+        /**
+         * 将 time_point 转换为纳秒数（自纪元以来）
+         */
         auto toTimepoint = [](FrameInfoImpl::time_point const tp) {
             return duration_cast<nanoseconds>(tp.time_since_epoch()).count();
         };
 
+        /**
+         * 构建用户帧信息并添加到结果
+         */
         result.push_back({
                 .frameId                        = entry.frameId,
                 .gpuFrameDuration               = toDuration(entry.gpuFrameDuration),
@@ -370,9 +535,20 @@ void FrameInfoManager::updateUserHistory(FSwapChain* swapChain, DriverApi& drive
 
         });
     }
+    /**
+     * 交换用户历史（原子操作）
+     */
     std::swap(mUserFrameHistory, result);
 }
 
+/**
+ * 获取帧信息历史
+ * 
+ * 返回用户可见的帧信息历史，限制为指定大小。
+ * 
+ * @param historySize 历史大小
+ * @return 帧信息历史向量
+ */
 FixedCapacityVector<Renderer::FrameInfo> FrameInfoManager::getFrameInfoHistory(
         size_t const historySize) const {
     auto result = mUserFrameHistory;

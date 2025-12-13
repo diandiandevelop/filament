@@ -311,7 +311,7 @@ void OpenGLDriver::beginRenderPass(RenderTargetHandle rth, const RenderPassParam
 **特点**：
 - **显式资源管理**：使用 VMA（Vulkan Memory Allocator）管理内存
 - **命令缓冲区**：管理 VkCommandBuffer 的分配和提交
-- **描述符集缓存**：缓存描述符集布局和描述符集
+- **描述符堆缓存**：缓存描述符堆布局和描述符堆
 - **管道缓存**：缓存 VkPipeline 对象
 - **同步原语**：使用信号量和栅栏进行同步
 
@@ -319,7 +319,7 @@ void OpenGLDriver::beginRenderPass(RenderTargetHandle rth, const RenderPassParam
 - `VulkanContext`：Vulkan 实例和设备管理
 - `VulkanCommands`：命令缓冲区管理
 - `VulkanPipelineCache`：管道缓存
-- `VulkanDescriptorSetCache`：描述符集缓存
+- `VulkanDescriptorSetCache`：描述符堆缓存
 - `VulkanStagePool`：暂存缓冲区池
 - `VulkanSemaphoreManager`：信号量管理
 
@@ -557,7 +557,7 @@ driver.bindTexture(0, texture);
 
 **Vulkan**：
 - 缓存管道对象
-- 缓存描述符集
+- 缓存描述符堆
 
 ### 3. 内存管理
 

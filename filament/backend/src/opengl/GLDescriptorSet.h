@@ -55,15 +55,15 @@ class OpenGLContext;
 class OpenGLDriver;
 
 /**
- * OpenGL 描述符集结构
+ * OpenGL 描述符堆结构
  * 
- * 封装 OpenGL 描述符集，管理着色器资源的绑定（Uniform 缓冲区、存储缓冲区、采样器等）。
+ * 封装 OpenGL 描述符堆，管理着色器资源的绑定（Uniform 缓冲区、存储缓冲区、采样器等）。
  * 
  * 主要功能：
  * 1. 存储描述符绑定信息（缓冲区、纹理、采样器等）
  * 2. 更新描述符绑定（update 方法）
- * 3. 绑定描述符集到命令缓冲区（bind 方法）
- * 4. 验证描述符集与程序布局的匹配（validate 方法）
+ * 3. 绑定描述符堆到命令缓冲区（bind 方法）
+ * 4. 验证描述符堆与程序布局的匹配（validate 方法）
  * 
  * 设计特点：
  * - 使用 std::variant 存储不同类型的描述符（Buffer、DynamicBuffer、Sampler 等）
@@ -83,11 +83,11 @@ struct GLDescriptorSet : public HwDescriptorSet {
     /**
      * 构造函数
      * 
-     * 从描述符集布局创建描述符集，初始化所有描述符。
+     * 从描述符堆布局创建描述符堆，初始化所有描述符。
      * 
      * @param gl OpenGLContext 引用，用于检查 ES2
-     * @param dslh 描述符集布局句柄
-     * @param layout 描述符集布局指针
+     * @param dslh 描述符堆布局句柄
+     * @param layout 描述符堆布局指针
      * 
      * 执行流程：
      * 1. 根据布局分配描述符数组
@@ -100,7 +100,7 @@ struct GLDescriptorSet : public HwDescriptorSet {
     /**
      * 更新缓冲区描述符
      * 
-     * 更新描述符集中的缓冲区绑定（Uniform 缓冲区或存储缓冲区）。
+     * 更新描述符堆中的缓冲区绑定（Uniform 缓冲区或存储缓冲区）。
      * 
      * @param gl OpenGLContext 引用（当前未使用）
      * @param binding 绑定索引
@@ -114,7 +114,7 @@ struct GLDescriptorSet : public HwDescriptorSet {
     /**
      * 更新采样器描述符
      * 
-     * 更新描述符集中的纹理和采样器绑定。
+     * 更新描述符堆中的纹理和采样器绑定。
      * 
      * @param gl OpenGLContext 引用，用于获取采样器对象
      * @param handleAllocator Handle 分配器，用于获取纹理对象
@@ -131,15 +131,15 @@ struct GLDescriptorSet : public HwDescriptorSet {
             descriptor_binding_t binding, TextureHandle th, SamplerParams params) noexcept;
 
     /**
-     * 绑定描述符集
+     * 绑定描述符堆
      * 
-     * 概念上将描述符集绑定到命令缓冲区。
+     * 概念上将描述符堆绑定到命令缓冲区。
      * 实际执行所有描述符的 OpenGL 绑定操作。
      * 
      * @param gl OpenGLContext 引用，用于绑定缓冲区和纹理
      * @param handleAllocator Handle 分配器，用于获取资源对象
      * @param p OpenGLProgram 引用，用于获取绑定点和纹理单元
-     * @param set 描述符集索引
+     * @param set 描述符堆索引
      * @param offsets 动态偏移数组（用于动态缓冲区）
      * @param offsetsOnly 是否仅更新动态偏移（true 时只绑定动态缓冲区）
      * 
@@ -164,7 +164,7 @@ struct GLDescriptorSet : public HwDescriptorSet {
     /**
      * 获取动态缓冲区数量
      * 
-     * 返回描述符集中动态偏移缓冲区的数量。
+     * 返回描述符堆中动态偏移缓冲区的数量。
      * 
      * @return 动态缓冲区数量
      */
@@ -173,9 +173,9 @@ struct GLDescriptorSet : public HwDescriptorSet {
     }
 
     /**
-     * 验证描述符集
+     * 验证描述符堆
      * 
-     * 验证描述符集布局是否与管线布局匹配。
+     * 验证描述符堆布局是否与管线布局匹配。
      * 
      * @param allocator Handle 分配器，用于获取布局对象
      * @param pipelineLayout 管线布局句柄
@@ -303,10 +303,10 @@ private:
 
     utils::FixedCapacityVector<Descriptor> descriptors;     // 描述符数组：16 字节
     utils::bitset64 dynamicBuffers;                         // 动态缓冲区位集合：8 字节
-    DescriptorSetLayoutHandle dslh;                         // 描述符集布局句柄：4 字节
+    DescriptorSetLayoutHandle dslh;                         // 描述符堆布局句柄：4 字节
     uint8_t dynamicBufferCount = 0;                         // 动态缓冲区数量：1 字节
 };
-static_assert(sizeof(GLDescriptorSet) <= 32);  // 确保描述符集大小不超过 32 字节
+static_assert(sizeof(GLDescriptorSet) <= 32);  // 确保描述符堆大小不超过 32 字节
 
 } // namespace filament::backend
 

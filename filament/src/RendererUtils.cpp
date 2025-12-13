@@ -54,6 +54,12 @@ namespace filament {
 using namespace backend;
 using namespace math;
 
+/**
+ * 颜色通道实现
+ * 
+ * 设置颜色通道的帧图资源，包括阴影、SSAO、SSR、结构信息等。
+ * 处理深度/模板缓冲区的创建和 MSAA 配置。
+ */
 RendererUtils::ColorPassOutput RendererUtils::colorPass(
         FrameGraph& fg, const char* name, FEngine& engine, FView const& view,
         ColorPassInput const& colorPassInput,
@@ -61,15 +67,18 @@ RendererUtils::ColorPassOutput RendererUtils::colorPass(
         ColorPassConfig const& config, PostProcessManager::ColorGradingConfig const colorGradingConfig,
         RenderPass::Executor passExecutor) noexcept {
 
+    /**
+     * 颜色通道数据
+     */
     struct ColorPassData {
-        FrameGraphId<FrameGraphTexture> shadows;
-        FrameGraphId<FrameGraphTexture> color;
-        FrameGraphId<FrameGraphTexture> output;
-        FrameGraphId<FrameGraphTexture> depth;
-        FrameGraphId<FrameGraphTexture> stencil;
-        FrameGraphId<FrameGraphTexture> ssao;
-        FrameGraphId<FrameGraphTexture> ssr;    // either screen-space reflections or refractions
-        FrameGraphId<FrameGraphTexture> structure;
+        FrameGraphId<FrameGraphTexture> shadows;  // 阴影
+        FrameGraphId<FrameGraphTexture> color;  // 颜色
+        FrameGraphId<FrameGraphTexture> output;  // 输出（色调映射后的颜色）
+        FrameGraphId<FrameGraphTexture> depth;  // 深度
+        FrameGraphId<FrameGraphTexture> stencil;  // 模板
+        FrameGraphId<FrameGraphTexture> ssao;  // 屏幕空间环境光遮蔽
+        FrameGraphId<FrameGraphTexture> ssr;  // 屏幕空间反射或折射
+        FrameGraphId<FrameGraphTexture> structure;  // 结构信息
     };
 
     auto& colorPass = fg.addPass<ColorPassData>(name,
@@ -381,5 +390,8 @@ void RendererUtils::readPixels(DriverApi& driver, Handle<HwRenderTarget> renderT
 
     driver.readPixels(renderTargetHandle, xoffset, yoffset, width, height, std::move(buffer));
 }
+
+} // namespace filament
+
 
 } // namespace filament

@@ -47,29 +47,51 @@ namespace filament {
 
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 光源构建器详情结构
+ * 
+ * 存储光源构建器的所有配置参数。
+ */
 struct LightManager::BuilderDetails {
-    Type mType = Type::DIRECTIONAL;
-    bool mCastShadows = false;
-    bool mCastLight = true;
-    uint8_t mChannels = 1u;
-    float3 mPosition = {};
-    float mFalloff = 1.0f;
-    LinearColor mColor = LinearColor{ 1.0f };
-    float mIntensity = 100000.0f;
-    FLightManager::IntensityUnit mIntensityUnit = FLightManager::IntensityUnit::LUMEN_LUX;
-    float3 mDirection = { 0.0f, -1.0f, 0.0f };
-    float2 mSpotInnerOuter = { f::PI_4 * 0.75f, f::PI_4 };
-    float mSunAngle = 0.00951f; // 0.545° in radians
-    float mSunHaloSize = 10.0f;
-    float mSunHaloFalloff = 80.0f;
-    ShadowOptions mShadowOptions;
+    Type mType = Type::DIRECTIONAL;  // 光源类型（方向光、点光源、聚光灯）
+    bool mCastShadows = false;  // 是否投射阴影
+    bool mCastLight = true;  // 是否投射光线
+    uint8_t mChannels = 1u;  // 光源通道（用于光源分组）
+    float3 mPosition = {};  // 位置（点光源和聚光灯）
+    float mFalloff = 1.0f;  // 衰减半径
+    LinearColor mColor = LinearColor{ 1.0f };  // 颜色（线性空间）
+    float mIntensity = 100000.0f;  // 强度值
+    FLightManager::IntensityUnit mIntensityUnit = FLightManager::IntensityUnit::LUMEN_LUX;  // 强度单位
+    float3 mDirection = { 0.0f, -1.0f, 0.0f };  // 方向（方向光和聚光灯）
+    float2 mSpotInnerOuter = { f::PI_4 * 0.75f, f::PI_4 };  // 聚光灯内外角（弧度）
+    float mSunAngle = 0.00951f; // 太阳角度（弧度，0.545°）
+    float mSunHaloSize = 10.0f;  // 太阳光晕大小
+    float mSunHaloFalloff = 80.0f;  // 太阳光晕衰减
+    ShadowOptions mShadowOptions;  // 阴影选项
 
+    /**
+     * 构造函数
+     * 
+     * @param type 光源类型
+     */
     explicit BuilderDetails(Type const type) noexcept : mType(type) { }
+    
+    /**
+     * 默认构造函数
+     * 
+     * 仅用于下面的显式实例化。
+     */
     // this is only needed for the explicit instantiation below
     BuilderDetails() = default;
 };
 
 using BuilderType = LightManager;
+
+/**
+ * 光源构建器构造函数
+ * 
+ * @param type 光源类型
+ */
 BuilderType::Builder::Builder(Type type) noexcept: BuilderBase<BuilderDetails>(type) {}
 BuilderType::Builder::~Builder() noexcept = default;
 BuilderType::Builder::Builder(Builder const& rhs) noexcept = default;
@@ -77,152 +99,329 @@ BuilderType::Builder::Builder(Builder&& rhs) noexcept = default;
 BuilderType::Builder& BuilderType::Builder::operator=(Builder const& rhs) noexcept = default;
 BuilderType::Builder& BuilderType::Builder::operator=(Builder&& rhs) noexcept = default;
 
+/**
+ * 设置是否投射阴影
+ * 
+ * @param enable 是否启用阴影
+ * @return 构建器引用（支持链式调用）
+ */
 LightManager::Builder& LightManager::Builder::castShadows(bool const enable) noexcept {
-    mImpl->mCastShadows = enable;
+    mImpl->mCastShadows = enable;  // 设置阴影标志
     return *this;
 }
 
+/**
+ * 设置阴影选项
+ * 
+ * @param options 阴影选项
+ * @return 构建器引用（支持链式调用）
+ */
 LightManager::Builder& LightManager::Builder::shadowOptions(const ShadowOptions& options) noexcept {
-    mImpl->mShadowOptions = options;
+    mImpl->mShadowOptions = options;  // 设置阴影选项
     return *this;
 }
 
+/**
+ * 设置是否投射光线
+ * 
+ * @param enable 是否启用光线
+ * @return 构建器引用（支持链式调用）
+ */
 LightManager::Builder& LightManager::Builder::castLight(bool const enable) noexcept {
-    mImpl->mCastLight = enable;
+    mImpl->mCastLight = enable;  // 设置光线标志
     return *this;
 }
 
+/**
+ * 设置光源位置
+ * 
+ * 用于点光源和聚光灯。
+ * 
+ * @param position 位置向量
+ * @return 构建器引用（支持链式调用）
+ */
 LightManager::Builder& LightManager::Builder::position(const float3& position) noexcept {
-    mImpl->mPosition = position;
+    mImpl->mPosition = position;  // 设置位置
     return *this;
 }
 
+/**
+ * 设置光源方向
+ * 
+ * 用于方向光和聚光灯。
+ * 
+ * @param direction 方向向量（会被归一化）
+ * @return 构建器引用（支持链式调用）
+ */
 LightManager::Builder& LightManager::Builder::direction(const float3& direction) noexcept {
-    mImpl->mDirection = direction;
+    mImpl->mDirection = direction;  // 设置方向
     return *this;
 }
 
+/**
+ * 设置光源颜色
+ * 
+ * @param color 颜色（线性空间）
+ * @return 构建器引用（支持链式调用）
+ */
 LightManager::Builder& LightManager::Builder::color(const LinearColor& color) noexcept {
-    mImpl->mColor = color;
+    mImpl->mColor = color;  // 设置颜色
     return *this;
 }
 
+/**
+ * 设置光源强度（流明/勒克斯）
+ * 
+ * 方向光使用勒克斯，点光源和聚光灯使用流明。
+ * 
+ * @param intensity 强度值
+ * @return 构建器引用（支持链式调用）
+ */
 LightManager::Builder& LightManager::Builder::intensity(float const intensity) noexcept {
-    mImpl->mIntensity = intensity;
-    mImpl->mIntensityUnit = FLightManager::IntensityUnit::LUMEN_LUX;
+    mImpl->mIntensity = intensity;  // 设置强度
+    mImpl->mIntensityUnit = FLightManager::IntensityUnit::LUMEN_LUX;  // 设置单位为流明/勒克斯
     return *this;
 }
 
+/**
+ * 设置光源强度（坎德拉）
+ * 
+ * 仅适用于点光源和聚光灯。
+ * 
+ * @param intensity 强度值（坎德拉）
+ * @return 构建器引用（支持链式调用）
+ */
 LightManager::Builder& LightManager::Builder::intensityCandela(float const intensity) noexcept {
-    mImpl->mIntensity = intensity;
-    mImpl->mIntensityUnit = FLightManager::IntensityUnit::CANDELA;
+    mImpl->mIntensity = intensity;  // 设置强度
+    mImpl->mIntensityUnit = FLightManager::IntensityUnit::CANDELA;  // 设置单位为坎德拉
     return *this;
 }
 
+/**
+ * 设置光源强度（瓦特）
+ * 
+ * 根据功率（瓦特）和效率计算流明。
+ * 公式：流明 = 效率 × 683 × 瓦特
+ * 
+ * @param watts 功率（瓦特）
+ * @param efficiency 效率（0-1）
+ * @return 构建器引用（支持链式调用）
+ */
 LightManager::Builder& LightManager::Builder::intensity(float const watts, float const efficiency) noexcept {
-    mImpl->mIntensity = efficiency * 683.0f * watts;
-    mImpl->mIntensityUnit = FLightManager::IntensityUnit::LUMEN_LUX;
+    mImpl->mIntensity = efficiency * 683.0f * watts;  // 计算流明（683 是流明/瓦特的转换系数）
+    mImpl->mIntensityUnit = FLightManager::IntensityUnit::LUMEN_LUX;  // 设置单位为流明/勒克斯
     return *this;
 }
 
+/**
+ * 设置衰减半径
+ * 
+ * 点光源和聚光灯的衰减半径。
+ * 
+ * @param radius 衰减半径
+ * @return 构建器引用（支持链式调用）
+ */
 LightManager::Builder& LightManager::Builder::falloff(float const radius) noexcept {
-    mImpl->mFalloff = radius;
+    mImpl->mFalloff = radius;  // 设置衰减半径
     return *this;
 }
 
+/**
+ * 设置聚光灯锥角
+ * 
+ * @param inner 内角（弧度）
+ * @param outer 外角（弧度）
+ * @return 构建器引用（支持链式调用）
+ */
 LightManager::Builder& LightManager::Builder::spotLightCone(float inner, float outer) noexcept {
-    mImpl->mSpotInnerOuter = { inner, outer };
+    mImpl->mSpotInnerOuter = { inner, outer };  // 设置内外角
     return *this;
 }
 
+/**
+ * 设置太阳角度半径
+ * 
+ * 用于方向光（太阳光）。
+ * 
+ * @param sunAngle 角度半径（弧度）
+ * @return 构建器引用（支持链式调用）
+ */
 LightManager::Builder& LightManager::Builder::sunAngularRadius(float const sunAngle) noexcept {
-    mImpl->mSunAngle = sunAngle;
+    mImpl->mSunAngle = sunAngle;  // 设置太阳角度
     return *this;
 }
 
+/**
+ * 设置太阳光晕大小
+ * 
+ * @param haloSize 光晕大小
+ * @return 构建器引用（支持链式调用）
+ */
 LightManager::Builder& LightManager::Builder::sunHaloSize(float const haloSize) noexcept {
-    mImpl->mSunHaloSize = haloSize;
+    mImpl->mSunHaloSize = haloSize;  // 设置光晕大小
     return *this;
 }
 
+/**
+ * 设置太阳光晕衰减
+ * 
+ * @param haloFalloff 光晕衰减值
+ * @return 构建器引用（支持链式调用）
+ */
 LightManager::Builder& LightManager::Builder::sunHaloFalloff(float const haloFalloff) noexcept {
-    mImpl->mSunHaloFalloff = haloFalloff;
+    mImpl->mSunHaloFalloff = haloFalloff;  // 设置光晕衰减
     return *this;
 }
 
+/**
+ * 设置光源通道
+ * 
+ * 控制光源影响哪些光源通道。
+ * 
+ * @param channel 通道索引（0-7）
+ * @param enable 是否启用此通道
+ * @return 构建器引用（支持链式调用）
+ */
 LightManager::Builder& LightManager::Builder::lightChannel(unsigned int const channel, bool const enable) noexcept {
-    if (channel < 8) {
-        const uint8_t mask = 1u << channel;
-        mImpl->mChannels &= ~mask;
-        mImpl->mChannels |= enable ? mask : 0u;
+    if (channel < 8) {  // 如果通道索引有效
+        const uint8_t mask = 1u << channel;  // 创建位掩码
+        mImpl->mChannels &= ~mask;  // 清除该位
+        mImpl->mChannels |= enable ? mask : 0u;  // 根据 enable 设置该位
     }
     return *this;
 }
 
+/**
+ * 构建光源组件
+ * 
+ * 根据构建器配置创建光源组件。
+ * 
+ * @param engine 引擎引用
+ * @param entity 实体
+ * @return 构建结果
+ */
 LightManager::Builder::Result LightManager::Builder::build(Engine& engine, Entity const entity) {
-    downcast(engine).createLight(*this, entity);
-    return Success;
+    downcast(engine).createLight(*this, entity);  // 创建光源组件
+    return Success;  // 返回成功
 }
 
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 光源管理器构造函数
+ * 
+ * @param engine 引擎引用
+ * 
+ * 注意：不要在构造函数中使用 engine，因为它还没有完全构造完成。
+ */
 FLightManager::FLightManager(FEngine& engine) noexcept : mEngine(engine) {
     // DON'T use engine here in the ctor, because it's not fully constructed yet.
 }
 
+/**
+ * 光源管理器析构函数
+ * 
+ * 所有组件应该在此处之前已被销毁
+ * （terminate 应该已经从 Engine 的 shutdown() 调用）
+ */
 FLightManager::~FLightManager() {
     // all components should have been destroyed when we get here
     // (terminate should have been called from Engine's shutdown())
-    assert_invariant(mManager.getComponentCount() == 0);
+    assert_invariant(mManager.getComponentCount() == 0);  // 断言组件数量为 0
 }
 
+/**
+ * 初始化光源管理器
+ * 
+ * @param engine 引擎引用（未使用）
+ */
 void FLightManager::init(FEngine&) noexcept {
 }
 
+/**
+ * 创建光源组件
+ * 
+ * 根据构建器配置创建光源组件。
+ * 
+ * @param builder 构建器引用
+ * @param entity 实体
+ */
 void FLightManager::create(const Builder& builder, Entity const entity) {
     auto& manager = mManager;
 
+    /**
+     * 如果实体已有光源组件，先销毁它
+     */
     if (UTILS_UNLIKELY(manager.hasComponent(entity))) {
-        destroy(entity);
+        destroy(entity);  // 销毁现有组件
     }
-    Instance const i = manager.addComponent(entity);
-    assert_invariant(i);
+    /**
+     * 添加光源组件
+     */
+    Instance const i = manager.addComponent(entity);  // 添加组件并获取实例
+    assert_invariant(i);  // 断言实例有效
 
     if (i) {
+        /**
+         * 设置光源类型
+         * 
+         * 这需要在调用下面的 set() 方法之前完成。
+         * 类型必须首先设置（下面的一些调用依赖于它）。
+         */
         // This needs to happen before we call the set() methods below
         // Type must be set first (some calls depend on it below)
-        LightType& lightType = manager[i].lightType;
-        lightType.type = builder->mType;
-        lightType.shadowCaster = builder->mCastShadows;
-        lightType.lightCaster = builder->mCastLight;
+        LightType& lightType = manager[i].lightType;  // 获取光源类型引用
+        lightType.type = builder->mType;  // 设置光源类型
+        lightType.shadowCaster = builder->mCastShadows;  // 设置阴影投射标志
+        lightType.lightCaster = builder->mCastLight;  // 设置光线投射标志
 
-        mManager[i].channels = builder->mChannels;
+        mManager[i].channels = builder->mChannels;  // 设置光源通道
 
+        /**
+         * 通过调用 setter 设置默认值
+         */
         // set default values by calling the setters
-        setShadowOptions(i, builder->mShadowOptions);
-        setLocalPosition(i, builder->mPosition);
-        setLocalDirection(i, builder->mDirection);
-        setColor(i, builder->mColor);
+        setShadowOptions(i, builder->mShadowOptions);  // 设置阴影选项
+        setLocalPosition(i, builder->mPosition);  // 设置局部位置
+        setLocalDirection(i, builder->mDirection);  // 设置局部方向
+        setColor(i, builder->mColor);  // 设置颜色
 
+        /**
+         * 这必须在设置强度之前设置
+         */
         // this must be set before intensity
-        setSpotLightCone(i, builder->mSpotInnerOuter.x, builder->mSpotInnerOuter.y);
-        setIntensity(i, builder->mIntensity, builder->mIntensityUnit);
+        setSpotLightCone(i, builder->mSpotInnerOuter.x, builder->mSpotInnerOuter.y);  // 设置聚光灯锥角
+        setIntensity(i, builder->mIntensity, builder->mIntensityUnit);  // 设置强度
 
-        setFalloff(i, builder->mCastLight ? builder->mFalloff : 0);
-        setSunAngularRadius(i, builder->mSunAngle);
-        setSunHaloSize(i, builder->mSunHaloSize);
-        setSunHaloFalloff(i, builder->mSunHaloFalloff);
+        setFalloff(i, builder->mCastLight ? builder->mFalloff : 0);  // 设置衰减（如果不投射光线则为 0）
+        setSunAngularRadius(i, builder->mSunAngle);  // 设置太阳角度半径
+        setSunHaloSize(i, builder->mSunHaloSize);  // 设置太阳光晕大小
+        setSunHaloFalloff(i, builder->mSunHaloFalloff);  // 设置太阳光晕衰减
     }
 }
 
+/**
+ * 准备光源数据
+ * 
+ * 在渲染前准备光源数据（当前为空实现）。
+ * 
+ * @param driver 驱动 API 引用（未使用）
+ */
 void FLightManager::prepare(backend::DriverApi&) const noexcept {
 }
 
+/**
+ * 销毁光源组件
+ * 
+ * 销毁指定实体的光源组件。
+ * 
+ * @param e 实体
+ */
 void FLightManager::destroy(Entity const e) noexcept {
-    Instance const i = getInstance(e);
-    if (i) {
+    Instance const i = getInstance(e);  // 获取组件实例
+    if (i) {  // 如果实例有效
         auto& manager = mManager;
-        manager.removeComponent(e);
+        manager.removeComponent(e);  // 移除组件
     }
 }
 

@@ -383,7 +383,7 @@ void RenderPass::Executor::execute(FEngine const& engine, DriverApi& driver,
 **关键 API**:
 - `driver.bindPipeline()` - 绑定管线状态
 - `driver.bindRenderPrimitive()` - 绑定几何体
-- `driver.bindDescriptorSet()` - 绑定描述符集
+- `driver.bindDescriptorSet()` - 绑定描述符堆
 - `driver.draw2()` - 执行绘制
 
 #### 4.9 Post-Processing Passes - 后处理通道
@@ -680,7 +680,7 @@ FrameGraph 自动管理资源分配和释放，避免不必要的资源创建。
 ### View
 
 - `mVisibleRenderables` - 可见渲染对象范围
-- `mColorPassDescriptorSet` - 颜色通道描述符集
+- `mColorPassDescriptorSet` - 颜色通道描述符堆
 - `mUniforms` - Uniform 缓冲区
 
 ## 总结

@@ -62,59 +62,160 @@ class MaterialParser;
 
 class  FEngine;
 
+/**
+ * 材质实现类
+ * 
+ * 材质定义了渲染表面的外观和行为。
+ * 包含着色器程序、uniform 接口块、sampler 接口块、渲染状态等。
+ * 
+ * 实现细节：
+ * - 支持多种着色器变体（基于光照、阴影等条件）
+ * - 缓存编译后的着色器程序
+ * - 支持共享变体（使用默认材质的变体）
+ * - 支持 UBO 批处理
+ */
 class FMaterial : public Material {
 public:
+    /**
+     * 构造函数
+     * 
+     * @param engine 引擎引用
+     * @param builder 构建器引用
+     * @param definition 材质定义（包含所有材质属性）
+     */
     FMaterial(FEngine& engine, const Builder& builder,
             MaterialDefinition const& definition);
+    
+    /**
+     * 析构函数
+     */
     ~FMaterial() noexcept;
 
+    /**
+     * 默认材质构建器
+     * 
+     * 用于创建默认材质（错误情况下的回退材质）。
+     */
     class DefaultMaterialBuilder : public Builder {
     public:
         DefaultMaterialBuilder();
     };
 
-
+    /**
+     * 终止
+     * 
+     * 释放资源，包括所有缓存的着色器程序。
+     * 
+     * @param engine 引擎引用
+     */
     void terminate(FEngine& engine);
 
-    // return the uniform interface block for this material
+    /**
+     * 获取统一接口块
+     * 
+     * 返回材质的 uniform 接口块，包含所有 uniform 参数的定义。
+     * 
+     * @return uniform 接口块常量引用
+     */
     const BufferInterfaceBlock& getUniformInterfaceBlock() const noexcept {
         return mDefinition.uniformInterfaceBlock;
     }
 
+    /**
+     * 获取每视图描述符集布局
+     * 
+     * 仅用于后处理材质。
+     * 
+     * @return 每视图描述符集布局常量引用
+     */
     DescriptorSetLayout const& getPerViewDescriptorSetLayout() const noexcept {
         assert_invariant(mDefinition.materialDomain == MaterialDomain::POST_PROCESS);
         return mDefinition.perViewDescriptorSetLayout;
     }
 
+    /**
+     * 获取每视图描述符集布局（带变体和 VSM 选项）
+     * 
+     * @param variant 着色器变体
+     * @param useVsmDescriptorSetLayout 是否使用 VSM 描述符集布局
+     * @return 每视图描述符集布局常量引用
+     */
     DescriptorSetLayout const& getPerViewDescriptorSetLayout(
             Variant const variant, bool const useVsmDescriptorSetLayout) const noexcept;
 
-    // Returns the layout that should be used when this material is bound to the pipeline for the
-    // given variant. Shared variants use the Engine's default material's variants, so we should
-    // also use the default material's layout.
+    /**
+     * 获取描述符集布局
+     * 
+     * 返回在将材质绑定到管线时应使用的布局。
+     * 共享变体使用引擎的默认材质的变体，因此也应使用默认材质的布局。
+     * 
+     * @param variant 着色器变体（默认为空，使用默认变体）
+     * @return 描述符集布局常量引用
+     */
     DescriptorSetLayout const& getDescriptorSetLayout(Variant variant = {}) const noexcept {
-        if (!isSharedVariant(variant)) {
-            return mDefinition.descriptorSetLayout;
+        if (!isSharedVariant(variant)) {  // 如果不是共享变体
+            return mDefinition.descriptorSetLayout;  // 返回材质自己的布局
         }
-        FMaterial const* const pDefaultMaterial = mEngine.getDefaultMaterial();
-        if (UTILS_UNLIKELY(!pDefaultMaterial)) {
-            return mDefinition.descriptorSetLayout;
+        FMaterial const* const pDefaultMaterial = mEngine.getDefaultMaterial();  // 获取默认材质
+        if (UTILS_UNLIKELY(!pDefaultMaterial)) {  // 如果默认材质不存在
+            return mDefinition.descriptorSetLayout;  // 返回材质自己的布局
         }
-        return pDefaultMaterial->getDescriptorSetLayout();
+        return pDefaultMaterial->getDescriptorSetLayout();  // 返回默认材质的布局
     }
 
+    /**
+     * 编译材质
+     * 
+     * 异步编译材质的着色器程序。
+     * 
+     * @param priority 编译优先级队列
+     * @param variantSpec 变体规范（指定要编译的变体）
+     * @param handler 回调处理器
+     * @param callback 完成回调函数
+     */
     void compile(CompilerPriorityQueue priority,
             UserVariantFilterMask variantSpec,
             backend::CallbackHandler* handler,
             utils::Invocable<void(Material*)>&& callback) noexcept;
 
-    // Creates an instance of this material, specifying the batching mode.
+    /**
+     * 创建实例
+     * 
+     * 创建此材质的实例，指定批处理模式。
+     * 
+     * @param name 实例名称
+     * @return 材质实例指针
+     */
     FMaterialInstance* createInstance(const char* name) const noexcept;
 
+    /**
+     * 是否有参数
+     * 
+     * 检查材质是否有指定名称的参数。
+     * 
+     * @param name 参数名称
+     * @return 如果参数存在返回 true，否则返回 false
+     */
     bool hasParameter(const char* name) const noexcept;
 
+    /**
+     * 是否为采样器
+     * 
+     * 检查指定名称的参数是否为采样器。
+     * 
+     * @param name 参数名称
+     * @return 如果是采样器返回 true，否则返回 false
+     */
     bool isSampler(const char* name) const noexcept;
 
+    /**
+     * 反射
+     * 
+     * 获取参数的反射信息。
+     * 
+     * @param name 参数名称
+     * @return 字段信息指针，如果未找到返回 nullptr
+     */
     BufferInterfaceBlock::FieldInfo const* reflect(std::string_view name) const noexcept;
 
     FMaterialInstance const* getDefaultInstance() const noexcept {
@@ -131,19 +232,35 @@ public:
 
     void invalidate(Variant::type_t variantMask = 0, Variant::type_t variantValue = 0) noexcept;
 
-    // prepareProgram creates the program for the material's given variant at the backend level.
-    // Must be called outside of backend render pass.
-    // Must be called before getProgram() below.
+    /**
+     * 准备程序
+     * 
+     * 在后端级别为材质的给定变体创建程序。
+     * 必须在后端渲染通道外调用。
+     * 必须在 getProgram() 之前调用。
+     * 
+     * 注意：prepareProgram() 为场景中的每个 RenderPrimitive 调用，因此必须高效。
+     * 
+     * @param variant 着色器变体
+     * @param priorityQueue 编译优先级队列
+     */
     void prepareProgram(Variant const variant,
             backend::CompilerPriorityQueue const priorityQueue) const noexcept {
-        // prepareProgram() is called for each RenderPrimitive in the scene, so it must be efficient.
-        if (UTILS_UNLIKELY(!isCached(variant))) {
-            prepareProgramSlow(variant, priorityQueue);
+        // prepareProgram() 为场景中的每个 RenderPrimitive 调用，因此必须高效
+        if (UTILS_UNLIKELY(!isCached(variant))) {  // 如果未缓存（不常见情况）
+            prepareProgramSlow(variant, priorityQueue);  // 调用慢速路径
         }
     }
 
-    // getProgram returns the backend program for the material's given variant.
-    // Must be called after prepareProgram().
+    /**
+     * 获取程序
+     * 
+     * 返回材质的给定变体的后端程序。
+     * 必须在 prepareProgram() 之后调用。
+     * 
+     * @param variant 着色器变体
+     * @return 程序句柄
+     */
     [[nodiscard]]
     backend::Handle<backend::HwProgram> getProgram(Variant const variant) const noexcept {
 #if FILAMENT_ENABLE_MATDBG
@@ -153,21 +270,27 @@ public:
         return mCachedPrograms[variant.key];
     }
 
-    // MaterialInstance::use() binds descriptor sets before drawing. For shared variants,
-    // however, the material instance will call useShared() to bind the default material's sets
-    // instead.
-    // Returns true if this is a shared variant.
+    /**
+     * 使用共享
+     * 
+     * MaterialInstance::use() 在绘制前绑定描述符集。
+     * 对于共享变体，材质实例将调用 useShared() 来绑定默认材质的集合。
+     * 
+     * @param driver 驱动 API 引用
+     * @param variant 着色器变体
+     * @return 如果这是共享变体返回 true，否则返回 false
+     */
     bool useShared(backend::DriverApi& driver, Variant variant) const noexcept {
-        if (!isSharedVariant(variant)) {
-            return false;
+        if (!isSharedVariant(variant)) {  // 如果不是共享变体
+            return false;  // 返回 false
         }
-        FMaterial const* const pDefaultMaterial = mEngine.getDefaultMaterial();
-        if (UTILS_UNLIKELY(!pDefaultMaterial)) {
-            return false;
+        FMaterial const* const pDefaultMaterial = mEngine.getDefaultMaterial();  // 获取默认材质
+        if (UTILS_UNLIKELY(!pDefaultMaterial)) {  // 如果默认材质不存在
+            return false;  // 返回 false
         }
-        FMaterialInstance const* const pDefaultInstance = pDefaultMaterial->getDefaultInstance();
-        pDefaultInstance->use(driver, variant);
-        return true;
+        FMaterialInstance const* const pDefaultInstance = pDefaultMaterial->getDefaultInstance();  // 获取默认实例
+        pDefaultInstance->use(driver, variant);  // 使用默认实例
+        return true;  // 返回 true
     }
 
     [[nodiscard]]

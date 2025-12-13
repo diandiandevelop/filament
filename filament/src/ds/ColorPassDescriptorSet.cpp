@@ -64,40 +64,75 @@ namespace filament {
 using namespace backend;
 using namespace math;
 
+/**
+ * 获取描述符集索引
+ * 
+ * 根据光照、屏幕空间反射和雾的状态计算描述符集布局索引。
+ * 使用位掩码编码不同的配置组合。
+ * 
+ * @param lit 是否启用光照
+ * @param ssr 是否启用屏幕空间反射
+ * @param fog 是否启用雾
+ * @return 描述符集布局索引（0-7）
+ */
 uint8_t ColorPassDescriptorSet::getIndex(
         bool const lit, bool const ssr, bool const fog) noexcept {
 
-    uint8_t index = 0;
+    uint8_t index = 0;  // 初始索引
 
-    if (!lit) {
+    if (!lit) {  // 如果未启用光照
+        /**
+         * 这将移除未使用光照时的采样器
+         */
         // this will remove samplers unused when unit
-        index |= 0x1;
+        index |= 0x1;  // 设置位 0
     }
 
-    if (ssr) {
+    if (ssr) {  // 如果启用屏幕空间反射
+        /**
+         * 这将添加屏幕空间 SSR 所需的采样器
+         */
         // this will add samplers needed for screen-space SSR
-        index |= 0x2;
+        index |= 0x2;  // 设置位 1
     }
 
-    if (fog) {
+    if (fog) {  // 如果启用雾
+        /**
+         * 这将添加雾所需的采样器
+         */
         // this will remove samplers needed for fog
-        index |= 0x4;
+        index |= 0x4;  // 设置位 2
     }
 
-    assert_invariant(index < DESCRIPTOR_LAYOUT_COUNT);
-    return index;
+    assert_invariant(index < DESCRIPTOR_LAYOUT_COUNT);  // 确保索引在有效范围内
+    return index;  // 返回索引
 }
 
+/**
+ * 颜色通道描述符集构造函数
+ * 
+ * 为所有可能的配置组合创建描述符集布局。
+ * 
+ * @param engine 引擎引用
+ * @param vsm 是否使用 VSM（方差阴影贴图）
+ * @param uniforms 每视图统一缓冲区引用
+ */
 ColorPassDescriptorSet::ColorPassDescriptorSet(FEngine& engine, bool const vsm,
         TypedUniformBuffer<PerViewUib>& uniforms) noexcept
-    : mUniforms(uniforms), mIsVsm(vsm) {
-    for (bool const lit: { false, true }) {
-        for (bool const ssr: { false, true }) {
-            for (bool const fog: { false, true }) {
-                auto const index = getIndex(lit, ssr, fog);
-                mDescriptorSetLayout[index] = {
-                        engine.getDescriptorSetLayoutFactory(),
-                        engine.getDriverApi(),
+    : mUniforms(uniforms),  // 初始化统一缓冲区引用
+      mIsVsm(vsm) {  // 初始化 VSM 标志
+    /**
+     * 为所有配置组合创建描述符集布局
+     * 
+     * 遍历所有可能的 lit、ssr、fog 组合（2^3 = 8 种组合）。
+     */
+    for (bool const lit: { false, true }) {  // 遍历光照状态
+        for (bool const ssr: { false, true }) {  // 遍历 SSR 状态
+            for (bool const fog: { false, true }) {  // 遍历雾状态
+                auto const index = getIndex(lit, ssr, fog);  // 获取索引
+                mDescriptorSetLayout[index] = {  // 创建描述符集布局
+                        engine.getDescriptorSetLayoutFactory(),  // 描述符集布局工厂
+                        engine.getDriverApi(),  // 驱动 API
                         descriptor_sets::getPerViewDescriptorSetLayout(
                                 MaterialDomain::SURFACE, lit, ssr, fog, vsm)
                 };
@@ -107,73 +142,156 @@ ColorPassDescriptorSet::ColorPassDescriptorSet(FEngine& engine, bool const vsm,
         }
     }
 
-    setBuffer(+PerViewBindingPoints::FRAME_UNIFORMS,
-            uniforms.getUboHandle(), 0, uniforms.getSize());
+    /**
+     * 设置帧统一缓冲区
+     */
+    setBuffer(+PerViewBindingPoints::FRAME_UNIFORMS,  // 绑定点
+            uniforms.getUboHandle(), 0, uniforms.getSize());  // UBO 句柄、偏移、大小
 
-    setSampler(+PerViewBindingPoints::IBL_DFG_LUT,
-            engine.getDFG().isValid() ?
-                    engine.getDFG().getTexture() : engine.getZeroTexture(), SamplerParams{
-                    .filterMag = SamplerMagFilter::LINEAR
+    /**
+     * 设置 IBL DFG LUT 采样器
+     * 
+     * 如果 DFG LUT 有效则使用它，否则使用零纹理。
+     */
+    setSampler(+PerViewBindingPoints::IBL_DFG_LUT,  // 绑定点
+            engine.getDFG().isValid() ?  // 如果 DFG 有效
+                    engine.getDFG().getTexture() : engine.getZeroTexture(),  // 使用 DFG 纹理或零纹理
+            SamplerParams{  // 采样器参数
+                    .filterMag = SamplerMagFilter::LINEAR  // 放大过滤器为线性
             });
 }
 
+/**
+ * 初始化描述符集
+ * 
+ * 为所有描述符集布局设置光源、记录缓冲区和 Froxel 缓冲区。
+ * 
+ * @param engine 引擎引用
+ * @param lights 光源缓冲区句柄
+ * @param recordBuffer 记录缓冲区句柄
+ * @param froxelBuffer Froxel 缓冲区句柄
+ */
 void ColorPassDescriptorSet::init(
         FEngine& engine,
-        BufferObjectHandle lights,
-        BufferObjectHandle recordBuffer,
-        BufferObjectHandle froxelBuffer) noexcept {
-    for (size_t i = 0; i < DESCRIPTOR_LAYOUT_COUNT; i++) {
-        auto& descriptorSet = mDescriptorSet[i];
-        auto const& layout = mDescriptorSetLayout[i];
-        descriptorSet.setBuffer(layout, +PerViewBindingPoints::LIGHTS,
-                lights, 0, CONFIG_MAX_LIGHT_COUNT * sizeof(LightsUib));
-        descriptorSet.setBuffer(layout, +PerViewBindingPoints::RECORD_BUFFER,
-                recordBuffer, 0, sizeof(FroxelRecordUib));
-        descriptorSet.setBuffer(layout, +PerViewBindingPoints::FROXEL_BUFFER,
-                froxelBuffer, 0, Froxelizer::getFroxelBufferByteCount(engine.getDriverApi()));
+        BufferObjectHandle lights,  // 光源缓冲区句柄
+        BufferObjectHandle recordBuffer,  // 记录缓冲区句柄
+        BufferObjectHandle froxelBuffer) noexcept {  // Froxel 缓冲区句柄
+    for (size_t i = 0; i < DESCRIPTOR_LAYOUT_COUNT; i++) {  // 遍历所有布局
+        auto& descriptorSet = mDescriptorSet[i];  // 获取描述符集
+        auto const& layout = mDescriptorSetLayout[i];  // 获取布局
+        /**
+         * 设置光源缓冲区
+         */
+        descriptorSet.setBuffer(layout, +PerViewBindingPoints::LIGHTS,  // 绑定点
+                lights, 0, CONFIG_MAX_LIGHT_COUNT * sizeof(LightsUib));  // 句柄、偏移、大小
+        /**
+         * 设置记录缓冲区
+         */
+        descriptorSet.setBuffer(layout, +PerViewBindingPoints::RECORD_BUFFER,  // 绑定点
+                recordBuffer, 0, sizeof(FroxelRecordUib));  // 句柄、偏移、大小
+        /**
+         * 设置 Froxel 缓冲区
+         */
+        descriptorSet.setBuffer(layout, +PerViewBindingPoints::FROXEL_BUFFER,  // 绑定点
+                froxelBuffer, 0, Froxelizer::getFroxelBufferByteCount(engine.getDriverApi()));  // 句柄、偏移、大小
     }
 }
 
+/**
+ * 终止描述符集
+ * 
+ * 释放所有描述符集和布局资源。
+ * 
+ * @param factory 描述符集布局工厂引用
+ * @param driver 驱动 API 引用
+ */
 void ColorPassDescriptorSet::terminate(HwDescriptorSetLayoutFactory& factory, DriverApi& driver) {
-    for (auto&& entry : mDescriptorSet) {
-        entry.terminate(driver);
+    for (auto&& entry : mDescriptorSet) {  // 遍历所有描述符集
+        entry.terminate(driver);  // 终止描述符集
     }
-    for (auto&& entry : mDescriptorSetLayout) {
-        entry.terminate(factory, driver);
+    for (auto&& entry : mDescriptorSetLayout) {  // 遍历所有布局
+        entry.terminate(factory, driver);  // 终止布局
     }
 }
 
+/**
+ * 准备相机数据
+ * 
+ * 更新统一缓冲区中的相机相关数据。
+ * 
+ * @param engine 引擎引用
+ * @param camera 相机信息
+ */
 void ColorPassDescriptorSet::prepareCamera(FEngine& engine, const CameraInfo& camera) noexcept {
-    PerViewDescriptorSetUtils::prepareCamera(mUniforms.edit(), engine, camera);
+    PerViewDescriptorSetUtils::prepareCamera(mUniforms.edit(), engine, camera);  // 准备相机数据
 }
 
+/**
+ * 准备 LOD 偏移
+ * 
+ * 更新统一缓冲区中的 LOD 偏移和导数缩放。
+ * 
+ * @param bias LOD 偏移
+ * @param derivativesScale 导数缩放
+ */
 void ColorPassDescriptorSet::prepareLodBias(float const bias, float2 const derivativesScale) noexcept {
-    PerViewDescriptorSetUtils::prepareLodBias(mUniforms.edit(), bias, derivativesScale);
+    PerViewDescriptorSetUtils::prepareLodBias(mUniforms.edit(), bias, derivativesScale);  // 准备 LOD 偏移
 }
 
+/**
+ * 准备曝光
+ * 
+ * 更新统一缓冲区中的曝光值。
+ * 
+ * @param ev100 曝光值（EV100）
+ */
 void ColorPassDescriptorSet::prepareExposure(float const ev100) noexcept {
-    const float exposure = Exposure::exposure(ev100);
-    auto& s = mUniforms.edit();
-    s.exposure = exposure;
-    s.ev100 = ev100;
+    const float exposure = Exposure::exposure(ev100);  // 计算曝光值
+    auto& s = mUniforms.edit();  // 获取统一缓冲区编辑引用
+    s.exposure = exposure;  // 设置曝光值
+    s.ev100 = ev100;  // 设置 EV100
 }
 
+/**
+ * 准备视口
+ * 
+ * 更新统一缓冲区中的视口数据。
+ * 
+ * @param physicalViewport 物理视口
+ * @param logicalViewport 逻辑视口
+ */
 void ColorPassDescriptorSet::prepareViewport(
-        const filament::Viewport& physicalViewport,
-        const filament::Viewport& logicalViewport) noexcept {
-    PerViewDescriptorSetUtils::prepareViewport(mUniforms.edit(), physicalViewport, logicalViewport);
+        const filament::Viewport& physicalViewport,  // 物理视口
+        const filament::Viewport& logicalViewport) noexcept {  // 逻辑视口
+    PerViewDescriptorSetUtils::prepareViewport(mUniforms.edit(), physicalViewport, logicalViewport);  // 准备视口
 }
 
+/**
+ * 准备时间
+ * 
+ * 更新统一缓冲区中的时间数据。
+ * 
+ * @param engine 引擎引用
+ * @param userTime 用户时间（float4）
+ */
 void ColorPassDescriptorSet::prepareTime(FEngine& engine, float4 const& userTime) noexcept {
-    PerViewDescriptorSetUtils::prepareTime(mUniforms.edit(), engine, userTime);
+    PerViewDescriptorSetUtils::prepareTime(mUniforms.edit(), engine, userTime);  // 准备时间
 }
 
+/**
+ * 准备时间抗锯齿噪声
+ * 
+ * 生成并更新统一缓冲区中的时间抗锯齿噪声值。
+ * 
+ * @param engine 引擎引用
+ * @param options 时间抗锯齿选项
+ */
 void ColorPassDescriptorSet::prepareTemporalNoise(FEngine& engine,
         TemporalAntiAliasingOptions const& options) noexcept {
-    std::uniform_real_distribution<float> uniformDistribution{ 0.0f, 1.0f };
-    auto& s = mUniforms.edit();
-    const float temporalNoise = uniformDistribution(engine.getRandomEngine());
-    s.temporalNoise = options.enabled ? temporalNoise : 0.0f;
+    std::uniform_real_distribution<float> uniformDistribution{ 0.0f, 1.0f };  // 均匀分布（0-1）
+    auto& s = mUniforms.edit();  // 获取统一缓冲区编辑引用
+    const float temporalNoise = uniformDistribution(engine.getRandomEngine());  // 生成随机噪声
+    s.temporalNoise = options.enabled ? temporalNoise : 0.0f;  // 如果启用则设置噪声，否则为 0
 }
 
 void ColorPassDescriptorSet::prepareFog(FEngine& engine, const CameraInfo& cameraInfo,

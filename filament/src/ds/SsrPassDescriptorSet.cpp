@@ -37,59 +37,135 @@ namespace filament {
 using namespace backend;
 using namespace math;
 
+/**
+ * 默认构造函数
+ * 
+ * 创建一个空的 SSR 通道描述符集。
+ */
 SsrPassDescriptorSet::SsrPassDescriptorSet() noexcept = default;
 
+/**
+ * 初始化 SSR 通道描述符集
+ * 
+ * 创建描述符集和虚拟阴影统一缓冲区。
+ * 
+ * @param engine 引擎引用
+ */
 void SsrPassDescriptorSet::init(FEngine& engine) noexcept {
+    /**
+     * 从布局创建描述符集
+     */
     // create the descriptor-set from the layout
     mDescriptorSet = DescriptorSet{
-            "SsrPassDescriptorSet", engine.getPerViewDescriptorSetLayoutSsrVariant() };
+            "SsrPassDescriptorSet", engine.getPerViewDescriptorSetLayoutSsrVariant() };  // 创建 SSR 变体描述符集
 
+    /**
+     * 创建虚拟阴影统一缓冲区（参见下面的 setFrameUniforms() 注释）
+     */
     // create a dummy Shadow UBO (see comment in setFrameUniforms() below)
-    mShadowUbh = engine.getDriverApi().createBufferObject(sizeof(ShadowUib),
-            BufferObjectBinding::UNIFORM, BufferUsage::STATIC);
+    mShadowUbh = engine.getDriverApi().createBufferObject(sizeof(ShadowUib),  // 创建缓冲区对象
+            BufferObjectBinding::UNIFORM, BufferUsage::STATIC);  // 统一缓冲区绑定，静态使用
 }
 
+/**
+ * 终止 SSR 通道描述符集
+ * 
+ * 释放描述符集和阴影统一缓冲区的硬件资源。
+ * 
+ * @param driver 驱动 API 引用
+ */
 void SsrPassDescriptorSet::terminate(DriverApi& driver) {
-    mDescriptorSet.terminate(driver);
-    driver.destroyBufferObject(mShadowUbh);
+    mDescriptorSet.terminate(driver);  // 终止描述符集
+    driver.destroyBufferObject(mShadowUbh);  // 销毁阴影统一缓冲区
 }
 
+/**
+ * 设置帧 Uniform 数据
+ * 
+ * 将每视图统一缓冲区和虚拟阴影统一缓冲区绑定到描述符集。
+ * 
+ * @param engine 引擎常量引用
+ * @param uniforms 每视图统一缓冲区引用
+ */
 void SsrPassDescriptorSet::setFrameUniforms(FEngine const& engine,
         TypedUniformBuffer<PerViewUib>& uniforms) noexcept {
+    /**
+     * 初始化描述符集
+     * 
+     * 将每视图统一缓冲区绑定到 FRAME_UNIFORMS 绑定点。
+     */
     // initialize the descriptor-set
-    mDescriptorSet.setBuffer(engine.getPerViewDescriptorSetLayoutSsrVariant(),
-            +PerViewBindingPoints::FRAME_UNIFORMS,
-            uniforms.getUboHandle(), 0, uniforms.getSize());
+    mDescriptorSet.setBuffer(engine.getPerViewDescriptorSetLayoutSsrVariant(),  // 设置缓冲区
+            +PerViewBindingPoints::FRAME_UNIFORMS,  // 绑定点：帧 Uniform
+            uniforms.getUboHandle(), 0, uniforms.getSize());  // 统一缓冲区句柄、偏移量和大小
 
+    /**
+     * 这实际上不用于 SSR 变体，但描述符集布局需要
+     * 有这个统一缓冲区，因为使用的片段着色器是"通用"的。
+     * Metal 和 GL 没有这个也可以，但 Vulkan 的验证层会抱怨。
+     */
     // This is actually not used for the SSR variants, but the descriptor-set layout needs
     // to have this UBO because the fragment shader used is the "generic" one. Both Metal
     // and GL would be okay without this, but Vulkan's validation layer would complain.
-    mDescriptorSet.setBuffer(engine.getPerViewDescriptorSetLayoutSsrVariant(),
-            +PerViewBindingPoints::SHADOWS, mShadowUbh, 0, sizeof(ShadowUib));
+    mDescriptorSet.setBuffer(engine.getPerViewDescriptorSetLayoutSsrVariant(),  // 设置缓冲区
+            +PerViewBindingPoints::SHADOWS, mShadowUbh, 0, sizeof(ShadowUib));  // 绑定点：阴影，虚拟统一缓冲区
 }
 
+/**
+ * 准备历史 SSR 纹理
+ * 
+ * 将历史 SSR 纹理绑定到描述符集，使用线性过滤。
+ * 
+ * @param engine 引擎常量引用
+ * @param ssr SSR 纹理句柄
+ */
 void SsrPassDescriptorSet::prepareHistorySSR(FEngine const& engine, Handle<HwTexture> ssr) noexcept {
-    mDescriptorSet.setSampler(engine.getPerViewDescriptorSetLayoutSsrVariant(),
-            +PerViewBindingPoints::SSR_HISTORY, ssr, SamplerParams{
-                .filterMag = SamplerMagFilter::LINEAR,
-                .filterMin = SamplerMinFilter::LINEAR
+    mDescriptorSet.setSampler(engine.getPerViewDescriptorSetLayoutSsrVariant(),  // 设置采样器
+            +PerViewBindingPoints::SSR_HISTORY, ssr, SamplerParams{  // 绑定点：SSR 历史
+                .filterMag = SamplerMagFilter::LINEAR,  // 放大过滤：线性
+                .filterMin = SamplerMinFilter::LINEAR  // 缩小过滤：线性
             });
 }
 
+/**
+ * 准备结构纹理
+ * 
+ * 将结构纹理绑定到描述符集，采样器必须是 NEAREST（最近邻）。
+ * 
+ * @param engine 引擎常量引用
+ * @param structure 结构纹理句柄
+ */
 void SsrPassDescriptorSet::prepareStructure(FEngine const& engine,
         Handle<HwTexture> structure) noexcept {
+    /**
+     * 采样器必须是 NEAREST
+     */
     // sampler must be NEAREST
-    mDescriptorSet.setSampler(engine.getPerViewDescriptorSetLayoutSsrVariant(),
-            +PerViewBindingPoints::STRUCTURE, structure, SamplerParams{});
+    mDescriptorSet.setSampler(engine.getPerViewDescriptorSetLayoutSsrVariant(),  // 设置采样器
+            +PerViewBindingPoints::STRUCTURE, structure, SamplerParams{});  // 绑定点：结构，默认参数（NEAREST）
 }
 
+/**
+ * 提交 SSR 通道描述符集
+ * 
+ * 将描述符集的更改提交到驱动。
+ * 
+ * @param engine 引擎引用
+ */
 void SsrPassDescriptorSet::commit(FEngine& engine) noexcept {
-    DriverApi& driver = engine.getDriverApi();
-    mDescriptorSet.commit(engine.getPerViewDescriptorSetLayoutSsrVariant(), driver);
+    DriverApi& driver = engine.getDriverApi();  // 获取驱动 API
+    mDescriptorSet.commit(engine.getPerViewDescriptorSetLayoutSsrVariant(), driver);  // 提交描述符集
 }
 
+/**
+ * 绑定 SSR 通道描述符集
+ * 
+ * 将描述符集绑定到 PER_VIEW 绑定点。
+ * 
+ * @param driver 驱动 API 引用
+ */
 void SsrPassDescriptorSet::bind(DriverApi& driver) noexcept {
-    mDescriptorSet.bind(driver, DescriptorSetBindingPoints::PER_VIEW);
+    mDescriptorSet.bind(driver, DescriptorSetBindingPoints::PER_VIEW);  // 绑定到每视图绑定点
 }
 
 } // namespace filament

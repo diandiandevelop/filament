@@ -20,30 +20,70 @@
 
 namespace filament {
 
+/**
+ * 构造函数
+ */
 Blackboard::Blackboard() noexcept = default;
 
+/**
+ * 析构函数
+ */
 Blackboard::~Blackboard() noexcept = default;
 
+/**
+ * 获取句柄（内部方法）
+ * 
+ * 查找指定名称的句柄，如果不存在则返回空句柄。
+ * 
+ * @param name 资源名称
+ * @return 帧图句柄
+ */
 FrameGraphHandle Blackboard::getHandle(std::string_view const name) const noexcept {
-    auto it = mMap.find(name);
+    auto it = mMap.find(name);  // 查找名称
     if (it != mMap.end()) {
-        return it->second;
+        return it->second;  // 找到则返回句柄
     }
-    return {};
+    return {};  // 未找到则返回空句柄
 }
 
+/**
+ * 下标操作符实现
+ * 
+ * 获取或创建指定名称的句柄引用。
+ * 如果名称不存在，会创建一个新条目并初始化为空句柄。
+ * 
+ * @param name 资源名称
+ * @return 句柄引用
+ */
 FrameGraphHandle& Blackboard::operator [](std::string_view const name) noexcept {
+    /**
+     * 插入或赋值：如果名称存在则更新，不存在则创建
+     */
     auto[pos, _] = mMap.insert_or_assign(name, FrameGraphHandle{});
-    return pos->second;
+    return pos->second;  // 返回句柄引用
 }
 
+/**
+ * 放置句柄实现
+ * 
+ * 将句柄存储到指定名称下。
+ * 
+ * @param name 资源名称
+ * @param handle 帧图句柄
+ */
 void Blackboard::put(std::string_view const name, FrameGraphHandle const handle) noexcept {
-    operator[](name) = handle;
+    operator[](name) = handle;  // 使用下标操作符赋值
 }
 
-
+/**
+ * 移除句柄实现
+ * 
+ * 从黑板中移除指定名称的句柄。
+ * 
+ * @param name 资源名称
+ */
 void Blackboard::remove(std::string_view const name) noexcept {
-    mMap.erase(name);
+    mMap.erase(name);  // 从映射中删除
 }
 
 } // namespace filament

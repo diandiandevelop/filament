@@ -103,16 +103,44 @@ ResourceAllocatorDisposerInterface::~ResourceAllocatorDisposerInterface() = defa
 
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 计算纹理大小
+ * 
+ * 根据纹理的宽度、高度、深度、格式、采样数和 mip 级别计算纹理占用的内存大小。
+ * 
+ * @return 纹理大小（字节）
+ * 
+ * 计算方式：
+ * 1. 基础大小 = 像素数 * 每像素字节数
+ * 2. 如果使用 MSAA，大小乘以采样数
+ * 3. 如果有 mip 级别，加上 mip 金字塔的大小（约为基础大小的 1/3）
+ */
 size_t ResourceAllocator::TextureKey::getSize() const noexcept {
+    /**
+     * 计算总像素数（宽度 * 高度 * 深度）
+     */
     size_t const pixelCount = width * height * depth;
+    /**
+     * 基础大小 = 像素数 * 每像素字节数（根据格式）
+     */
     size_t size = pixelCount * FTexture::getFormatSize(format);
+    /**
+     * 获取采样数（至少为 1）
+     */
     size_t const s = std::max(uint8_t(1), samples);
     if (s > 1) {
         // if we have MSAA, we assume N times the storage
+        /**
+         * 如果使用 MSAA（多重采样抗锯齿），存储大小乘以采样数
+         */
         size *= s;
     }
     if (levels > 1) {
         // if we have mip-maps we assume the full pyramid
+        /**
+         * 如果有 mip 级别，加上 mip 金字塔的大小
+         * mip 金字塔的总大小约为基础大小的 1/3
+         */
         size += size / 3;
     }
     // TODO: this is not taking into account the potential sidecar MS buffer
@@ -225,11 +253,29 @@ ResourceAllocatorDisposerInterface& ResourceAllocator::getDisposer() noexcept {
     return *mDisposer;
 }
 
+/**
+ * 垃圾回收
+ * 
+ * 定期调用（通常每帧一次），清理缓存中过期的纹理资源。
+ * 
+ * @param skippedFrame 是否跳过了帧（如果为 true，使用更激进的清理策略）
+ * 
+ * 清理策略：
+ * 1. 跳过帧时：移除所有年龄 >= MAX_AGE_SKIPPED_FRAME 的项
+ * 2. 正常帧：移除年龄 >= mCacheMaxAge 的项，但每次最多移除 MAX_EVICTION_COUNT 个
+ * 3. 如果缓存中有 MAX_UNIQUE_AGE_COUNT 个或更多不同的年龄，移除所有超过第 MAX_UNIQUE_AGE_COUNT 个年龄的项
+ */
 void ResourceAllocator::gc(bool const skippedFrame) noexcept {
     // this is called regularly -- usually once per frame
 
     // increase our age at each (non-skipped) frame
+    /**
+     * 保存当前年龄
+     */
     const size_t age = mAge;
+    /**
+     * 如果未跳过帧，增加年龄计数器
+     */
     if (!skippedFrame) {
         mAge++;
     }
@@ -245,24 +291,56 @@ void ResourceAllocator::gc(bool const skippedFrame) noexcept {
     auto& textureCache = mTextureCache;
 
     // when skipping a frame, the maximum age to keep in the cache
+    /**
+     * 跳过帧时，缓存中保留的最大年龄
+     */
     constexpr size_t MAX_AGE_SKIPPED_FRAME = 1;
 
     // maximum entry count to evict per GC, under the mCacheMaxAgeSoft limit
+    /**
+     * 每次 GC 最多移除的项数（在 mCacheMaxAge 限制下）
+     */
     constexpr size_t MAX_EVICTION_COUNT = 1;
 
     // maximum number of unique ages in the cache
+    /**
+     * 缓存中允许的最大不同年龄数
+     */
     constexpr size_t MAX_UNIQUE_AGE_COUNT = 3;
 
+    /**
+     * 用于跟踪缓存中存在的年龄的位集合
+     */
     bitset32 ages;
+    /**
+     * 已移除的项数
+     */
     uint32_t evictedCount = 0;
+    /**
+     * 遍历纹理缓存
+     */
     for (auto it = textureCache.begin(); it != textureCache.end();) {
+        /**
+         * 计算年龄差（当前年龄 - 资源年龄）
+         */
         size_t const ageDiff = age - it->second.age;
+        /**
+         * 如果满足移除条件：
+         * 1. 跳过帧且年龄差 >= MAX_AGE_SKIPPED_FRAME
+         * 2. 年龄差 >= mCacheMaxAge 且未达到移除上限
+         */
         if ((ageDiff >= MAX_AGE_SKIPPED_FRAME && skippedFrame) ||
             (ageDiff >= mCacheMaxAge && evictedCount < MAX_EVICTION_COUNT)) {
+            /**
+             * 增加移除计数并移除该项
+             */
             evictedCount++;
             it = purge(it);
         } else {
             // build the set of ages present in the cache after eviction
+            /**
+             * 构建缓存中存在的年龄集合（限制在 31 以内）
+             */
             ages.set(std::min(size_t(31), ageDiff));
             ++it;
         }
@@ -270,13 +348,32 @@ void ResourceAllocator::gc(bool const skippedFrame) noexcept {
 
     // if we have MAX_UNIQUE_AGE_COUNT ages or more, we evict all the resources that
     // are older than the MAX_UNIQUE_AGE_COUNT'th age.
+    /**
+     * 如果缓存中有 MAX_UNIQUE_AGE_COUNT 个或更多不同的年龄，
+     * 移除所有超过第 MAX_UNIQUE_AGE_COUNT 个年龄的项
+     */
     if (!skippedFrame && ages.count() >= MAX_UNIQUE_AGE_COUNT) {
+        /**
+         * 获取年龄位集合的值
+         */
         uint32_t bits = ages.getValue();
         // remove from the set the ages we keep
+        /**
+         * 从集合中移除我们要保留的年龄（保留前 MAX_UNIQUE_AGE_COUNT - 1 个）
+         */
         for (size_t i = 0; i < MAX_UNIQUE_AGE_COUNT - 1; i++) {
+            /**
+             * 清除最低位的设置位（使用 ctz 找到最低位）
+             */
             bits &= ~(1 << ctz(bits));
         }
+        /**
+         * 计算最大保留年龄（剩余位中的最低位）
+         */
         size_t const maxAge = ctz(bits);
+        /**
+         * 移除所有年龄差 >= maxAge 的项
+         */
         for (auto it = textureCache.begin(); it != textureCache.end();) {
             const size_t ageDiff = age - it->second.age;
             if (ageDiff >= maxAge) {

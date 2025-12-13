@@ -44,19 +44,55 @@ using namespace utils;
 namespace filament::backend {
 
 // ------------------------------------------------------------------------------------------------
-// A few utility functions for debugging...
+/**
+ * 调试辅助函数
+ * 
+ * 用于在 DEBUG_COMMAND_STREAM 模式下打印命令参数。
+ */
 
+/**
+ * 打印参数包（递归终止）
+ * 
+ * 当没有参数时调用此函数。
+ */
 inline void printParameterPack(io::ostream&) { }
 
+/**
+ * 打印参数包（最后一个参数）
+ * 
+ * @tparam LAST 最后一个参数类型
+ * @param out 输出流
+ * @param t 最后一个参数
+ */
 template<typename LAST>
 static void printParameterPack(io::ostream& out, const LAST& t) { out << t; }
 
+/**
+ * 打印参数包（递归版本）
+ * 
+ * 递归打印所有参数，用逗号分隔。
+ * 
+ * @tparam FIRST 第一个参数类型
+ * @tparam REMAINING 剩余参数类型
+ * @param out 输出流
+ * @param first 第一个参数
+ * @param rest 剩余参数
+ */
 template<typename FIRST, typename... REMAINING>
 static void printParameterPack(io::ostream& out, const FIRST& first, const REMAINING& ... rest) {
     out << first << ", ";
     printParameterPack(out, rest...);
 }
 
+/**
+ * 从命令类型名称中提取方法名称
+ * 
+ * 从类似 "::Command<&filament::backend::Driver::methodName>" 的字符串中
+ * 提取 "methodName" 部分。
+ * 
+ * @param command 命令类型名称
+ * @return 方法名称的字符串视图
+ */
 static UTILS_NOINLINE UTILS_UNUSED std::string_view extractMethodName(std::string_view command) noexcept { // NOLINT(*-exception-escape)
     constexpr char startPattern[] = "::Command<&filament::backend::Driver::";
     auto pos = command.rfind(startPattern);
@@ -65,7 +101,7 @@ static UTILS_NOINLINE UTILS_UNUSED std::string_view extractMethodName(std::strin
     if (pos > command.size()) {
         return { command.data(), command.size() };
     }
-    return command.substr(pos, end-pos); // this can't throw by construction
+    return command.substr(pos, end-pos); // 根据构造，这不会抛出异常
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -163,31 +199,57 @@ void CommandStream::queueCommand(std::function<void()> command) {
     new(allocateCommand(CustomCommand::align(sizeof(CustomCommand)))) CustomCommand(std::move(command));
 }
 
+/**
+ * 记录命令（带索引序列）
+ * 
+ * 在 DEBUG_COMMAND_STREAM 模式下，记录命令的方法名称、大小和参数。
+ * 
+ * @tparam ARGS 命令参数类型
+ * @tparam METHOD Driver 方法指针
+ * @tparam I 索引序列
+ * 
+ * 注意：需要 RTTI 支持才能使用 DEBUG_COMMAND_STREAM。
+ */
 template<typename... ARGS>
 template<void (Driver::*METHOD)(ARGS...)>
 template<std::size_t... I>
 void CommandType<void (Driver::*)(ARGS...)>::Command<METHOD>::log(std::index_sequence<I...>) noexcept  {
 #if DEBUG_COMMAND_STREAM
     static_assert(UTILS_HAS_RTTI, "DEBUG_COMMAND_STREAM can only be used with RTTI");
+    /**
+     * 获取命令类型名称并提取方法名称
+     */
     CString command = CallStack::demangleTypeName(typeid(Command).name());
     DLOG(INFO) << extractMethodName({command.data(), command.size()}) << " : size=" << sizeof(Command);
+    
+    /**
+     * 打印所有参数
+     */
     io::sstream parameterPack;
     printParameterPack(parameterPack, std::get<I>(mArgs)...);
     DLOG(INFO) << "\t" << parameterPack.c_str();
 #endif
 }
 
+/**
+ * 记录命令（无参数版本）
+ * 
+ * 创建索引序列并调用带索引序列的 log() 方法。
+ */
 template<typename... ARGS>
 template<void (Driver::*METHOD)(ARGS...)>
 void CommandType<void (Driver::*)(ARGS...)>::Command<METHOD>::log() noexcept  {
     log(std::make_index_sequence<std::tuple_size<SavedParameters>::value>{});
 }
 
-/*
- * When DEBUG_COMMAND_STREAM is activated, we need to explicitly instantiate the log() method
- * (this is because we don't want it in the header file)
+/**
+ * 显式实例化 log() 方法
+ * 
+ * 当 DEBUG_COMMAND_STREAM 激活时，需要显式实例化 log() 方法
+ * （因为我们不想在头文件中包含它）。
+ * 
+ * 这通过包含 DriverAPI.inc 并展开宏来为所有 Driver API 方法生成 log() 实例化。
  */
-
 #if DEBUG_COMMAND_STREAM
 #define DECL_DRIVER_API_SYNCHRONOUS(RetType, methodName, paramsDecl, params)
 #define DECL_DRIVER_API(methodName, paramsDecl, params) \
@@ -199,10 +261,19 @@ void CommandType<void (Driver::*)(ARGS...)>::Command<METHOD>::log() noexcept  {
 
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 执行自定义命令
+ * 
+ * 执行通过 queueCommand() 添加的 lambda 函数。
+ * 
+ * @param driver Driver 引用（未使用）
+ * @param base 命令基类指针
+ * @param next 输出参数，下一个命令的偏移量
+ */
 void CustomCommand::execute(Driver&, CommandBase* base, intptr_t* next) {
-    *next = align(sizeof(CustomCommand));
-    static_cast<CustomCommand*>(base)->mCommand();
-    static_cast<CustomCommand*>(base)->~CustomCommand();
+    *next = align(sizeof(CustomCommand));  // 计算下一个命令的位置
+    static_cast<CustomCommand*>(base)->mCommand();  // 执行 lambda
+    static_cast<CustomCommand*>(base)->~CustomCommand();  // 析构 CustomCommand
 }
 
 } // namespace filament::backend

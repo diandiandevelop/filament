@@ -17,20 +17,35 @@
 #ifndef TNT_FILAMENT_DOWNCAST_H
 #define TNT_FILAMENT_DOWNCAST_H
 
-/*
- * Generates functions to safely downcast a pointer Bar* to FBar*
- * FILAMENT_DOWNCAST() should be included in the header file
- * declaring FBar, e.g.:
- *
+/**
+ * 向下转换宏
+ * 
+ * 生成函数以安全地将指针 Bar* 向下转换为 FBar*。
+ * 
+ * FILAMENT_DOWNCAST() 应该包含在声明 FBar 的头文件中，例如：
+ * 
+ * ```cpp
  * #include <Bar.h>
- *
+ * 
  * class FBar : public Bar {
  * };
- *
+ * 
  * FILAMENT_DOWNCAST(Bar)
- *
+ * ```
+ * 
+ * 使用场景：
+ * - Filament 使用 PIMPL（Pointer to Implementation）模式
+ * - 公共 API 使用 Bar 类，内部实现使用 FBar 类
+ * - downcast() 函数提供从公共 API 到内部实现的类型安全转换
+ * 
+ * @param CLASS 基类名称（例如 Bar）
+ * 
+ * 生成的函数：
+ * - downcast(Bar&) -> FBar&
+ * - downcast(const Bar&) -> const FBar&
+ * - downcast(Bar*) -> FBar*
+ * - downcast(const Bar*) -> const FBar*
  */
-
 #define FILAMENT_DOWNCAST(CLASS)                                    \
     inline F##CLASS& downcast(CLASS& that) noexcept {               \
         return static_cast<F##CLASS &>(that);                       \

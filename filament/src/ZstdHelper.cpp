@@ -23,16 +23,27 @@
 
 namespace filament {
 
+/**
+ * 检查数据是否被 Zstd 压缩
+ * 
+ * 通过检查 Zstd 魔数（magic number）来判断。
+ * 
+ * @param src 源数据指针
+ * @param src_size 源数据大小
+ * @return 如果数据被 Zstd 压缩则返回 true
+ */
 bool ZstdHelper::isCompressed(const void* src, size_t src_size) noexcept {
     if (src_size < 4) {
         return false;
     }
 
-    // `src` may not be aligned to 4 bytes, which is violating the alignment requirement of
-    // `UndefinedBehaviorSanitizer: misaligned-pointer-use`. So reconstruct the 32-bit integer from
-    // bytes in little-endian order as the expected byte sequence is 28 B5 2F FD and
-    // ZSTD_MAGICNUMBER refers to 0xFD2FB528. This should work correctly on both little-endian and
-    // big-endian systems.
+    /**
+     * `src` 可能不对齐到 4 字节，这违反了
+     * `UndefinedBehaviorSanitizer: misaligned-pointer-use` 的对齐要求。
+     * 因此从小端字节序的字节重建 32 位整数，因为预期的字节序列是 28 B5 2F FD，
+     * ZSTD_MAGICNUMBER 指的是 0xFD2FB528。
+     * 这应该在小端和大端系统上都能正确工作。
+     */
     const auto* p = static_cast<const uint8_t*>(src);
     const uint32_t magic =
             (uint32_t)p[0] |
@@ -43,10 +54,26 @@ bool ZstdHelper::isCompressed(const void* src, size_t src_size) noexcept {
     return magic == ZSTD_MAGICNUMBER;
 }
 
+/**
+ * 获取解压后的大小
+ * 
+ * @param src 源数据指针
+ * @param src_size 源数据大小
+ * @return 解压后的大小
+ */
 size_t ZstdHelper::getDecodedSize(const void* src, size_t src_size) noexcept {
     return ZSTD_getFrameContentSize(src, src_size);
 }
 
+/**
+ * 解压数据
+ * 
+ * @param dst 目标缓冲区指针
+ * @param dst_size 目标缓冲区大小
+ * @param src 源数据指针
+ * @param src_size 源数据大小
+ * @return 解压的字节数
+ */
 size_t ZstdHelper::decompress(void* dst, size_t dst_size, const void* src, size_t src_size) noexcept {
     return ZSTD_decompress(dst, dst_size, src, src_size);
 }

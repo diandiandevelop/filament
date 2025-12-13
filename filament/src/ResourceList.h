@@ -25,32 +25,73 @@
 
 namespace filament {
 
+/**
+ * 资源列表基类
+ * 
+ * 使用 robin_set（哈希集合）存储资源指针。
+ * 分离 ResourceListBase 和 ResourceList 允许我们通过将通用代码
+ * （操作 void*）分开来减少代码大小。
+ */
 class ResourceListBase {
 public:
     using iterator = typename tsl::robin_set<void*>::iterator;
     using const_iterator = typename tsl::robin_set<void*>::const_iterator;
 
+    /**
+     * 构造函数
+     * 
+     * @param typeName 类型名称（用于调试）
+     */
     explicit ResourceListBase(const char* typeName);
     ResourceListBase(ResourceListBase&& rhs) noexcept = default;
 
     ~ResourceListBase() noexcept;
 
+    /**
+     * 插入资源
+     * 
+     * @param item 资源指针
+     */
     void insert(void* item);
 
+    /**
+     * 移除资源
+     * 
+     * @param item 资源指针
+     * @return true 如果成功移除
+     */
     bool remove(void const* item);
 
+    /**
+     * 查找资源
+     * 
+     * @param item 资源指针
+     * @return 迭代器
+     */
     iterator find(void const* item);
 
+    /**
+     * 清空列表
+     */
     void clear() noexcept;
 
+    /**
+     * 检查是否为空
+     */
     bool empty() const noexcept {
         return mList.empty();
     }
 
+    /**
+     * 获取大小
+     */
     size_t size() const noexcept {
         return mList.size();
     }
 
+    /**
+     * 迭代器
+     */
     iterator begin() noexcept {
         return mList.begin();
     }
@@ -68,18 +109,32 @@ public:
     }
 
 protected:
+    /**
+     * 遍历所有资源
+     * 
+     * @param f 回调函数
+     * @param user 用户数据
+     */
     void forEach(void(*f)(void* user, void *p), void* user) const noexcept;
-    tsl::robin_set<void*> mList;
+    
+    tsl::robin_set<void*> mList;  // 资源列表（哈希集合）
 #ifndef NDEBUG
 private:
-    // removing this saves 8-bytes because of padding of derived classes
-    const char* const mTypeName;
+    /**
+     * 移除这个可以节省 8 字节，因为派生类的填充
+     */
+    const char* const mTypeName;  // 类型名称（仅调试版本）
 #endif
 };
 
-// The split ResourceListBase / ResourceList allows us to reduce code size by keeping
-// common code (operating on void*) separate.
-//
+/**
+ * 资源列表模板类
+ * 
+ * 分离 ResourceListBase / ResourceList 允许我们通过将通用代码
+ * （操作 void*）分开来减少代码大小。
+ * 
+ * @tparam T 资源类型
+ */
 template<typename T>
 class ResourceList : private ResourceListBase {
 public:
@@ -94,15 +149,27 @@ public:
     using ResourceListBase::begin;
     using ResourceListBase::end;
 
+    /**
+     * 构造函数
+     * 
+     * @param name 类型名称（用于调试）
+     */
     explicit ResourceList(const char* name) noexcept: ResourceListBase(name) {}
 
     ResourceList(ResourceList&& rhs) noexcept = default;
 
     ~ResourceList() noexcept = default;
 
+    /**
+     * 遍历所有资源（类型安全版本）
+     * 
+     * 将闭包转换为函数指针调用，我们这样做是为了减少代码大小。
+     * 
+     * @param func 回调函数（接受 T* 参数）
+     */
     template<typename F>
     inline void forEach(F func) const noexcept {
-        // turn closure into function pointer call, we do this to reduce code size.
+        // 将闭包转换为函数指针调用，我们这样做是为了减少代码大小。
         this->forEach(+[](void* user, void* p) {
             ((F*)user)->operator()((T*)p);
         }, &func);

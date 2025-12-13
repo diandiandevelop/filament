@@ -70,20 +70,20 @@ Driver 是所有后端实现的抽象基类，定义了所有渲染 API 的接�
 - `createTexture()` - 创建纹理
 - `createRenderTarget()` - 创建渲染目标
 - `createProgram()` - 创建着色器程序
-- `createDescriptorSet()` - 创建描述符集
+- `createDescriptorSet()` - 创建描述符堆
 
 #### 1.3 资源更新
 - `updateBufferObject()` - 更新缓冲区对象
 - `update3DImage()` - 更新纹理数据
-- `updateDescriptorSetBuffer()` - 更新描述符集的缓冲区绑定
-- `updateDescriptorSetTexture()` - 更新描述符集的纹理绑定
+- `updateDescriptorSetBuffer()` - 更新描述符堆的缓冲区绑定
+- `updateDescriptorSetTexture()` - 更新描述符堆的纹理绑定
 
 #### 1.4 渲染状态
 - `beginRenderPass()` - 开始渲染通道
 - `endRenderPass()` - 结束渲染通道
 - `bindPipeline()` - 绑定管线状态
 - `bindRenderPrimitive()` - 绑定渲染图元
-- `bindDescriptorSet()` - 绑定描述符集
+- `bindDescriptorSet()` - 绑定描述符堆
 
 #### 1.5 绘制命令
 - `draw2()` - 执行绘制（使用当前绑定的状态）
@@ -122,7 +122,7 @@ DriverBase 定义了所有硬件资源的句柄结构：
 - `HwTexture` - 纹理句柄
 - `HwRenderTarget` - 渲染目标句柄
 - `HwProgram` - 着色器程序句柄
-- `HwDescriptorSet` - 描述符集句柄
+- `HwDescriptorSet` - 描述符堆句柄
 - `HwFence` - 栅栏句柄
 - `HwSwapChain` - 交换链句柄
 
@@ -295,10 +295,10 @@ void bindRenderPrimitive(
     RenderPrimitiveHandle rph          // 渲染图元句柄
 );
 
-// 绑定描述符集
+// 绑定描述符堆
 void bindDescriptorSet(
-    DescriptorSetHandle dsh,           // 描述符集句柄
-    descriptor_set_t set,              // 描述符集索引
+    DescriptorSetHandle dsh,           // 描述符堆句柄
+    descriptor_set_t set,              // 描述符堆索引
     DescriptorSetOffsetArray&& offsets // 偏移数组（用于动态 UBO）
 );
 ```
@@ -417,7 +417,7 @@ CommandBase* Command::execute(Driver& driver) {
 
 - 使用 Vulkan API
 - 命令缓冲区管理
-- 描述符集管理
+- 描述符堆管理
 - 同步对象管理
 
 ### Metal Driver

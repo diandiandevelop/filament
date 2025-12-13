@@ -27,25 +27,54 @@
 
 namespace filament {
 
-/*
- * This is where culling is implemented.
- *
- * The implementation assumes 'count' below is multiple of MODULO
- *
+/**
+ * 视锥剔除器
+ * 
+ * 实现视锥剔除（Frustum Culling），用于确定哪些对象在视锥体内可见。
+ * 
+ * 实现假设：
+ * - 下面的 'count' 参数必须是 MODULO 的倍数
+ * - 使用 SIMD 向量化优化性能
+ * 
+ * 支持：
+ * - AABB（轴对齐包围盒）剔除
+ * - 球体剔除
+ * - 批量处理（数组）
+ * - 单个对象处理
  */
-
 class Culler {
 public:
-    // Culler can only process buffers with a size multiple of MODULO
+    /**
+     * 模数常量
+     * 
+     * Culler 只能处理大小为 MODULO 倍数的缓冲区。
+     * 这允许使用 SIMD 向量化优化。
+     */
     static constexpr size_t MODULO = 8u;
+    
+    /**
+     * 向上舍入到 MODULO 的倍数
+     * 
+     * @param count 原始数量
+     * @return 向上舍入后的数量
+     */
     static inline size_t round(size_t const count) noexcept {
         return (count + (MODULO - 1)) & ~(MODULO - 1);
     }
 
-    using result_type = uint8_t;
+    using result_type = uint8_t;  // 结果类型（位掩码）
 
-    /*
-     * returns whether each AABB in an array intersects with the frustum
+    /**
+     * 批量 AABB 剔除
+     * 
+     * 返回数组中每个 AABB 是否与视锥体相交。
+     * 
+     * @param results 结果数组（位掩码）
+     * @param frustum 视锥体
+     * @param center AABB 中心数组
+     * @param extent AABB 半边长数组
+     * @param count 数量（必须是 MODULO 的倍数）
+     * @param bit 结果掩码位（用于多级可见性）
      */
     static void intersects(result_type* results,
             Frustum const& frustum,
@@ -53,8 +82,15 @@ public:
             math::float3 const* extent,
             size_t count, size_t bit) noexcept;
 
-    /*
-     * returns whether each sphere in an array intersects with the frustum
+    /**
+     * 批量球体剔除
+     * 
+     * 返回数组中每个球体是否与视锥体相交。
+     * 
+     * @param results 结果数组（位掩码）
+     * @param frustum 视锥体
+     * @param b 球体数组（xyz=中心，w=半径）
+     * @param count 数量（必须是 MODULO 的倍数）
      */
     static void intersects(
             result_type* results,
@@ -62,15 +98,27 @@ public:
             math::float4 const* b,
             size_t count) noexcept;
 
-    /*
-     * returns whether an AABB intersects with the frustum
+    /**
+     * 单个 AABB 剔除
+     * 
+     * 返回 AABB 是否与视锥体相交。
+     * 
+     * @param frustum 视锥体
+     * @param box AABB
+     * @return 如果相交返回 true，否则返回 false
      */
     static bool intersects(
             Frustum const& frustum,
             Box const& box) noexcept;
 
-    /*
-     * returns whether an sphere intersects with the frustum
+    /**
+     * 单个球体剔除
+     * 
+     * 返回球体是否与视锥体相交。
+     * 
+     * @param frustum 视锥体
+     * @param sphere 球体（xyz=中心，w=半径）
+     * @return 如果相交返回 true，否则返回 false
      */
     static bool intersects(
             Frustum const& frustum,

@@ -38,23 +38,23 @@ namespace filament::backend {
 /**
  * 绑定映射类
  * 
- * 管理描述符集（descriptor set）和绑定（binding）之间的映射关系。
+ * 管理描述符堆（descriptor set）和绑定（binding）之间的映射关系。
  * 
  * 主要功能：
- * 1. 存储描述符集和绑定的映射关系
+ * 1. 存储描述符堆和绑定的映射关系
  * 2. 跟踪活动的描述符绑定
  * 3. 使用压缩存储以节省内存
  * 
  * 设计特点：
  * - 使用位字段压缩存储（7 位用于 binding，1 位用于 sampler 标志）
  * - 使用位集合跟踪活动的描述符
- * - 支持多个描述符集（MAX_DESCRIPTOR_SET_COUNT）
- * - 每个描述符集支持多个绑定（MAX_DESCRIPTOR_COUNT）
+ * - 支持多个描述符堆（MAX_DESCRIPTOR_SET_COUNT）
+ * - 每个描述符堆支持多个绑定（MAX_DESCRIPTOR_COUNT）
  * 
  * 使用场景：
  * - 在着色器程序中查找描述符绑定的位置
  * - 跟踪哪些描述符绑定是活动的
- * - 优化描述符集的绑定操作
+ * - 优化描述符堆的绑定操作
  */
 class BindingMap {
     /**
@@ -71,7 +71,7 @@ class BindingMap {
     /**
      * 存储数组
      * 
-     * 二维数组：[描述符集索引][绑定索引] -> CompressedBinding
+     * 二维数组：[描述符堆索引][绑定索引] -> CompressedBinding
      * 使用指针数组以避免大对象在栈上分配。
      */
     CompressedBinding (*mStorage)[MAX_DESCRIPTOR_COUNT];
@@ -79,7 +79,7 @@ class BindingMap {
     /**
      * 活动描述符位集合
      * 
-     * 每个描述符集对应一个位集合，用于跟踪哪些绑定是活动的。
+     * 每个描述符堆对应一个位集合，用于跟踪哪些绑定是活动的。
      * 这允许快速查找活动的绑定，而无需遍历整个数组。
      */
     utils::bitset64 mActiveDescriptors[MAX_DESCRIPTOR_SET_COUNT];
@@ -129,7 +129,7 @@ public:
      * 
      * 将描述符绑定信息存储到映射中。
      * 
-     * @param set 描述符集索引
+     * @param set 描述符堆索引
      * @param binding 绑定索引
      * @param entry 绑定条目（包含绑定索引和类型）
      * 
@@ -152,9 +152,9 @@ public:
     /**
      * 获取绑定索引
      * 
-     * 从映射中检索指定描述符集和绑定的 OpenGL 绑定索引。
+     * 从映射中检索指定描述符堆和绑定的 OpenGL 绑定索引。
      * 
-     * @param set 描述符集索引
+     * @param set 描述符堆索引
      * @param binding 绑定索引
      * @return OpenGL 绑定索引
      */
@@ -167,10 +167,10 @@ public:
     /**
      * 获取活动描述符位集合
      * 
-     * 返回指定描述符集的活动描述符位集合。
+     * 返回指定描述符堆的活动描述符位集合。
      * 这允许快速查找哪些绑定是活动的，而无需遍历整个数组。
      * 
-     * @param set 描述符集索引
+     * @param set 描述符堆索引
      * @return 活动描述符位集合
      */
     utils::bitset64 getActiveDescriptors(descriptor_set_t set) const noexcept {

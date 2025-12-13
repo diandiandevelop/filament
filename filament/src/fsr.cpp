@@ -42,28 +42,63 @@ using namespace math;
 #pragma clang diagnostic pop
 #endif
 
+/**
+ * FSR 缩放设置
+ * 
+ * 设置 FSR EASU 阶段的统一变量。
+ * 
+ * 注意：FsrEasu API 声称它需要左上偏移，但这在 OpenGL 中不成立，
+ * 在这种情况下它使用左下偏移。
+ * 
+ * @param outUniforms 输出统一变量
+ * @param config 缩放配置
+ */
 void FSR_ScalingSetup(FSRUniforms* outUniforms, FSRScalingConfig config) noexcept {
-    // FsrEasu API claims it needs the left-top offset, however that's not true with OpenGL,
-    // in which case it uses the left-bottom offset.
-
+    /**
+     * 计算 Y 偏移
+     * 
+     * 不同后端使用不同的坐标系统：
+     * - OpenGL：左下角为原点
+     * - Metal/Vulkan/WebGPU：左上角为原点
+     */
     auto yoffset = config.input.bottom;
     if (config.backend == backend::Backend::METAL || config.backend == backend::Backend::VULKAN ||
             config.backend == backend::Backend::WEBGPU) {
+        /**
+         * 对于使用左上角为原点的后端，需要转换 Y 坐标
+         */
         yoffset = config.inputHeight - (config.input.bottom + config.input.height);
     }
 
+    /**
+     * 调用 FSR EASU 常量设置函数
+     * 
+     * 参数：
+     * - 视口大小（左上对齐）在要缩放的输入图像中
+     * - 输入图像的大小
+     * - 输出分辨率
+     * - 输入图像偏移
+     */
     FsrEasuConOffset( outUniforms->EasuCon0.v, outUniforms->EasuCon1.v,
                 outUniforms->EasuCon2.v, outUniforms->EasuCon3.v,
-            // Viewport size (top left aligned) in the input image which is to be scaled.
+            // 视口大小（左上对齐）在要缩放的输入图像中
             config.input.width, config.input.height,
-            // The size of the input image.
+            // 输入图像的大小
             config.inputWidth, config.inputHeight,
-            // The output resolution.
+            // 输出分辨率
             config.outputWidth, config.outputHeight,
-            // Input image offset
+            // 输入图像偏移
             config.input.left, yoffset);
 }
 
+/**
+ * FSR 锐化设置
+ * 
+ * 设置 FSR RCAS 阶段的统一变量。
+ * 
+ * @param outUniforms 输出统一变量
+ * @param config 锐化配置
+ */
 void FSR_SharpeningSetup(FSRUniforms* outUniforms, FSRSharpeningConfig config) noexcept {
     FsrRcasCon(outUniforms->RcasCon.v, config.sharpness);
 }

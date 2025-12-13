@@ -25,30 +25,71 @@
 
 namespace filament {
 
+/**
+ * FSR 缩放配置
+ * 
+ * FSR (FidelityFX Super Resolution) 是 AMD 的开源超分辨率技术。
+ * 用于将低分辨率图像上采样到高分辨率。
+ */
 struct FSRScalingConfig {
-    backend::Backend backend;
-    Viewport input;   // region of source to be scaled
-    uint32_t inputWidth;        // width of source
-    uint32_t inputHeight;       // height of source
-    uint32_t outputWidth;       // width of destination
-    uint32_t outputHeight;      // height of destination
+    backend::Backend backend;  // 后端类型（用于处理坐标系统差异）
+    Viewport input;  // 要缩放的源区域
+    uint32_t inputWidth;  // 源宽度
+    uint32_t inputHeight;  // 源高度
+    uint32_t outputWidth;  // 目标宽度
+    uint32_t outputHeight;  // 目标高度
 };
 
+/**
+ * FSR 锐化配置
+ * 
+ * FSR 的 RCAS (Robust Contrast Adaptive Sharpening) 阶段用于锐化图像。
+ */
 struct FSRSharpeningConfig {
-    // The scale is {0.0 := maximum sharpness, to N>0, where N is the number of stops (halving)
-    // of the reduction of sharpness}.
+    /**
+     * 锐度值
+     * 
+     * 范围：{0.0 := 最大锐度，到 N>0，其中 N 是锐度减半的档数}
+     * 
+     * 例如：
+     * - 0.0 = 最大锐度
+     * - 1.0 = 锐度减半一次
+     * - 2.0 = 锐度减半两次
+     */
     float sharpness;
 };
 
+/**
+ * FSR 统一变量
+ * 
+ * 包含 FSR 着色器所需的常量。
+ */
 struct FSRUniforms {
-    math::float4 EasuCon0;
-    math::float4 EasuCon1;
-    math::float4 EasuCon2;
-    math::float4 EasuCon3;
-    math::uint4 RcasCon;
+    math::float4 EasuCon0;  // EASU (Edge Adaptive Spatial Upsampling) 常量 0
+    math::float4 EasuCon1;  // EASU 常量 1
+    math::float4 EasuCon2;  // EASU 常量 2
+    math::float4 EasuCon3;  // EASU 常量 3
+    math::uint4 RcasCon;  // RCAS (Robust Contrast Adaptive Sharpening) 常量
 };
 
+/**
+ * FSR 缩放设置
+ * 
+ * 设置 FSR EASU 阶段的统一变量。
+ * 
+ * @param inoutUniforms 输入/输出统一变量
+ * @param config 缩放配置
+ */
 void FSR_ScalingSetup(FSRUniforms* inoutUniforms, FSRScalingConfig config) noexcept;
+
+/**
+ * FSR 锐化设置
+ * 
+ * 设置 FSR RCAS 阶段的统一变量。
+ * 
+ * @param inoutUniforms 输入/输出统一变量
+ * @param config 锐化配置
+ */
 void FSR_SharpeningSetup(FSRUniforms* inoutUniforms, FSRSharpeningConfig config) noexcept;
 
 } // namespace filament

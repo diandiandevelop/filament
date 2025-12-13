@@ -157,15 +157,15 @@ struct HwProgram : public HwBase {
 };
 
 /**
- * 描述符集布局句柄
- * 描述描述符集的布局（哪些绑定点有哪些资源）
+ * 描述符堆布局句柄
+ * 描述描述符堆的布局（哪些绑定点有哪些资源）
  */
 struct HwDescriptorSetLayout : public HwBase {
     HwDescriptorSetLayout() noexcept = default;
 };
 
 /**
- * 描述符集句柄
+ * 描述符堆句柄
  * 绑定到着色器的资源集合（纹理、Uniform Buffer 等）
  */
 struct HwDescriptorSet : public HwBase {

@@ -69,7 +69,7 @@ struct PushConstantBundle {
  * 
  * 主要功能：
  * 1. 延迟初始化：程序在首次使用时才编译和链接
- * 2. 绑定映射：管理描述符集和绑定到 OpenGL 绑定点的映射
+ * 2. 绑定映射：管理描述符堆和绑定到 OpenGL 绑定点的映射
  * 3. Push Constant：管理顶点和片段着色器的 Push Constant
  * 4. ES2 支持：为 ES2 提供 Uniform 更新功能
  * 
@@ -145,9 +145,9 @@ public:
     /**
      * 获取缓冲区绑定
      * 
-     * 返回指定描述符集和绑定的 OpenGL 缓冲区绑定点。
+     * 返回指定描述符堆和绑定的 OpenGL 缓冲区绑定点。
      * 
-     * @param set 描述符集索引
+     * @param set 描述符堆索引
      * @param binding 绑定索引
      * @return OpenGL 缓冲区绑定点
      */
@@ -158,9 +158,9 @@ public:
     /**
      * 获取纹理单元
      * 
-     * 返回指定描述符集和绑定的 OpenGL 纹理单元。
+     * 返回指定描述符堆和绑定的 OpenGL 纹理单元。
      * 
-     * @param set 描述符集索引
+     * @param set 描述符堆索引
      * @param binding 绑定索引
      * @return OpenGL 纹理单元
      */
@@ -171,9 +171,9 @@ public:
     /**
      * 获取活动描述符
      * 
-     * 返回指定描述符集中活动的描述符位集合。
+     * 返回指定描述符堆中活动的描述符位集合。
      * 
-     * @param set 描述符集索引
+     * @param set 描述符堆索引
      * @return 活动描述符位集合
      */
     utils::bitset64 getActiveDescriptors(descriptor_set_t set) const noexcept {

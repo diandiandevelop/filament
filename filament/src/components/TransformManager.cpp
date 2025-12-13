@@ -27,25 +27,53 @@ using namespace filament::math;
 
 namespace filament {
 
+/**
+ * 变换管理器构造函数
+ */
 FTransformManager::FTransformManager() noexcept = default;
 
+/**
+ * 变换管理器析构函数
+ */
 FTransformManager::~FTransformManager() noexcept = default;
 
+/**
+ * 终止变换管理器
+ * 
+ * 清理所有资源。
+ */
 void FTransformManager::terminate() noexcept {
 }
 
+/**
+ * 设置精确平移启用状态
+ * 
+ * 精确平移使用双精度计算，避免大世界坐标的精度问题。
+ * 
+ * @param enable 是否启用精确平移
+ */
 void FTransformManager::setAccurateTranslationsEnabled(bool const enable) noexcept {
-    if (enable != mAccurateTranslations) {
-        mAccurateTranslations = enable;
+    if (enable != mAccurateTranslations) {  // 如果状态改变
+        mAccurateTranslations = enable;  // 更新状态
+        /**
+         * 启用精确平移时，需要重新计算所有世界变换
+         */
         // when enabling accurate translations, we have to recompute all world transforms
-        if (enable && !mLocalTransformTransactionOpen) {
-            computeAllWorldTransforms();
+        if (enable && !mLocalTransformTransactionOpen) {  // 如果启用且没有打开局部变换事务
+            computeAllWorldTransforms();  // 重新计算所有世界变换
         }
     }
 }
 
+/**
+ * 创建变换组件（默认版本）
+ * 
+ * 创建根节点的变换组件（无父节点，单位矩阵）。
+ * 
+ * @param entity 实体
+ */
 void FTransformManager::create(Entity const entity) {
-    create(entity, 0, mat4f{});
+    create(entity, 0, mat4f{});  // 调用完整版本，父节点为 0，变换为单位矩阵
 }
 
 /**
@@ -88,25 +116,54 @@ void FTransformManager::create(Entity const entity, Instance const parent, const
     }
 }
 
+/**
+ * 创建变换组件（双精度版本）
+ * 
+ * 为实体创建变换组件，并设置父子关系和局部变换。
+ * 
+ * @param entity 要创建组件的实体
+ * @param parent 父节点的实例（如果为 0，则创建根节点）
+ * @param localTransform 局部变换矩阵（相对于父节点，双精度）
+ * 
+ * 注意：这总是在数组末尾添加，所以所有现有实例保持有效。
+ * TODO: 尝试保持条目与其兄弟/父节点排序，以改善缓存访问。
+ */
 void FTransformManager::create(Entity const entity, Instance const parent, const mat4& localTransform) {
     // this always adds at the end, so all existing instances stay valid
     auto& manager = mManager;
 
     // TODO: try to keep entries sorted with their siblings/parents to improve cache access
+    /**
+     * 如果实体已有组件，先销毁
+     */
     if (UTILS_UNLIKELY(manager.hasComponent(entity))) {
-        destroy(entity);
+        destroy(entity);  // 销毁现有组件
     }
-    Instance const i = manager.addComponent(entity);
-    assert_invariant(i);
-    assert_invariant(i != parent);
+    /**
+     * 添加组件（返回实例）
+     */
+    Instance const i = manager.addComponent(entity);  // 添加组件
+    assert_invariant(i);  // 断言实例有效
+    assert_invariant(i != parent);  // 不能将自己设为父节点
 
     if (i && i != parent) {
-        manager[i].parent = 0;
-        manager[i].next = 0;
-        manager[i].prev = 0;
-        manager[i].firstChild = 0;
-        insertNode(i, parent);
-        setTransform(i, localTransform);
+        /**
+         * 初始化节点字段
+         */
+        manager[i].parent = 0;        // 父节点（稍后设置）
+        manager[i].next = 0;          // 下一个兄弟节点
+        manager[i].prev = 0;          // 上一个兄弟节点
+        manager[i].firstChild = 0;    // 第一个子节点
+        
+        /**
+         * 插入到层次结构中
+         */
+        insertNode(i, parent);  // 插入节点
+        
+        /**
+         * 设置局部变换（这会自动计算世界变换）
+         */
+        setTransform(i, localTransform);  // 设置变换（双精度版本）
     }
 }
 
@@ -142,11 +199,25 @@ void FTransformManager::setParent(Instance const i, Instance const parent) noexc
     }
 }
 
+/**
+ * 获取父实体
+ * 
+ * 获取变换实例的父节点对应的实体。
+ * 
+ * @param i 变换实例
+ * @return 父实体（如果没有父节点则返回空实体）
+ */
 Entity FTransformManager::getParent(Instance i) const noexcept {
-    i = mManager[i].parent;
-    return i ? mManager.getEntity(i) : Entity();
+    i = mManager[i].parent;  // 获取父节点实例
+    return i ? mManager.getEntity(i) : Entity();  // 如果有父节点，返回对应实体，否则返回空实体
 }
 
+/**
+ * 获取子节点数量
+ * 
+ * @param i 变换实例
+ * @return 子节点数量
+ */
 size_t FTransformManager::getChildCount(Instance const i) const noexcept {
     size_t count = 0;
     for (Instance ci = mManager[i].firstChild; ci; ci = mManager[ci].next, ++count);

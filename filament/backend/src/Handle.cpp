@@ -33,9 +33,23 @@ namespace filament::backend {
 
 #ifndef NDEBUG
 
+/**
+ * 命名空间前缀
+ * 
+ * 用于从类型名称中移除命名空间前缀，使输出更简洁。
+ */
 static char const * const kOurNamespace = "filament::backend::";
 
-// removes all occurrences of "what" from "str"
+/**
+ * 从字符串中移除所有指定子串
+ * 
+ * 用于清理类型名称，移除命名空间前缀。
+ * 
+ * @param str 要处理的字符串
+ * @param what 要移除的子串
+ * @return 处理后的字符串引用
+ */
+// 从字符串中移除所有 "what" 的出现
 UTILS_NOINLINE
 static CString& removeAll(CString& str, const std::string_view what) noexcept {
     if (!what.empty()) {
@@ -48,19 +62,45 @@ static CString& removeAll(CString& str, const std::string_view what) noexcept {
     return str;
 }
 
+/**
+ * 记录句柄到输出流（辅助函数）
+ * 
+ * 将句柄类型名称和 ID 输出到流中。
+ * 
+ * @tparam T 句柄类型
+ * @param out 输出流
+ * @param typeName 类型名称（会被修改，移除命名空间前缀）
+ * @param id 句柄 ID
+ * @return 输出流引用
+ */
 template <typename T>
 UTILS_NOINLINE
 static io::ostream& logHandle(io::ostream& out, CString& typeName, T id) noexcept {
     return out << removeAll(typeName, kOurNamespace) << " @ " << id;
 }
 
+/**
+ * 句柄输出流操作符
+ * 
+ * 将句柄输出到流中，格式为：类型名 @ ID
+ * 
+ * @tparam T 资源类型
+ * @param out 输出流
+ * @param h 句柄
+ * @return 输出流引用
+ */
 template <typename T>
 io::ostream& operator<<(io::ostream& out, const Handle<T>& h) noexcept {
     CString s{ CallStack::typeName<Handle<T>>() };
     return logHandle(out, s, h.getId());
 }
 
-// Explicit Instantiation of the streaming operators (so they're not inlined)
+/**
+ * 显式实例化流操作符（避免内联）
+ * 
+ * 为所有硬件资源类型显式实例化流操作符，确保它们不会被内联，
+ * 这样可以减少代码大小并提高调试体验。
+ */
 template io::ostream& operator<<(io::ostream& out, const Handle<HwVertexBuffer>& h) noexcept;
 template io::ostream& operator<<(io::ostream& out, const Handle<HwIndexBuffer>& h) noexcept;
 template io::ostream& operator<<(io::ostream& out, const Handle<HwRenderPrimitive>& h) noexcept;

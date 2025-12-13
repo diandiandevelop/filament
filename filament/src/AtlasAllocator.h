@@ -34,64 +34,122 @@ class AtlasAllocator_AllocateMixed2_Test;
 
 namespace filament {
 
-/*
- * A 2D allocator. Allocations must be square and have a power-of-two size.
- * AtlasAllocator hard codes a depth of 4, that is only 4 allocation sizes are permitted.
- * This doesn't actually allocate memory, just manages space within an abstract 2D image.
+/**
+ * 2D 图集分配器
+ * 
+ * 一个 2D 分配器，用于管理纹理图集中的空间分配。
+ * 
+ * 特性：
+ * - 分配必须是正方形且大小为 2 的幂
+ * - 硬编码深度为 4，即只允许 4 种分配大小
+ * - 不实际分配内存，只管理抽象 2D 图像中的空间
+ * 
+ * 使用场景：
+ * - 阴影贴图图集
+ * - 其他需要将多个纹理打包到一个大纹理中的场景
  */
 class AtlasAllocator {
 
-    /*
-     * A quadtree is used to track the allocated regions. Each node of the quadtree stores a
-     * `Node` data structure below.
-     * The `Node` tracks if it is allocated as well as the number of children it has. It doesn't
-     * track which children though.
+    /**
+     * 四叉树节点
+     * 
+     * 使用四叉树跟踪已分配的区域。四叉树的每个节点存储此 Node 数据结构。
+     * 
+     * Node 跟踪：
+     * - 是否已分配（如果已分配，则没有子节点）
+     * - 子节点数量（但不跟踪具体是哪些子节点）
      */
     struct Node {
-        // Whether this node is allocated. Implies no children.
+        /**
+         * 检查节点是否已分配
+         * 
+         * 如果已分配，则没有子节点。
+         */
         constexpr bool isAllocated() const noexcept { return allocated; }
-        // Whether this node has children. Implies it's not allocated.
+        
+        /**
+         * 检查节点是否有子节点
+         * 
+         * 如果有子节点，则未分配。
+         */
         constexpr bool hasChildren() const noexcept { return children != 0; }
-        // Whether this node has all four children. Implies hasChildren().
+        
+        /**
+         * 检查节点是否有所有四个子节点
+         * 
+         * 前提：hasChildren() 为 true。
+         */
         constexpr bool hasAllChildren() const noexcept { return children == 4; }
-        bool allocated      : 1;    // true / false
-        uint8_t children    : 3;    // 0, 1, 2, 3, 4
+        
+        bool allocated      : 1;    // 是否已分配（true / false）
+        uint8_t children    : 3;    // 子节点数量（0, 1, 2, 3, 4）
     };
 
-    // this determines the number of layers we can use (3 layers == 64 quadtree entries)
+    /**
+     * 层深度
+     * 
+     * 这决定了可以使用的层数（3 层 == 64 个四叉树条目）。
+     */
     static constexpr size_t LAYERS_DEPTH = 3u;
 
-    // this determines how many "sub-sizes" we can have from the base size.
-    // e.g. with a max texture size of 1024, we can allocate 1024, 512, 256 and 128 textures.
+    /**
+     * 四叉树深度
+     * 
+     * 这决定了从基础大小可以有多少个"子大小"。
+     * 例如：最大纹理大小为 1024 时，可以分配 1024、512、256 和 128 的纹理。
+     */
     static constexpr size_t QUAD_TREE_DEPTH = 4u;
 
-    // LAYERS_DEPTH limits the number of layers
+    /**
+     * 层深度限制检查
+     * 
+     * LAYERS_DEPTH 限制了层数，确保不超过配置的最大阴影层数。
+     */
     static_assert(CONFIG_MAX_SHADOW_LAYERS <= 1u << (LAYERS_DEPTH * 2u));
 
-    // QuadTreeArray is limited to a maximum depth of 7
+    /**
+     * 四叉树类型
+     * 
+     * QuadTreeArray 的最大深度限制为 7。
+     */
     using QuadTree = utils::QuadTreeArray<Node, LAYERS_DEPTH + QUAD_TREE_DEPTH>;
-    using NodeId = QuadTree::NodeId;
+    using NodeId = QuadTree::NodeId;  // 节点 ID 类型
 
 public:
-    /*
-     * Create allocator and specify the maximum texture size. Must be a power of two.
-     * Allocations size allowed are the four power-of-two smaller or equal to this size.
+    /**
+     * 构造函数
+     * 
+     * 创建分配器并指定最大纹理大小。必须是 2 的幂。
+     * 允许的分配大小是小于或等于此大小的四个 2 的幂。
+     * 
+     * @param maxTextureSize 最大纹理大小（必须是 2 的幂）
      */
     explicit AtlasAllocator(size_t maxTextureSize) noexcept;
 
-    /*
-     * Allocates a square of size `textureSize`. Must be one of the power-of-two allowed
-     * (see above).
-     * Returns the location of the allocation within the maxTextureSize^2 square.
+    /**
+     * 分配结构
+     * 
+     * 表示一个分配的位置和大小。
      */
     struct Allocation {
-        int32_t layer = -1;
-        Viewport viewport;
+        int32_t layer = -1;    // 层索引（-1 表示分配失败）
+        Viewport viewport;      // 视口（位置和大小）
     };
+    
+    /**
+     * 分配一个正方形区域
+     * 
+     * 分配大小为 `textureSize` 的正方形。必须是允许的 2 的幂之一（见上方说明）。
+     * 
+     * @param textureSize 纹理大小（必须是 2 的幂）
+     * @return 分配结果，包含层索引和视口。如果分配失败，layer 为 -1。
+     */
     Allocation allocate(size_t textureSize) noexcept;
 
-    /*
-     * Frees all allocations and reset the maximum texture size.
+    /**
+     * 清空所有分配并重置最大纹理大小
+     * 
+     * @param maxTextureSize 新的最大纹理大小（默认 1024）
      */
     void clear(size_t maxTextureSize = 1024) noexcept;
 

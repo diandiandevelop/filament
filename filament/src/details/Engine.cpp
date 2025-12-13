@@ -97,27 +97,35 @@ using namespace filaflat;
 
 namespace {
 
+/**
+ * 获取驱动配置
+ * 
+ * 从 Engine 实例中提取驱动配置参数。
+ * 
+ * @param instance Engine 实例指针
+ * @return 驱动配置结构
+ */
 backend::Platform::DriverConfig getDriverConfig(FEngine* instance) {
     Platform::DriverConfig driverConfig {
-        .handleArenaSize = instance->getRequestedDriverHandleArenaSize(),
-        .metalUploadBufferSizeBytes = instance->getConfig().metalUploadBufferSizeBytes,
-        .disableParallelShaderCompile = instance->features.backend.disable_parallel_shader_compile,
+        .handleArenaSize = instance->getRequestedDriverHandleArenaSize(),  // 句柄竞技场大小
+        .metalUploadBufferSizeBytes = instance->getConfig().metalUploadBufferSizeBytes,  // Metal 上传缓冲区大小
+        .disableParallelShaderCompile = instance->features.backend.disable_parallel_shader_compile,  // 禁用并行着色器编译
         .disableAmortizedShaderCompile =
-                instance->features.backend.disable_amortized_shader_compile,
+                instance->features.backend.disable_amortized_shader_compile,  // 禁用摊销着色器编译
         .disableHandleUseAfterFreeCheck =
-                instance->features.backend.disable_handle_use_after_free_check,
-        .disableHeapHandleTags = instance->features.backend.disable_heap_handle_tags,
-        .forceGLES2Context = instance->getConfig().forceGLES2Context,
-        .stereoscopicType = instance->getConfig().stereoscopicType,
+                instance->features.backend.disable_handle_use_after_free_check,  // 禁用句柄释放后使用检查
+        .disableHeapHandleTags = instance->features.backend.disable_heap_handle_tags,  // 禁用堆句柄标签
+        .forceGLES2Context = instance->getConfig().forceGLES2Context,  // 强制 GLES2 上下文
+        .stereoscopicType = instance->getConfig().stereoscopicType,  // 立体渲染类型
         .assertNativeWindowIsValid =
-                instance->features.backend.opengl.assert_native_window_is_valid,
+                instance->features.backend.opengl.assert_native_window_is_valid,  // 断言原生窗口有效
         .metalDisablePanicOnDrawableFailure =
-                instance->getConfig().metalDisablePanicOnDrawableFailure,
-        .gpuContextPriority = instance->getConfig().gpuContextPriority,
+                instance->getConfig().metalDisablePanicOnDrawableFailure,  // Metal 绘制失败时不崩溃
+        .gpuContextPriority = instance->getConfig().gpuContextPriority,  // GPU 上下文优先级
         .vulkanEnableStagingBufferBypass =
-                instance->features.backend.vulkan.enable_staging_buffer_bypass,
+                instance->features.backend.vulkan.enable_staging_buffer_bypass,  // Vulkan 启用暂存缓冲区绕过
         .asynchronousMode = instance->features.backend.enable_asynchronous_operation ?
-                instance->getConfig().asynchronousMode : AsynchronousMode::NONE,
+                instance->getConfig().asynchronousMode : AsynchronousMode::NONE,  // 异步模式
     };
 
     return driverConfig;
@@ -125,15 +133,28 @@ backend::Platform::DriverConfig getDriverConfig(FEngine* instance) {
 
 } // anonymous
 
+/**
+ * Engine 构建器详情结构
+ * 
+ * 存储 Engine 的构建参数。
+ */
 struct Engine::BuilderDetails {
-    Backend mBackend = Backend::DEFAULT;
-    Platform* mPlatform = nullptr;
-    Config mConfig;
-    FeatureLevel mFeatureLevel = FeatureLevel::FEATURE_LEVEL_1;
-    void* mSharedContext = nullptr;
-    bool mPaused = false;
-    std::unordered_map<std::string_view, bool> mFeatureFlags;
-
+    Backend mBackend = Backend::DEFAULT;  // 后端类型（默认自动选择）
+    Platform* mPlatform = nullptr;  // 平台指针（如果为 nullptr，将创建默认平台）
+    Config mConfig;  // Engine 配置
+    FeatureLevel mFeatureLevel = FeatureLevel::FEATURE_LEVEL_1;  // 特性级别（默认级别 1）
+    void* mSharedContext = nullptr;  // 共享上下文（用于多线程渲染）
+    bool mPaused = false;  // 是否暂停（用于延迟初始化）
+    std::unordered_map<std::string_view, bool> mFeatureFlags;  // 特性标志映射（用于启用/禁用特定特性）
+    
+    /**
+     * 验证配置
+     * 
+     * 验证并修正 Engine 配置参数。
+     * 
+     * @param config 配置结构
+     * @return 验证后的配置
+     */
     static Config validateConfig(Config config) noexcept;
 };
 
@@ -152,51 +173,90 @@ Engine* FEngine::create(Builder const& builder) {
     FILAMENT_TRACING_ENABLE(FILAMENT_TRACING_CATEGORY_FILAMENT);
     FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
 
-    // 分配 FEngine 实例
+    /**
+     * 分配 FEngine 实例
+     * 
+     * 使用对齐分配（因为 FEngine 可能包含需要对齐的成员）。
+     */
     FEngine* instance = new FEngine(builder);
 
-    // 初始化所有需要 FEngine 实例的字段
-    // （这不能在构造函数中安全地完成）
+    /**
+     * 初始化所有需要 FEngine 实例的字段
+     * 
+     * 这不能在构造函数中安全地完成，因为某些初始化需要完整的 FEngine 对象。
+     */
 
-    // 通常我们在单独的线程中启动并创建上下文和 Driver（见 FEngine::loop）。
-    // 在单线程情况下，我们在这里立即创建。
+    /**
+     * 创建 Platform 和 Driver
+     * 
+     * 通常我们在单独的线程中启动并创建上下文和 Driver（见 FEngine::loop）。
+     * 在单线程情况下，我们在这里立即创建。
+     */
     if constexpr (!UTILS_HAS_THREADING) {
-        // 单线程模式：立即创建 Platform 和 Driver
-        Platform* platform = builder->mPlatform;
-        void* const sharedContext = builder->mSharedContext;
+        /**
+         * 单线程模式：立即创建 Platform 和 Driver
+         * 
+         * 在单线程构建中，所有操作都在主线程中执行。
+         */
+        Platform* platform = builder->mPlatform;  // 获取平台指针
+        void* const sharedContext = builder->mSharedContext;  // 获取共享上下文
 
-        // 如果没有提供 Platform，创建默认的
+        /**
+         * 如果没有提供 Platform，创建默认的
+         * 
+         * PlatformFactory 会根据后端类型创建相应的平台实现。
+         */
         if (platform == nullptr) {
-            platform = PlatformFactory::create(&instance->mBackend);
-            instance->mPlatform = platform;
+            platform = PlatformFactory::create(&instance->mBackend);  // 创建默认平台
+            instance->mPlatform = platform;  // 保存平台指针
             instance->mOwnPlatform = true;  // 标记为拥有 Platform，析构时释放
         }
         if (platform == nullptr) {
-            LOG(ERROR) << "Selected backend not supported in this build.";
-            delete instance;
-            return nullptr;
+            LOG(ERROR) << "Selected backend not supported in this build.";  // 后端不支持
+            delete instance;  // 清理实例
+            return nullptr;  // 返回失败
         }
-        // 创建 Driver（在当前线程）
+        /**
+         * 创建 Driver（在当前线程）
+         * 
+         * Driver 是后端抽象层的实现，负责实际的 GPU 命令执行。
+         */
         instance->mDriver = platform->createDriver(sharedContext, getDriverConfig(instance));
 
     } else {
-        // 多线程模式：在单独线程中创建 Driver
+        /**
+         * 多线程模式：在单独线程中创建 Driver
+         * 
+         * 在多线程构建中，Driver 在专用线程中运行，避免阻塞主线程。
+         */
         // 启动驱动线程（在 FEngine::loop 中创建 Driver）
         instance->mDriverThread = std::thread(&FEngine::loop, instance);
 
-        // 等待 Driver 准备就绪（通过栅栏同步）
+        /**
+         * 等待 Driver 准备就绪（通过栅栏同步）
+         * 
+         * mDriverBarrier 确保在 Driver 完全初始化之前不会继续执行。
+         */
         instance->mDriverBarrier.await();
 
         if (UTILS_UNLIKELY(!instance->mDriver)) {
-            // Driver 初始化失败
-            instance->mDriverThread.join();
-            delete instance;
-            return nullptr;
+            /**
+             * Driver 初始化失败
+             * 
+             * 清理资源并返回失败。
+             */
+            instance->mDriverThread.join();  // 等待线程结束
+            delete instance;  // 清理实例
+            return nullptr;  // 返回失败
         }
     }
 
-    // 现在可以初始化 Engine 的大部分子系统
-    // （此时 Driver 已经可用，可以执行 Driver 命令）
+    /**
+     * 现在可以初始化 Engine 的大部分子系统
+     * 
+     * 此时 Driver 已经可用，可以执行 Driver 命令。
+     * init() 方法会初始化所有子系统（材质缓存、后处理管理器等）。
+     */
     instance->init();
 
     // 单线程模式：立即执行一次命令队列
@@ -373,7 +433,7 @@ uint32_t FEngine::getJobSystemThreadPoolSize(Config const& config) noexcept {
  * 3. 创建资源分配器
  * 4. 创建全屏三角形（用于后处理）
  * 5. 创建默认资源（材质、纹理、IBL 等）
- * 6. 创建描述符集布局
+ * 6. 创建描述符堆布局
  * 7. 初始化 UboManager（如果启用）
  */
 void FEngine::init() {

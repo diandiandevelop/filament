@@ -72,12 +72,19 @@ namespace filament {
 /**
  * FScene 构造函数
  * 
- * @param engine Engine 引用
+ * 创建场景对象。场景是渲染对象的容器，包含可渲染对象、光源、天空盒等。
+ * 
+ * @param engine Engine 引用（用于访问组件管理器）
  */
 FScene::FScene(FEngine& engine) :
-        mEngine(engine) {
+        mEngine(engine) {  // 保存引擎引用
 }
 
+/**
+ * FScene 析构函数
+ * 
+ * 场景析构是默认的，因为场景不拥有 Entity，Entity 由 EntityManager 管理。
+ */
 FScene::~FScene() noexcept = default;
 
 /**

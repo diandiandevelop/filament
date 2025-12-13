@@ -32,26 +32,75 @@ namespace filament {
 class FEngine;
 class HwDescriptorSetLayoutFactory;
 
+/**
+ * 后处理描述符堆类
+ * 
+ * 管理后处理通道使用的描述符堆。
+ * 后处理通道需要访问每视图 Uniform 数据（如投影矩阵、时间等）。
+ * 
+ * 功能：
+ * - 初始化描述符堆布局和描述符堆
+ * - 设置帧 Uniform 数据
+ * - 绑定描述符堆到渲染管线
+ */
 class PostProcessDescriptorSet {
 public:
+    /**
+     * 构造函数
+     */
     explicit PostProcessDescriptorSet() noexcept;
 
+    /**
+     * 初始化后处理描述符堆
+     * 
+     * 创建描述符堆布局和描述符堆对象。
+     * 
+     * @param engine 引擎引用
+     */
     void init(FEngine& engine) noexcept;
 
+    /**
+     * 终止后处理描述符堆
+     * 
+     * 释放硬件资源。
+     * 
+     * @param factory 硬件描述符堆布局工厂
+     * @param driver 驱动 API 引用
+     */
     void terminate(HwDescriptorSetLayoutFactory& factory, backend::DriverApi& driver);
 
+    /**
+     * 设置帧 Uniform 数据
+     * 
+     * 将每视图 Uniform 缓冲区绑定到描述符堆。
+     * 
+     * @param driver 驱动 API 引用
+     * @param uniforms 每视图 Uniform 缓冲区引用
+     */
     void setFrameUniforms(backend::DriverApi& driver,
             TypedUniformBuffer<PerViewUib>& uniforms) noexcept;
 
+    /**
+     * 绑定后处理描述符堆
+     * 
+     * 将描述符堆绑定到 PER_VIEW 绑定点。
+     * 
+     * @param driver 驱动 API 引用
+     */
     void bind(backend::DriverApi& driver) noexcept;
 
+    /**
+     * 获取描述符堆布局
+     * 
+     * @return 描述符堆布局常量引用
+     */
     DescriptorSetLayout const& getLayout() const noexcept {
         return mDescriptorSetLayout;
     }
 
 private:
-    DescriptorSetLayout mDescriptorSetLayout;
-    DescriptorSet mDescriptorSet;
+    DescriptorSetLayout mDescriptorSetLayout;  // 描述符堆布局
+    DescriptorSet mDescriptorSet;  // 描述符堆
 };
 
 } // namespace filament

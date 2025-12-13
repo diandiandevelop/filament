@@ -43,7 +43,7 @@ MaterialInstance (公共 API)
       ├── mMaterial (关联的 Material)
       ├── mUniforms (Uniform Buffer)
       ├── mTextureParameters (纹理参数)
-      └── mDescriptorSet (描述符集)
+      └── mDescriptorSet (描述符堆)
 ```
 
 ### 2. 材质包格式
@@ -120,9 +120,9 @@ struct MaterialDefinition {
     BufferInterfaceBlock uniformInterfaceBlock;  // Uniform 参数接口
     SamplerInterfaceBlock samplerInterfaceBlock;  // Sampler 参数接口
     
-    // 描述符集布局
-    DescriptorSetLayout descriptorSetLayout;  // 材质描述符集布局
-    DescriptorSetLayout perViewDescriptorSetLayout;  // Per-View 描述符集布局
+    // 描述符堆布局
+    DescriptorSetLayout descriptorSetLayout;  // 材质描述符堆布局
+    DescriptorSetLayout perViewDescriptorSetLayout;  // Per-View 描述符堆布局
     
     // 变体过滤
     UserVariantFilterMask variantFilterMask;  // 变体过滤掩码

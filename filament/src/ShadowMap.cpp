@@ -58,19 +58,50 @@ namespace filament {
 using namespace math;
 using namespace backend;
 
+/**
+ * ShadowMap 构造函数
+ * 
+ * 初始化阴影贴图，创建相机和调试相机，注册调试属性。
+ * 
+ * @param engine 引擎引用
+ */
 ShadowMap::ShadowMap(FEngine& engine) noexcept
-        : mPerShadowMapUniforms(engine),
-          mShadowType(ShadowType::DIRECTIONAL),
-          mHasVisibleShadows(false),
-          mFace(0) {
+        : mPerShadowMapUniforms(engine),  // 初始化每个阴影贴图的统一缓冲区
+          mShadowType(ShadowType::DIRECTIONAL),  // 默认方向光阴影
+          mHasVisibleShadows(false),  // 初始无可见阴影
+          mFace(0) {  // 初始面索引为 0
+    /**
+     * 创建两个实体用于相机
+     */
     Entity entities[2];
     engine.getEntityManager().create(2, entities);
+    /**
+     * 创建阴影贴图相机
+     */
     mCamera = engine.createCamera(entities[0]);
+    /**
+     * 创建调试相机
+     */
     mDebugCamera = engine.createCamera((entities[1]));
+    /**
+     * 注册调试属性
+     */
     FDebugRegistry& debugRegistry = engine.getDebugRegistry();
+    /**
+     * 注册是否聚焦阴影投射者的属性
+     */
     debugRegistry.registerProperty("d.shadowmap.focus_shadowcasters", &engine.debug.shadowmap.focus_shadowcasters);
+    /**
+     * 注册是否使用阴影投射者计算远平面的属性
+     */
     debugRegistry.registerProperty("d.shadowmap.far_uses_shadowcasters", &engine.debug.shadowmap.far_uses_shadowcasters);
+    /**
+     * 注册近平面深度偏移属性
+     */
     debugRegistry.registerProperty("d.shadowmap.dzn", &engine.debug.shadowmap.dzn);
+    /**
+     * 注册远平面深度偏移属性
+     */
     debugRegistry.registerProperty("d.shadowmap.dzf", &engine.debug.shadowmap.dzf);
 }
 
@@ -85,28 +116,86 @@ void ShadowMap::terminate(FEngine& engine) {
 
 ShadowMap::~ShadowMap() = default;
 
+/**
+ * 初始化阴影贴图
+ * 
+ * 设置阴影贴图的基本参数。
+ * 
+ * @param lightIndex 光源索引
+ * @param shadowType 阴影类型（方向光、点光源等）
+ * @param shadowIndex 阴影索引（用于级联阴影）
+ * @param face 立方体贴图面索引（用于点光源）
+ * @param options 阴影选项指针
+ */
 void ShadowMap::initialize(size_t const lightIndex, ShadowType const shadowType,
         uint16_t const shadowIndex, uint8_t const face,
         LightManager::ShadowOptions const* options) {
+    /**
+     * 保存光源索引
+     */
     mLightIndex = lightIndex;
+    /**
+     * 保存阴影索引
+     */
     mShadowIndex = shadowIndex;
+    /**
+     * 保存阴影选项指针
+     */
     mOptions = options;
+    /**
+     * 保存阴影类型
+     */
     mShadowType = shadowType;
+    /**
+     * 保存立方体贴图面索引
+     */
     mFace = face;
 }
 
+/**
+ * 获取方向光视图矩阵
+ * 
+ * 计算方向光的视图矩阵。
+ * 
+ * 注意：
+ * 1. 使用 x 轴作为"上"参考，使得当光源向下时（常见情况）数学计算稳定
+ * 2. 使用双精度进行计算，避免光源几乎垂直时（即平行于 x 轴）的精度问题
+ * 
+ * @param direction 光源方向向量
+ * @param up 上向量
+ * @param position 光源位置
+ * @return 视图矩阵（4x4 float）
+ */
 mat4f ShadowMap::getDirectionalLightViewMatrix(float3 direction, float3 up,
         float3 position) noexcept {
     // 1. we use the x-axis as the "up" reference so that the math is stable when the light
     //    is pointing down, which is a common case for lights.
     // 2. we do the math in double to avoid some precision issues when the light is almost
     //    straight (i.e. parallel to the x-axis)
+    /**
+     * 使用双精度计算 lookTo 矩阵，然后转换为单精度
+     */
     mat4f const Mm = mat4f{ mat4::lookTo(direction, position, up) };
+    /**
+     * 计算刚体变换的逆矩阵（视图矩阵）
+     */
     return FCamera::rigidTransformInverse(Mm);
 }
 
+/**
+ * 获取点光源视图矩阵
+ * 
+ * 根据立方体贴图面计算点光源的视图矩阵。
+ * 
+ * @param face 立方体贴图面
+ * @param position 光源位置
+ * @return 视图矩阵（4x4 float）
+ */
 mat4f ShadowMap::getPointLightViewMatrix(TextureCubemapFace face,
         float3 position) noexcept {
+    /**
+     * 根据立方体贴图面确定观察方向
+     */
     float3 direction;
     switch (TextureCubemapFace(face)) {
         case TextureCubemapFace::POSITIVE_X:    direction = {  1,  0,  0 }; break;
@@ -116,10 +205,27 @@ mat4f ShadowMap::getPointLightViewMatrix(TextureCubemapFace face,
         case TextureCubemapFace::POSITIVE_Z:    direction = {  0,  0,  1 }; break;
         case TextureCubemapFace::NEGATIVE_Z:    direction = {  0,  0, -1 }; break;
     }
+    /**
+     * 使用方向光视图矩阵计算方法（上向量为 {0, 1, 0}）
+     */
     const mat4f Mv = getDirectionalLightViewMatrix(direction, { 0, 1, 0 }, position);
     return Mv;
 }
 
+/**
+ * 更新方向光阴影贴图
+ * 
+ * 计算方向光阴影贴图的变换矩阵和参数。
+ * 
+ * @param engine 引擎引用
+ * @param lightData 光源数据（SOA 格式）
+ * @param index 光源索引
+ * @param camera 相机信息
+ * @param shadowMapInfo 阴影贴图信息
+ * @param sceneInfo 场景信息
+ * @param useDepthClamp 是否使用深度夹紧
+ * @return 着色器参数
+ */
 ShadowMap::ShaderParameters ShadowMap::updateDirectional(FEngine& engine,
         FScene::LightSoa const& lightData, size_t index,
         CameraInfo const& camera,
@@ -128,6 +234,9 @@ ShadowMap::ShaderParameters ShadowMap::updateDirectional(FEngine& engine,
         bool useDepthClamp) noexcept {
 
     // reset the visible shadow status
+    /**
+     * 重置可见阴影状态
+     */
     mHasVisibleShadows = false;
 
     FLightManager const& lcm = engine.getLightManager();

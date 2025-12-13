@@ -36,67 +36,225 @@ namespace filament {
 
 class FEngine;
 
+/**
+ * 相机实现类
+ * 
+ * 用于轻松计算投影矩阵和视图矩阵。
+ * 相机定义了观察者的位置、方向和视野。
+ * 
+ * 实现细节：
+ * - 支持多种投影类型（透视、正交等）
+ * - 支持立体渲染（多眼）
+ * - 支持缩放和偏移
+ * - 维护用于渲染和剔除的不同投影矩阵
+ */
 /*
  * FCamera is used to easily compute the projection and view matrices
  */
 class FCamera : public Camera {
 public:
+    /**
+     * 传感器大小
+     * 
+     * 35mm 相机有 36x24mm 的宽画幅尺寸。
+     */
     // a 35mm camera has a 36x24mm wide frame size
     static constexpr const float SENSOR_SIZE = 0.024f;    // 24mm
 
+    /**
+     * 构造函数
+     * 
+     * @param engine 引擎引用
+     * @param e 实体
+     */
     FCamera(FEngine& engine, utils::Entity e);
 
+    /**
+     * 终止相机
+     * 
+     * 清理资源（当前为空操作）。
+     * 
+     * @param engine 引擎引用
+     */
     void terminate(FEngine&) noexcept { }
 
 
+    /**
+     * 设置投影矩阵
+     * 
+     * 设置投影矩阵（视图和剔除）。
+     * 视图矩阵具有无限远平面。
+     * 
+     * @param projection 投影类型
+     * @param left 左边界
+     * @param right 右边界
+     * @param bottom 底边界
+     * @param top 顶边界
+     * @param near 近平面
+     * @param far 远平面
+     */
     // Sets the projection matrices (viewing and culling). The viewing matrice has infinite far.
     void setProjection(Projection projection,
                        double left, double right, double bottom, double top,
                        double near, double far);
 
+    /**
+     * 设置自定义投影矩阵
+     * 
+     * 设置自定义投影矩阵（同时设置视图和剔除投影）。
+     * 
+     * @param projection 投影矩阵
+     * @param projectionForCulling 用于剔除的投影矩阵
+     * @param near 近平面
+     * @param far 远平面
+     */
     // Sets custom projection matrices (sets both the viewing and culling projections).
     void setCustomProjection(math::mat4 const& projection,
             math::mat4 const& projectionForCulling, double near, double far) noexcept;
 
+    /**
+     * 设置自定义投影矩阵（重载）
+     * 
+     * 使用相同的矩阵作为视图和剔除投影。
+     * 
+     * @param projection 投影矩阵
+     * @param near 近平面
+     * @param far 远平面
+     */
     inline void setCustomProjection(math::mat4 const& projection,
             double const near, double const far) noexcept {
-        setCustomProjection(projection, projection, near, far);
+        setCustomProjection(projection, projection, near, far);  // 使用相同矩阵
     }
 
+    /**
+     * 设置自定义眼投影矩阵
+     * 
+     * 为立体渲染设置多个眼的投影矩阵。
+     * 
+     * @param projection 投影矩阵数组
+     * @param count 眼数量
+     * @param projectionForCulling 用于剔除的投影矩阵
+     * @param near 近平面
+     * @param far 远平面
+     */
     void setCustomEyeProjection(math::mat4 const* projection, size_t count,
             math::mat4 const& projectionForCulling, double near, double far);
 
 
+    /**
+     * 设置缩放
+     * 
+     * @param scaling 缩放值（双精度）
+     */
     void setScaling(math::double2 const scaling) noexcept { mScalingCS = scaling; }
 
+    /**
+     * 获取缩放
+     * 
+     * @return 缩放值（四元组，后两个分量为 1.0）
+     */
     math::double4 getScaling() const noexcept { return math::double4{ mScalingCS, 1.0, 1.0 }; }
 
+    /**
+     * 设置偏移
+     * 
+     * @param shift 偏移值（双精度，内部会乘以 2.0）
+     */
     void setShift(math::double2 const shift) noexcept { mShiftCS = shift * 2.0; }
 
+    /**
+     * 获取偏移
+     * 
+     * @return 偏移值（双精度，内部会除以 2.0）
+     */
     math::double2 getShift() const noexcept { return mShiftCS * 0.5; }
 
+    /**
+     * 获取投影矩阵
+     * 
+     * 用于渲染的投影矩阵，包含缩放/偏移以及着色器可能需要的其他变换。
+     * 
+     * @param eye 眼索引（默认为 0）
+     * @return 投影矩阵
+     */
     // viewing the projection matrix to be used for rendering, contains scaling/shift and possibly
     // other transforms needed by the shaders
     math::mat4 getProjectionMatrix(uint8_t eye = 0) const noexcept;
 
+    /**
+     * 获取剔除投影矩阵
+     * 
+     * 用于剔除的投影矩阵，包含缩放/偏移。
+     * 
+     * @return 剔除投影矩阵
+     */
     // culling the projection matrix to be used for culling, contains scaling/shift
     math::mat4 getCullingProjectionMatrix() const noexcept;
 
+    /**
+     * 获取眼到视图矩阵
+     * 
+     * @param eye 眼索引
+     * @return 眼到视图矩阵
+     */
     math::mat4 getEyeFromViewMatrix(uint8_t const eye) const noexcept { return mEyeFromView[eye]; }
 
+    /**
+     * 获取用户投影矩阵
+     * 
+     * 用户设置的用于视图的投影矩阵。
+     * 
+     * @param eyeId 眼 ID
+     * @return 用户投影矩阵常量引用
+     */
     // viewing projection matrix set by the user
     const math::mat4& getUserProjectionMatrix(uint8_t eyeId) const;
 
+    /**
+     * 获取用户剔除投影矩阵
+     * 
+     * 用户设置的用于剔除的投影矩阵。
+     * 
+     * @return 用户剔除投影矩阵
+     */
     // culling projection matrix set by the user
     math::mat4 getUserCullingProjectionMatrix() const noexcept { return mProjectionForCulling; }
 
+    /**
+     * 获取近平面
+     * 
+     * @return 近平面距离
+     */
     double getNear() const noexcept { return mNear; }
 
+    /**
+     * 获取剔除远平面
+     * 
+     * @return 剔除远平面距离
+     */
     double getCullingFar() const noexcept { return mFar; }
 
+    /**
+     * 设置相机的模型矩阵（必须是刚体变换）
+     * 
+     * @param modelMatrix 模型矩阵（双精度）
+     */
     // sets the camera's model matrix (must be a rigid transform)
     void setModelMatrix(const math::mat4& modelMatrix) noexcept;
+    
+    /**
+     * 设置相机的模型矩阵（单精度版本）
+     * 
+     * @param modelMatrix 模型矩阵（单精度）
+     */
     void setModelMatrix(const math::mat4f& modelMatrix) noexcept;
+    
+    /**
+     * 设置眼的模型矩阵
+     * 
+     * @param eyeId 眼 ID
+     * @param model 模型矩阵
+     */
     void setEyeModelMatrix(uint8_t eyeId, math::mat4 const& model);
 
     // sets the camera's model matrix

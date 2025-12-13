@@ -20,15 +20,35 @@
 
 namespace filament {
 
+/**
+ * 获取顶点数量
+ * 
+ * @return 顶点数量
+ */
 size_t VertexBuffer::getVertexCount() const noexcept {
     return downcast(this)->getVertexCount();
 }
 
+/**
+ * 设置指定索引的顶点缓冲区数据
+ * 
+ * @param engine 引擎引用
+ * @param bufferIndex 缓冲区索引
+ * @param buffer 缓冲区描述符（移动语义）
+ * @param byteOffset 字节偏移量
+ */
 void VertexBuffer::setBufferAt(Engine& engine, uint8_t const bufferIndex,
         backend::BufferDescriptor&& buffer, uint32_t const byteOffset) {
     downcast(this)->setBufferAt(downcast(engine), bufferIndex, std::move(buffer), byteOffset);
 }
 
+/**
+ * 设置指定索引的缓冲区对象
+ * 
+ * @param engine 引擎引用
+ * @param bufferIndex 缓冲区索引
+ * @param bufferObject 缓冲区对象指针
+ */
 void VertexBuffer::setBufferObjectAt(Engine& engine, uint8_t const bufferIndex,
         BufferObject const* bufferObject) {
     downcast(this)->setBufferObjectAt(downcast(engine), bufferIndex, downcast(bufferObject));

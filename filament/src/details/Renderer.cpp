@@ -89,65 +89,94 @@ namespace filament {
 
 using namespace backend;
 
+/**
+ * FRenderer 构造函数
+ * 
+ * 初始化渲染器，包括帧跳过器、帧信息管理器、资源分配器等。
+ * 同时检测后端支持的纹理格式并设置 HDR 格式回退。
+ * 
+ * @param engine Engine 引用
+ */
 FRenderer::FRenderer(FEngine& engine) :
-        mEngine(engine),
-        mFrameSkipper(),
-        mRenderTargetHandle(engine.getDefaultRenderTarget()),
-        mFrameInfoManager(engine, engine.getDriverApi()),
-        mHdrTranslucent(TextureFormat::RGBA16F),
-        mHdrQualityMedium(TextureFormat::R11F_G11F_B10F),
-        mHdrQualityHigh(TextureFormat::RGB16F),
-        mIsRGB8Supported(false),
-        mUserEpoch(engine.getEngineEpoch()),
-        mResourceAllocator(std::make_unique<ResourceAllocator>(
-                engine.getSharedResourceAllocatorDisposer(),
-                engine.getConfig(),
-                engine.getDriverApi()))
+        mEngine(engine),  // 保存引擎引用
+        mFrameSkipper(),  // 帧跳过器（用于管理帧延迟）
+        mRenderTargetHandle(engine.getDefaultRenderTarget()),  // 默认渲染目标句柄
+        mFrameInfoManager(engine, engine.getDriverApi()),  // 帧信息管理器（用于帧时间统计）
+        mHdrTranslucent(TextureFormat::RGBA16F),  // HDR 半透明格式（默认 RGBA16F）
+        mHdrQualityMedium(TextureFormat::R11F_G11F_B10F),  // HDR 中等质量格式（默认 R11F_G11F_B10F）
+        mHdrQualityHigh(TextureFormat::RGB16F),  // HDR 高质量格式（默认 RGB16F）
+        mIsRGB8Supported(false),  // RGB8 格式支持标志（初始化为 false）
+        mUserEpoch(engine.getEngineEpoch()),  // 用户纪元（用于时间计算）
+        mResourceAllocator(std::make_unique<ResourceAllocator>(  // 资源分配器（管理纹理和渲染目标）
+                engine.getSharedResourceAllocatorDisposer(),  // 共享资源分配器删除器
+                engine.getConfig(),  // Engine 配置
+                engine.getDriverApi()))  // 驱动 API
 {
+    /**
+     * 注册调试属性
+     * 
+     * 这些属性可以通过调试注册表在运行时修改。
+     */
     FDebugRegistry& debugRegistry = engine.getDebugRegistry();
     debugRegistry.registerProperty("d.renderer.doFrameCapture",
-            &engine.debug.renderer.doFrameCapture);
+            &engine.debug.renderer.doFrameCapture);  // 帧捕获标志
     debugRegistry.registerProperty("d.renderer.disable_buffer_padding",
-            &engine.debug.renderer.disable_buffer_padding);
+            &engine.debug.renderer.disable_buffer_padding);  // 禁用缓冲区填充
     debugRegistry.registerProperty("d.renderer.disable_subpasses",
-            &engine.debug.renderer.disable_subpasses);
+            &engine.debug.renderer.disable_subpasses);  // 禁用子通道
     debugRegistry.registerProperty("d.shadowmap.display_shadow_texture",
-            &engine.debug.shadowmap.display_shadow_texture);
+            &engine.debug.shadowmap.display_shadow_texture);  // 显示阴影纹理
     debugRegistry.registerProperty("d.shadowmap.display_shadow_texture_scale",
-            &engine.debug.shadowmap.display_shadow_texture_scale);
+            &engine.debug.shadowmap.display_shadow_texture_scale);  // 阴影纹理显示缩放
     debugRegistry.registerProperty("d.shadowmap.display_shadow_texture_layer",
-            &engine.debug.shadowmap.display_shadow_texture_layer);
+            &engine.debug.shadowmap.display_shadow_texture_layer);  // 阴影纹理显示层
     debugRegistry.registerProperty("d.shadowmap.display_shadow_texture_level",
-            &engine.debug.shadowmap.display_shadow_texture_level);
+            &engine.debug.shadowmap.display_shadow_texture_level);  // 阴影纹理显示级别
     debugRegistry.registerProperty("d.shadowmap.display_shadow_texture_channel",
-            &engine.debug.shadowmap.display_shadow_texture_channel);
+            &engine.debug.shadowmap.display_shadow_texture_channel);  // 阴影纹理显示通道
     debugRegistry.registerProperty("d.shadowmap.display_shadow_texture_layer_count",
-            &engine.debug.shadowmap.display_shadow_texture_layer_count);
+            &engine.debug.shadowmap.display_shadow_texture_layer_count);  // 阴影纹理层数
     debugRegistry.registerProperty("d.shadowmap.display_shadow_texture_level_count",
-            &engine.debug.shadowmap.display_shadow_texture_level_count);
+            &engine.debug.shadowmap.display_shadow_texture_level_count);  // 阴影纹理级别数
     debugRegistry.registerProperty("d.shadowmap.display_shadow_texture_power",
-            &engine.debug.shadowmap.display_shadow_texture_power);
+            &engine.debug.shadowmap.display_shadow_texture_power);  // 阴影纹理显示幂
     debugRegistry.registerProperty("d.stereo.combine_multiview_images",
-        &engine.debug.stereo.combine_multiview_images);
+        &engine.debug.stereo.combine_multiview_images);  // 立体渲染：合并多视图图像
 
-    DriverApi& driver = engine.getDriverApi();
+    DriverApi& driver = engine.getDriverApi();  // 获取驱动 API
 
-    mIsRGB8Supported = driver.isRenderTargetFormatSupported(TextureFormat::RGB8);
+    /**
+     * 检测后端支持的纹理格式
+     * 
+     * 根据后端支持情况设置 HDR 格式，如果不支持则回退到 LDR 格式。
+     */
+    mIsRGB8Supported = driver.isRenderTargetFormatSupported(TextureFormat::RGB8);  // 检测 RGB8 支持
 
-    // our default HDR translucent format, fallback to LDR if not supported by the backend
+    /**
+     * 检测 HDR 半透明格式支持
+     * 
+     * 默认使用 RGBA16F，如果不支持则回退到 RGBA8（会裁剪 HDR 数据）。
+     */
     if (!driver.isRenderTargetFormatSupported(TextureFormat::RGBA16F)) {
-        // this will clip all HDR data, but we don't have a choice
+        // 如果不支持 RGBA16F，回退到 RGBA8（会裁剪所有 HDR 数据，但别无选择）
         mHdrTranslucent = TextureFormat::RGBA8;
     }
 
-    // our default opaque low/medium quality HDR format, fallback to LDR if not supported
+    /**
+     * 检测 HDR 中等质量格式支持
+     * 
+     * 默认使用 R11F_G11F_B10F，如果不支持则回退到 RGB8。
+     */
     if (!driver.isRenderTargetFormatSupported(mHdrQualityMedium)) {
-        // this will clip all HDR data, but we don't have a choice
+        // 如果不支持 R11F_G11F_B10F，回退到 RGB8（会裁剪所有 HDR 数据，但别无选择）
         mHdrQualityMedium = TextureFormat::RGB8;
     }
 
-    // our default opaque high quality HDR format, fallback to RGBA, then medium, then LDR
-    // if not supported
+    /**
+     * 检测 HDR 高质量格式支持
+     * 
+     * 默认使用 RGB16F，如果不支持则依次回退到 RGBA16F、R11F_G11F_B10F、RGB8。
+     */
     if (!driver.isRenderTargetFormatSupported(mHdrQualityHigh)) {
         mHdrQualityHigh = TextureFormat::RGBA16F;
     }
@@ -857,7 +886,7 @@ void FRenderer::renderJob(RootArenaScope& rootArenaScope, FView& view) {
     // get into such a case though.
     view.prepareViewport(svp, xvp);
     view.commitUniforms(driver);
-    // 上述 prepare* 完成剔除、光照/阴影数据、UBO 和描述符集提交
+    // 上述 prepare* 完成剔除、光照/阴影数据、UBO 和描述符堆提交
 
     /*
      * Update the PER_VIEW UBO use for the structure pass. It never updated again after this point.

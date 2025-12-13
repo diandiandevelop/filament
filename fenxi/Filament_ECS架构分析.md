@@ -382,7 +382,7 @@ private:
         PRIMITIVES,             // 图元
         SUMMED_PRIMITIVE_COUNT, // 图元计数
         UBO,                    // Uniform 缓冲区
-        DESCRIPTOR_SET_HANDLE,  // 描述符集句柄
+        DESCRIPTOR_SET_HANDLE,  // 描述符堆句柄
         // ... 更多字段
     };
     

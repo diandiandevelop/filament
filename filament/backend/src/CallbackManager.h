@@ -31,22 +31,39 @@ namespace filament::backend {
 class DriverBase;
 class CallbackHandler;
 
-/*
- * CallbackManager schedules user callbacks once all previous conditions are met.
- * A "Condition" is created by calling "get" and is met by calling "put". These
- * are typically called from different threads.
- * The callback is specified with "setCallback", which atomically creates a new set of
- * conditions to be met.
+/**
+ * 回调管理器
+ * 
+ * CallbackManager 在所有先前的条件都满足时调度用户回调。
+ * 
+ * 工作流程：
+ * 1. 通过调用 get() 创建"条件"，返回一个句柄
+ * 2. 通过调用 put() 满足条件（通常从不同线程调用）
+ * 3. 通过 setCallback() 设置回调，当所有条件都满足时回调会被调度
+ * 
+ * 使用场景：
+ * - 等待多个异步操作完成
+ * - 资源释放的延迟回调
+ * - GPU 命令完成的回调
+ * 
+ * 线程安全：
+ * - get() 和 put() 可以从不同线程调用
+ * - setCallback() 会原子地创建新的条件集
  */
 class CallbackManager {
+    /**
+     * 回调结构
+     * 
+     * 存储回调信息和引用计数（条件计数）。
+     */
     struct Callback {
-        mutable std::atomic_int count{};
-        CallbackHandler* handler = nullptr;
-        CallbackHandler::Callback func = {};
-        void* user = nullptr;
+        mutable std::atomic_int count{};  // 引用计数（条件计数）
+        CallbackHandler* handler = nullptr;  // 回调处理器
+        CallbackHandler::Callback func = {};  // 回调函数
+        void* user = nullptr;  // 用户数据指针
     };
 
-    using Container = std::list<Callback>;
+    using Container = std::list<Callback>;  // 回调容器（双向链表）
 
 public:
     using Handle = Container::const_iterator;
@@ -55,35 +72,81 @@ public:
 
     ~CallbackManager() noexcept;
 
-    // Calls all the pending callbacks regardless of remaining conditions to be met. This is to
-    // avoid leaking resources for instance. It also doesn't matter if the conditions are met
-    // because we're shutting down.
+    /**
+     * 终止回调管理器
+     * 
+     * 执行所有待处理的回调，无论是否满足条件。
+     * 这用于避免资源泄漏，例如在关闭时。
+     * 如果条件未满足也没关系，因为我们正在关闭。
+     */
     void terminate() noexcept;
 
-    // creates a condition and get a handle for it
+    /**
+     * 创建条件并获取句柄
+     * 
+     * 创建一个新的条件（通过增加引用计数），并返回句柄。
+     * 这个句柄必须通过 put() 来满足条件。
+     * 
+     * @return 条件句柄
+     */
     Handle get() const noexcept;
 
-    // Announces the specified condition is met. If a callback was specified and all conditions
-    // prior to setting the callback are met, the callback is scheduled.
+    /**
+     * 满足指定条件
+     * 
+     * 当条件满足时（通过减少引用计数），如果所有条件都已满足且设置了回调，
+     * 则调度回调。
+     * 
+     * @param curr 条件句柄（会被清空）
+     */
     void put(Handle& curr) noexcept;
 
-    // Sets a callback to be called when all previously created (get) conditions are met (put).
-    // If there were no conditions created, or they're all already met, the callback is scheduled
-    // immediately.
+    /**
+     * 设置回调
+     * 
+     * 设置一个回调，当所有之前创建的条件（通过 get()）都满足时（通过 put()），
+     * 回调会被调度。
+     * 
+     * 如果没有创建条件，或者所有条件都已满足，回调会立即被调度。
+     * 
+     * @param handler 回调处理器
+     * @param func 回调函数
+     * @param user 用户数据指针
+     */
     void setCallback(CallbackHandler* handler, CallbackHandler::Callback func, void* user);
 
 private:
+    /**
+     * 获取当前槽位（最后一个槽位）
+     * 
+     * @return 当前槽位的迭代器
+     */
     Container::const_iterator getCurrent() const noexcept {
         std::lock_guard const lock(mLock);
         return --mCallbacks.end();
     }
 
+    /**
+     * 分配新槽位
+     * 
+     * 在列表末尾添加新槽位，并返回前一个槽位的迭代器。
+     * 
+     * @return 新分配槽位的前一个槽位的迭代器
+     */
     Container::iterator allocateNewSlot() {
         std::lock_guard const lock(mLock);
         auto curr = --mCallbacks.end();
-        mCallbacks.emplace_back();
+        mCallbacks.emplace_back();  // 在末尾添加新槽位
         return curr;
     }
+    
+    /**
+     * 销毁槽位
+     * 
+     * 从列表中移除指定的槽位。
+     * 
+     * @param curr 要销毁的槽位迭代器
+     */
     void destroySlot(Container::const_iterator curr) noexcept {
         std::lock_guard const lock(mLock);
         mCallbacks.erase(curr);

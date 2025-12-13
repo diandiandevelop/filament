@@ -34,14 +34,37 @@ namespace filament {
 using namespace backend;
 using namespace utils;
 
+/**
+ * 创建材质解析器
+ * 
+ * 从材质数据创建并验证材质解析器。
+ * 
+ * @param backend 后端类型
+ * @param languages 首选的着色器语言列表
+ * @param data 材质数据指针
+ * @param size 材质数据大小
+ * @return 材质解析器唯一指针
+ */
 std::unique_ptr<MaterialParser> MaterialDefinition::createParser(Backend const backend,
         FixedCapacityVector<ShaderLanguage> languages, const void* data, size_t size) {
     // unique_ptr so we don't leak MaterialParser on failures below
+    /**
+     * 创建材质解析器（使用 unique_ptr 防止泄漏）
+     */
     auto materialParser = std::make_unique<MaterialParser>(languages, data, size);
 
+    /**
+     * 解析材质数据
+     */
     MaterialParser::ParseResult const materialResult = materialParser->parse();
 
+    /**
+     * 如果缺少后端支持，生成错误消息
+     */
     if (UTILS_UNLIKELY(materialResult == MaterialParser::ParseResult::ERROR_MISSING_BACKEND)) {
+        /**
+         * 构建语言名称列表字符串
+         */
         CString languageNames;
         for (auto it = languages.begin(); it != languages.end(); ++it) {
             languageNames.append(CString{shaderLanguageToString(*it)});
@@ -50,25 +73,43 @@ std::unique_ptr<MaterialParser> MaterialDefinition::createParser(Backend const b
             }
         }
 
+        /**
+         * 检查后置条件：材质必须为后端支持的语言构建
+         */
         FILAMENT_CHECK_POSTCONDITION(
                 materialResult != MaterialParser::ParseResult::ERROR_MISSING_BACKEND)
                 << "the material was not built for any of the " << to_string(backend)
                 << " backend's supported shader languages (" << languageNames.c_str() << ")\n";
     }
 
+    /**
+     * 如果是 NOOP 后端，直接返回解析器（不需要验证）
+     */
     if (backend == Backend::NOOP) {
         return materialParser;
     }
 
+    /**
+     * 检查后置条件：解析必须成功
+     */
     FILAMENT_CHECK_POSTCONDITION(materialResult == MaterialParser::ParseResult::SUCCESS)
             << "could not parse the material package";
 
+    /**
+     * 获取并验证材质版本
+     */
     uint32_t version = 0;
     materialParser->getMaterialVersion(&version);
+    /**
+     * 检查后置条件：版本必须匹配
+     */
     FILAMENT_CHECK_POSTCONDITION(version == MATERIAL_VERSION)
             << "Material version mismatch. Expected " << MATERIAL_VERSION << " but received "
             << version << ".";
 
+    /**
+     * 确保后端不是 DEFAULT（应该已解析）
+     */
     assert_invariant(backend != Backend::DEFAULT && "Default backend has not been resolved.");
 
     return materialParser;

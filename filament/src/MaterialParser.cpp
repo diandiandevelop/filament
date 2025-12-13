@@ -59,6 +59,14 @@ using namespace filamat;
 
 namespace filament {
 
+/**
+ * 着色器语言到块标签的转换
+ * 
+ * 将着色器语言枚举值转换为对应的材质块类型和字典块类型。
+ * 
+ * @param language 着色器语言
+ * @return 材质块类型和字典块类型的对
+ */
 constexpr std::pair<ChunkType, ChunkType> shaderLanguageToTags(ShaderLanguage const language) {
     switch (language) {
         case ShaderLanguage::ESSL3:
@@ -102,8 +110,20 @@ bool MaterialParser::MaterialParserDetails::getFromSimpleChunk(
     return false;
 }
 
+/**
+ * ManagedBuffer 构造函数
+ * 
+ * 分配内存并复制数据。
+ * 
+ * @param start 源数据指针
+ * @param size 数据大小（字节）
+ */
 MaterialParser::MaterialParserDetails::ManagedBuffer::ManagedBuffer(const void* start, size_t const size)
-        : mStart(malloc(size)), mSize(size) {
+        : mStart(malloc(size)),  // 分配内存
+          mSize(size) {  // 保存大小
+    /**
+     * 复制数据到分配的内存
+     */
     memcpy(mStart, start, size);
 }
 

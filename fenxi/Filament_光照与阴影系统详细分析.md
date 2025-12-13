@@ -14,7 +14,7 @@
 ---
 
 ## 概览
-Filament 的光照与阴影系统围绕三类核心：**光源管理（LightManager）**、**分块光照（Froxelizer）**、**阴影图管理（ShadowMapManager）**。View 在 `prepare*` 阶段串起光照/阴影数据更新，并把结果提交到 per-view/per-renderable 的 UBO 与描述符集中，为后续 FrameGraph 渲染阶段提供输入。
+Filament 的光照与阴影系统围绕三类核心：**光源管理（LightManager）**、**分块光照（Froxelizer）**、**阴影图管理（ShadowMapManager）**。View 在 `prepare*` 阶段串起光照/阴影数据更新，并把结果提交到 per-view/per-renderable 的 UBO 与描述符堆中，为后续 FrameGraph 渲染阶段提供输入。
 
 ---
 
@@ -55,7 +55,7 @@ Filament 的光照与阴影系统围绕三类核心：**光源管理（LightMana
   - FrameGraph pass，创建阴影图 atlas 纹理（2D array）。
   - 构造每个 ShadowPass 的 RenderPass::Executor；VSM 需要清除 moment 纹理并可选模糊。
   - 按层排序（可选 FeatureShadowAllocator）以批处理同层渲染。
-  - execute 阶段绑定 shadowMap、覆盖 scissor，执行绘制，最后解绑描述符集避免依赖串联。
+  - execute 阶段绑定 shadowMap、覆盖 scissor，执行绘制，最后解绑描述符堆避免依赖串联。
 - 输出：
   - Shadow atlas 纹理 FrameGraph 句柄。
   - ShadowMappingUniforms：cascade splits、屏幕空间接触阴影距离、阴影数量等。
@@ -71,7 +71,7 @@ Filament 的光照与阴影系统围绕三类核心：**光源管理（LightMana
   - 曝光：根据 ev100 写曝光参数。
   - IBL：准备环境光（无 IBL 时用 1x1 black IBL + skybox intensity）。
   - Directional：索引 0 的方向光数据写入 DescriptorSet/UBO。
-- 后续 `prepareShadowMapping()`、`prepareSSAO/SSR` 等调用会把阴影/屏幕空间效果绑定到描述符集。
+- 后续 `prepareShadowMapping()`、`prepareSSAO/SSR` 等调用会把阴影/屏幕空间效果绑定到描述符堆。
 
 ---
 

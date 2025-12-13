@@ -30,14 +30,30 @@ namespace filament {
 using namespace math;
 
 //------------------------------------------------------------------------------
-// Types
+/**
+ * 类型定义
+ * 
+ * 颜色空间类型别名。
+ */
 //------------------------------------------------------------------------------
 
-using xyY = float3;
-using XYZ = float3;
+using xyY = float3;  // xyY 颜色空间（x, y 色度坐标，Y 亮度）
+using XYZ = float3;   // CIE XYZ 颜色空间
 
 //------------------------------------------------------------------------------
-// Color space conversion matrices
+/**
+ * 颜色空间转换矩阵
+ * 
+ * 各种颜色空间之间的转换矩阵，用于颜色空间转换。
+ * 
+ * 支持的颜色空间：
+ * - sRGB / Rec.709：标准 RGB 颜色空间
+ * - Rec.2020：广色域 RGB 颜色空间
+ * - AP0 / AP1：ACES 颜色空间（用于电影制作）
+ * - OkLab：感知均匀的颜色空间
+ * - CIECAT16 / LMS：色适应变换空间
+ * - XYZ：CIE 标准颜色空间
+ */
 //------------------------------------------------------------------------------
 
 constexpr mat3f XYZ_to_sRGB{
@@ -181,56 +197,125 @@ constexpr mat3f Rec2020_to_OkLab_LMS = XYZ_to_OkLab_LMS * Rec2020_to_XYZ;
 constexpr mat3f OkLab_LMS_to_Rec2020 = XYZ_to_Rec2020 * OkLab_LMS_to_XYZ;
 
 //------------------------------------------------------------------------------
-// Constants
+/**
+ * 常量
+ * 
+ * 颜色空间相关的常量定义。
+ */
 //------------------------------------------------------------------------------
 
-// Standard CIE 1931 2° illuminant D65, in xyY space
+/**
+ * 标准 CIE 1931 2° 光源 D65，xyY 空间
+ * 
+ * D65 是标准日光光源，色温约为 6500K。
+ */
 constexpr float3 ILLUMINANT_D65_xyY{0.31271f, 0.32902f, 1.0f};
 
-// Standard CIE 1931 2° illuminant D65, in LMS space (CIECAT16)
-// Result of: XYZ_to_CIECAT16 * xyY_to_XYZ(ILLUMINANT_D65_xyY);
+/**
+ * 标准 CIE 1931 2° 光源 D65，LMS 空间（CIECAT16）
+ * 
+ * 结果来自：XYZ_to_CIECAT16 * xyY_to_XYZ(ILLUMINANT_D65_xyY)
+ */
 constexpr float3 ILLUMINANT_D65_LMS_CAT16{0.975533f, 1.016483f, 1.084837f};
 
-// RGB to luminance coefficients for Rec.2020, from Rec2020_to_XYZ
+/**
+ * Rec.2020 的 RGB 到亮度系数
+ * 
+ * 从 Rec2020_to_XYZ 矩阵提取。
+ */
 constexpr float3 LUMINANCE_Rec2020{0.2627002f, 0.6779981f, 0.0593017f};
 
-// RGB to luminance coefficients for ACEScg (AP1), from AP1_to_XYZ
+/**
+ * ACEScg (AP1) 的 RGB 到亮度系数
+ * 
+ * 从 AP1_to_XYZ 矩阵提取。
+ */
 constexpr float3 LUMINANCE_AP1{0.272229f, 0.674082f, 0.0536895f};
 
-// RGB to luminance coefficients for Rec.709, from sRGB_to_XYZ
+/**
+ * Rec.709 的 RGB 到亮度系数
+ * 
+ * 从 sRGB_to_XYZ 矩阵提取。
+ */
 constexpr float3 LUMINANCE_Rec709{0.2126730f, 0.7151520f, 0.0721750f};
 
-// RGB to luminance coefficients for Rec.709 with HK-like weighting
+/**
+ * Rec.709 的 RGB 到亮度系数（HK 风格权重）
+ * 
+ * 使用不同的权重系数，用于特定应用。
+ */
 constexpr float3 LUMINANCE_HK_Rec709{0.13913043f, 0.73043478f, 0.13043478f};
 
+/**
+ * ACEScg 中间灰值
+ * 
+ * 18% 灰是摄影和电影制作中的标准参考值。
+ */
 constexpr float MIDDLE_GRAY_ACEScg = 0.18f;
 
+/**
+ * ACEScct 中间灰值
+ * 
+ * ACEScct 是 ACES 的色调映射版本。
+ */
 constexpr float MIDDLE_GRAY_ACEScct = 0.4135884f;
 
 //------------------------------------------------------------------------------
-// Chromaticity helpers
+/**
+ * 色度辅助函数
+ */
 //------------------------------------------------------------------------------
 
-// Returns the y chromaticity coordinate in xyY for an illuminant series D,
-// given its x chromaticity coordinate.
+/**
+ * 计算 D 系列光源的 y 色度坐标
+ * 
+ * 给定 x 色度坐标，返回 xyY 空间中的 y 色度坐标。
+ * 
+ * @param x x 色度坐标
+ * @return y 色度坐标
+ * 
+ * 参考：http://en.wikipedia.org/wiki/Standard_illuminant#Illuminant_series_D
+ */
 inline constexpr float chromaticityCoordinateIlluminantD(float const x) noexcept {
-    // See http://en.wikipedia.org/wiki/Standard_illuminant#Illuminant_series_D
+    // 参见：http://en.wikipedia.org/wiki/Standard_illuminant#Illuminant_series_D
     return 2.87f * x - 3.0f * x * x - 0.275f;
 }
 
 //------------------------------------------------------------------------------
-// Color space conversions
+/**
+ * 颜色空间转换
+ */
 //------------------------------------------------------------------------------
 
+/**
+ * xyY 到 XYZ 转换
+ * 
+ * @param v xyY 颜色值（x, y 色度坐标，Y 亮度）
+ * @return XYZ 颜色值
+ */
 inline constexpr XYZ xyY_to_XYZ(xyY const v) noexcept {
     const float a = v.z / max(v.y, 1e-5f);
     return XYZ{v.x * a, v.z, (1.0f - v.x - v.y) * a};
 }
 
+/**
+ * XYZ 到 xyY 转换
+ * 
+ * @param v XYZ 颜色值
+ * @return xyY 颜色值（x, y 色度坐标，Y 亮度）
+ */
 inline constexpr xyY XYZ_to_xyY(XYZ v) noexcept {
     return {v.xy / max(v.x + v.y + v.z, 1e-5f), v.y};
 }
 
+/**
+ * 立方函数
+ * 
+ * 计算 x^3，用于 OkLab 颜色空间转换。
+ * 
+ * @param x 输入值
+ * @return x 的立方
+ */
 inline constexpr float3 pow3(float3 const x) noexcept {
     return x * x * x;
 }
@@ -252,10 +337,19 @@ inline float3 OkLab_to_Rec2020(float3 const x) noexcept {
 }
 
 //------------------------------------------------------------------------------
-// Conversion functions and encoding/decoding
+/**
+ * 转换函数和编码/解码
+ */
 //------------------------------------------------------------------------------
 
-// Decodes a linear value from LogC using the Alexa LogC EI 1000 curve
+/**
+ * LogC 到线性值解码
+ * 
+ * 使用 Alexa LogC EI 1000 曲线将 LogC 编码值解码为线性值。
+ * 
+ * @param x LogC 编码值
+ * @return 线性值
+ */
 inline float3 LogC_to_linear(float3 const x) noexcept {
     const float ia = 1.0f / 5.555556f;
     const float b  = 0.047996f;
@@ -264,7 +358,14 @@ inline float3 LogC_to_linear(float3 const x) noexcept {
     return (pow(10.0f, (x - d) * ic) - b) * ia;
 }
 
-// Encodes a linear value in LogC using the Alexa LogC EI 1000 curve
+/**
+ * 线性值到 LogC 编码
+ * 
+ * 使用 Alexa LogC EI 1000 曲线将线性值编码为 LogC。
+ * 
+ * @param x 线性值
+ * @return LogC 编码值
+ */
 inline float3 linear_to_LogC(float3 const x) noexcept {
     const float a = 5.555556f;
     const float b = 0.047996f;
@@ -296,10 +397,26 @@ inline float3 linearAP1_to_ACEScct(float3 x) noexcept {
     return x;
 }
 
+/**
+ * 线性 OETF（光电转换函数）
+ * 
+ * 线性传递函数，不进行任何转换。
+ * 
+ * @param x 线性值
+ * @return 线性值（不变）
+ */
 inline float3 OETF_Linear(float3 const x) noexcept {
     return x;
 }
 
+/**
+ * sRGB OETF（光电转换函数）
+ * 
+ * 将线性值编码为 sRGB 非线性值（用于显示）。
+ * 
+ * @param x 线性值
+ * @return sRGB 编码值
+ */
 inline float3 OETF_sRGB(float3 x) noexcept {
     constexpr float a  = 0.055f;
     constexpr float a1 = 1.055f;
@@ -311,6 +428,14 @@ inline float3 OETF_sRGB(float3 x) noexcept {
     return x;
 }
 
+/**
+ * sRGB EOTF（电光转换函数）
+ * 
+ * 将 sRGB 非线性值解码为线性值（用于计算）。
+ * 
+ * @param x sRGB 编码值
+ * @return 线性值
+ */
 inline float3 EOTF_sRGB(float3 x) noexcept {
     constexpr float a  = 0.055f;
     constexpr float a1 = 1.055f;
@@ -322,6 +447,16 @@ inline float3 EOTF_sRGB(float3 x) noexcept {
     return x;
 }
 
+/**
+ * PQ OETF（感知量化光电转换函数）
+ * 
+ * 将线性值编码为 PQ（Perceptual Quantizer）非线性值。
+ * PQ 用于 HDR（高动态范围）内容，如 HDR10 和 Dolby Vision。
+ * 
+ * @param x 线性值
+ * @param maxPqValue 最大 PQ 值（用于归一化）
+ * @return PQ 编码值
+ */
 inline float3 OETF_PQ(float3 x, float maxPqValue) {
     constexpr float PQ_constant_N  = 2610.0f / 4096.0f /   4.0f;
     constexpr float PQ_constant_M  = 2523.0f / 4096.0f * 128.0f;
@@ -337,6 +472,15 @@ inline float3 OETF_PQ(float3 x, float maxPqValue) {
     return pow(numerator / denominator, PQ_constant_M);
 }
 
+/**
+ * PQ EOTF（感知量化电光转换函数）
+ * 
+ * 将 PQ 非线性值解码为线性值。
+ * 
+ * @param x PQ 编码值
+ * @param maxPqValue 最大 PQ 值（用于反归一化）
+ * @return 线性值
+ */
 inline float3 EOTF_PQ(float3 x, float maxPqValue) {
     constexpr float PQ_constant_N  = 2610.0f / 4096.0f /   4.0f;
     constexpr float PQ_constant_M  = 2523.0f / 4096.0f * 128.0f;
@@ -353,9 +497,21 @@ inline float3 EOTF_PQ(float3 x, float maxPqValue) {
 }
 
 //------------------------------------------------------------------------------
-// Gamut mapping
+/**
+ * 色域映射
+ * 
+ * 将超出目标色域的颜色映射到目标色域内。
+ */
 //------------------------------------------------------------------------------
 
+/**
+ * sRGB 色域映射
+ * 
+ * 将颜色映射到 sRGB 色域内，处理超出色域的颜色。
+ * 
+ * @param rgb RGB 颜色值
+ * @return 映射后的 RGB 颜色值（在 sRGB 色域内）
+ */
 float3 gamutMapping_sRGB(float3 rgb) noexcept;
 
 } // namespace filament

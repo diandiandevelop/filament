@@ -20,6 +20,15 @@
 
 namespace filament {
 
+/**
+ * 获取外部同步句柄
+ * 
+ * 异步获取同步对象的外部句柄，用于与其他 API 共享同步对象。
+ * 
+ * @param handler 回调处理器
+ * @param callback 回调函数
+ * @param userData 用户数据指针
+ */
 void Sync::getExternalHandle(Sync::CallbackHandler* handler, Sync::Callback callback,
         void* userData) noexcept {
     downcast(this)->getExternalHandle(handler, callback, userData);

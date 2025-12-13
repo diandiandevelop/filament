@@ -40,7 +40,7 @@ class PostProcessManager {
     // 材质实例管理器
     MaterialInstanceManager mMaterialInstanceManager;
     
-    // 后处理描述符集
+    // 后处理描述符堆
     PostProcessDescriptorSet mPostProcessDescriptorSet;
     StructureDescriptorSet mStructureDescriptorSet;
     SsrPassDescriptorSet mSsrPassDescriptorSet;

@@ -84,60 +84,171 @@ public:
 
     void terminate(FEngine& engine);
 
+    /**
+     * 阴影贴图信息结构
+     * 
+     * 包含阴影贴图图集的尺寸信息。
+     */
     struct ShadowMapInfo {
+        /**
+         * 图集的总尺寸（包含所有阴影贴图的纹理图集）
+         */
         // the dimension of the encompassing texture atlas
         uint16_t atlasDimension = 0;
 
+        /**
+         * 图集中单个阴影贴图纹理的尺寸
+         * 例如：如果图集大小为 1024，分成 4 个象限，则 textureDimension 为 512
+         */
         // the dimension of a single shadow map texture within the atlas
         // e.g., for at atlas size of 1024 split into 4 quadrants, textureDimension would be 512
         uint16_t textureDimension = 0;
 
+        /**
+         * 实际阴影贴图的尺寸（考虑 1 像素边界）
+         * 例如：如果纹理尺寸为 512，则 shadowDimension 为 510
+         */
         // the dimension of the actual shadow map, taking into account the 1 texel border
         // e.g., for a texture dimension of 512, shadowDimension would be 510
         uint16_t shadowDimension = 0;
 
+        /**
+         * 纹理空间是否翻转（例如 Metal 和 Vulkan 纹理）
+         */
         // e.g. metal and vulkan textures
         bool textureSpaceFlipped = false;
 
+        /**
+         * 是否使用 VSM（Variance Shadow Maps）
+         */
         // whether we're using vsm
         bool vsm = false;
     };
 
+    /**
+     * 场景信息结构
+     * 
+     * 包含场景中阴影投射者和接收者的信息。
+     */
     struct SceneInfo {
 
+        /**
+         * 默认构造函数
+         */
         SceneInfo() noexcept = default;
+        /**
+         * 构造函数
+         * 
+         * @param scene 场景引用
+         * @param visibleLayers 可见层掩码
+         */
         SceneInfo(FScene const& scene, uint8_t visibleLayers) noexcept;
 
+        /**
+         * 光源空间中的近远平面（临时数据）
+         * 从场景内容计算，假设光源在原点。
+         */
         // scratch data: light's near/far expressed in light-space, calculated from the scene's
         // content assuming the light is at the origin.
-        math::float2 lsCastersNearFar;
-        math::float2 lsReceiversNearFar;
+        math::float2 lsCastersNearFar;    // 阴影投射者的近远平面
+        math::float2 lsReceiversNearFar; // 阴影接收者的近远平面
 
+        /**
+         * 世界空间中的阴影投射者包围盒
+         */
         // World-space shadow-casters volume
         Aabb wsShadowCastersVolume;
 
+        /**
+         * 世界空间中的阴影接收者包围盒
+         */
         // World-space shadow-receivers volume
         Aabb wsShadowReceiversVolume;
 
+        /**
+         * 可见层掩码
+         */
         uint8_t visibleLayers;
     };
 
+    /**
+     * 获取方向光视图矩阵
+     * 
+     * 计算方向光的视图矩阵（从世界空间到光源空间）。
+     * 
+     * @param direction 光源方向
+     * @param up 上向量
+     * @param position 光源位置（默认为原点）
+     * @return 视图矩阵
+     */
     static math::mat4f getDirectionalLightViewMatrix(math::float3 direction, math::float3 up,
             math::float3 position = {}) noexcept;
 
+    /**
+     * 获取点光源视图矩阵
+     * 
+     * 计算点光源的视图矩阵（用于立方体贴图的特定面）。
+     * 
+     * @param face 立方体贴图面
+     * @param position 光源位置
+     * @return 视图矩阵
+     */
     static math::mat4f getPointLightViewMatrix(backend::TextureCubemapFace face,
             math::float3 position) noexcept;
 
+    /**
+     * 初始化阴影贴图
+     * 
+     * 初始化阴影贴图的基本信息。
+     * 
+     * @param lightIndex 光源索引
+     * @param shadowType 阴影类型（方向光/聚光灯/点光源）
+     * @param shadowIndex 阴影索引
+     * @param face 立方体贴图面（点光源使用）
+     * @param options 阴影选项
+     */
     void initialize(size_t lightIndex, ShadowType shadowType, uint16_t shadowIndex, uint8_t face,
             LightManager::ShadowOptions const* options);
 
+    /**
+     * 着色器参数结构
+     * 
+     * 包含传递给着色器的阴影贴图参数。
+     */
     struct ShaderParameters {
+        /**
+         * 光源空间变换矩阵（将世界空间坐标变换到光源空间）
+         */
         math::mat4f lightSpace{};
+        /**
+         * 从世界空间 Z 到光源空间的转换参数
+         */
         math::float4 lightFromWorldZ{};
+        /**
+         * 归一化的裁剪坐标（用于限制阴影贴图范围）
+         */
         math::float4 scissorNormalized{};
+        /**
+         * 世界空间中 1 米处的纹素大小（用于计算阴影偏移）
+         */
         float texelSizeAtOneMeterWs{};
     };
 
+    /**
+     * 更新方向光阴影贴图
+     * 
+     * 如果光源、场景（或可见层）或相机改变，每帧调用一次。
+     * 计算光源的相机参数。
+     * 
+     * @param engine 引擎引用
+     * @param lightData 光源数据（SOA 格式）
+     * @param index 光源索引
+     * @param camera 相机信息
+     * @param shadowMapInfo 阴影贴图信息
+     * @param sceneInfo 场景信息
+     * @param useDepthClamp 是否使用深度夹紧
+     * @return 着色器参数
+     */
     // Call once per frame if the light, scene (or visible layers) or camera changes.
     // This computes the light's camera.
     ShaderParameters updateDirectional(FEngine& engine,
@@ -147,29 +258,88 @@ public:
             SceneInfo const& sceneInfo,
             bool useDepthClamp) noexcept;
 
+    /**
+     * 更新聚光灯阴影贴图
+     * 
+     * @param engine 引擎引用
+     * @param lightData 光源数据（SOA 格式）
+     * @param index 光源索引
+     * @param camera 相机信息
+     * @param shadowMapInfo 阴影贴图信息
+     * @param scene 场景引用
+     * @param sceneInfo 场景信息
+     * @return 着色器参数
+     */
     ShaderParameters updateSpot(FEngine& engine,
             const FScene::LightSoa& lightData, size_t index,
             CameraInfo const& camera,
             const ShadowMapInfo& shadowMapInfo, FScene const& scene,
             SceneInfo sceneInfo) noexcept;
 
+    /**
+     * 更新点光源阴影贴图
+     * 
+     * @param engine 引擎引用
+     * @param lightData 光源数据（SOA 格式）
+     * @param index 光源索引
+     * @param camera 相机信息
+     * @param shadowMapInfo 阴影贴图信息
+     * @param scene 场景引用
+     * @param face 立方体贴图面
+     * @return 着色器参数
+     */
     ShaderParameters updatePoint(FEngine& engine,
             const FScene::LightSoa& lightData, size_t index, CameraInfo const& camera,
             const ShadowMapInfo& shadowMapInfo, FScene const& scene, uint8_t face) noexcept;
 
+    /**
+     * 是否有可见阴影
+     * 
+     * 在调用 update() 后有效。
+     * 
+     * @return 如果有可见阴影则返回 true
+     */
     // Do we have visible shadows. Valid after calling update().
     bool hasVisibleShadows() const noexcept { return mHasVisibleShadows; }
 
+    /**
+     * 获取光源的相机
+     * 
+     * 在调用 update() 后有效。
+     * 
+     * @return 光源相机引用
+     */
     // Returns the light's projection. Valid after calling update().
     FCamera const& getCamera() const noexcept { return *mCamera; }
 
+    /**
+     * 获取调试相机
+     * 
+     * 仅用于调试。
+     * 
+     * @return 调试相机指针
+     */
     // use only for debugging
     FCamera const* getDebugCamera() const noexcept { return mDebugCamera; }
 
+    /**
+     * 更新方向光的场景信息
+     * 
+     * @param Mv 视图矩阵
+     * @param scene 场景引用
+     * @param sceneInfo 场景信息（输出）
+     */
     // Update SceneInfo struct for a given light
     static void updateSceneInfoDirectional(const math::mat4f& Mv, FScene const& scene,
             SceneInfo& sceneInfo);
 
+    /**
+     * 更新聚光灯的场景信息
+     * 
+     * @param Mv 视图矩阵
+     * @param scene 场景引用
+     * @param sceneInfo 场景信息（输出）
+     */
     static void updateSceneInfoSpot(const math::mat4f& Mv, FScene const& scene,
             SceneInfo& sceneInfo);
 

@@ -65,7 +65,7 @@ using namespace backend;
 // name: 实例名称（可选，如果为 nullptr 则使用 Material 的名称）
 FMaterialInstance::FMaterialInstance(FEngine& engine, FMaterial const* material, const char* name) noexcept
         : mMaterial(material),
-          // 创建描述符集，使用 Material 的描述符集布局
+          // 创建描述符堆，使用 Material 的描述符堆布局
           mDescriptorSet("MaterialInstance", material->getDescriptorSetLayout()),
           mCulling(CullingMode::BACK),
           mShadowCulling(CullingMode::BACK),
@@ -82,7 +82,7 @@ FMaterialInstance::FMaterialInstance(FEngine& engine, FMaterial const* material,
     FEngine::DriverApi& driver = engine.getDriverApi();
 
     // 即使材质没有任何参数，我们也分配一个小的 UBO（最小 16 字节）
-    // 因为 per-material 描述符集布局期望有一个 UBO
+    // 因为 per-material 描述符堆布局期望有一个 UBO
     size_t const uboSize = std::max(size_t(16), material->getUniformInterfaceBlock().getSize());
     mUniforms = UniformBuffer(uboSize);
 
@@ -95,7 +95,7 @@ FMaterialInstance::FMaterialInstance(FEngine& engine, FMaterial const* material,
         // 独立 UBO 模式：立即创建独立的 BufferObject
         mUboData = driver.createBufferObject(mUniforms.getSize(), BufferObjectBinding::UNIFORM,
                 BufferUsage::STATIC, ImmutableCString{ material->getName().c_str_safe() });
-        // 设置 UBO 到描述符集，总是使用 descriptor 0
+        // 设置 UBO 到描述符堆，总是使用 descriptor 0
         mDescriptorSet.setBuffer(material->getDescriptorSetLayout(),
                 0, std::get<Handle<HwBufferObject>>(mUboData), 0, mUniforms.getSize());
     }
@@ -265,7 +265,7 @@ void FMaterialInstance::commit(FEngine::DriverApi& driver, UboManager* uboManage
             // 获取纹理的采样句柄
             Handle<HwTexture> const handle = p.texture->getHwHandleForSampling();
             assert_invariant(handle);
-            // 设置采样器到描述符集
+            // 设置采样器到描述符堆
             mDescriptorSet.setSampler(mMaterial->getDescriptorSetLayout(),
                 binding, handle, p.params);
         }
@@ -280,7 +280,7 @@ void FMaterialInstance::commit(FEngine::DriverApi& driver, UboManager* uboManage
         return;
     }
 
-    // 5. 提交描述符集（例如当纹理更新时，或首次提交时）
+    // 5. 提交描述符堆（例如当纹理更新时，或首次提交时）
     mDescriptorSet.commit(mMaterial->getDescriptorSetLayout(), driver);
 }
 
@@ -421,12 +421,12 @@ const char* FMaterialInstance::getName() const noexcept {
 
 // ------------------------------------------------------------------------------------------------
 
-// 绑定 MaterialInstance 的描述符集到渲染管线
+// 绑定 MaterialInstance 的描述符堆到渲染管线
 // driver: 驱动 API 引用
 // variant: 当前使用的变体（用于判断是否为共享变体）
 // 此方法在渲染时调用，将 MaterialInstance 的 DescriptorSet 绑定到指定的绑定点
 void FMaterialInstance::use(FEngine::DriverApi& driver, Variant variant) const {
-    // 如果描述符集尚未创建（未提交），直接返回
+    // 如果描述符堆尚未创建（未提交），直接返回
     if (!mDescriptorSet.getHandle()) {
         return;
     }
@@ -458,12 +458,12 @@ void FMaterialInstance::use(FEngine::DriverApi& driver, Variant variant) const {
     }
 
     // 检查此变体是否为共享变体（深度变体）
-    // 如果是共享变体，FMaterial 负责绑定描述符集（使用默认材质的 DescriptorSet）
+    // 如果是共享变体，FMaterial 负责绑定描述符堆（使用默认材质的 DescriptorSet）
     if (mMaterial->useShared(driver, variant)) {
         return;
     }
 
-    // 绑定 MaterialInstance 的描述符集到 PER_MATERIAL 绑定点
+    // 绑定 MaterialInstance 的描述符堆到 PER_MATERIAL 绑定点
     // 如果使用 UBO 批处理，mUboOffset 是动态偏移；否则为 0
     mDescriptorSet.bind(driver, DescriptorSetBindingPoints::PER_MATERIAL,
             { { mUboOffset }, driver });

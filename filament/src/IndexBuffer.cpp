@@ -20,11 +20,23 @@
 
 namespace filament {
 
+/**
+ * 设置索引缓冲区数据
+ * 
+ * @param engine 引擎引用
+ * @param buffer 缓冲区描述符（移动语义）
+ * @param byteOffset 字节偏移量
+ */
 void IndexBuffer::setBuffer(Engine& engine,
         BufferDescriptor&& buffer, uint32_t const byteOffset) {
     downcast(this)->setBuffer(downcast(engine), std::move(buffer), byteOffset);
 }
 
+/**
+ * 获取索引数量
+ * 
+ * @return 索引数量
+ */
 size_t IndexBuffer::getIndexCount() const noexcept {
     return downcast(this)->getIndexCount();
 }

@@ -29,31 +29,56 @@ namespace filament {
 
 class FEngine;
 
+/**
+ * 同步对象实现类
+ * 
+ * 管理 GPU-CPU 同步对象，用于跨平台同步。
+ * 同步对象可以用于等待 GPU 操作完成，或导出到外部系统。
+ */
 class FSync : public Sync {
 public:
+    /**
+     * 构造函数
+     * 
+     * @param engine 引擎引用
+     */
     FSync(FEngine& engine);
 
+    /**
+     * 终止同步对象
+     * 
+     * 释放驱动资源，对象变为无效。
+     * 
+     * @param engine 引擎引用
+     */
     void terminate(FEngine& engine) noexcept;
 
+    /**
+     * 获取硬件句柄
+     * 
+     * @return 同步对象硬件句柄
+     */
     backend::SyncHandle getHwHandle() const noexcept { return mHwSync; }
 
     /**
-     * Fetches a handle to the external, platform-specific representation of
-     * this sync object.
+     * 获取外部句柄
+     * 
+     * 获取此同步对象的外部、平台特定表示的句柄。
+     * 这用于将同步对象导出到外部系统（如 Vulkan 信号量）。
      *
-     * @param handler A handler for the callback that will receive the handle
-     * @param callback A callback that will receive the handle when ready
-     * @param userData Data to be passed to the callback so that the application
-     *                 can identify what frame the sync is relevant to.
-     * @return The external handle for the Sync. This is valid destroy() is
-     *         called on this Sync object.
+     * @param handler 回调处理器指针，将接收句柄
+     * @param callback 回调函数，当句柄准备好时将被调用
+     * @param userData 传递给回调的用户数据，以便应用程序
+     *                 可以识别同步对象相关的帧
+     * 
+     * 注意：外部句柄在此 Sync 对象上调用 destroy() 之前有效。
      */
     void getExternalHandle(Sync::CallbackHandler* handler, Sync::Callback callback,
             void* userData) noexcept;
 
 private:
-    FEngine& mEngine;
-    backend::SyncHandle mHwSync;
+    FEngine& mEngine;  // 引擎引用
+    backend::SyncHandle mHwSync;  // 硬件同步句柄
 };
 
 FILAMENT_DOWNCAST(Sync)

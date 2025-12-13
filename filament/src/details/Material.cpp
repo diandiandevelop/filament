@@ -77,28 +77,53 @@ using namespace filaflat;
 using namespace utils;
 using UboBatchingMode = Material::UboBatchingMode;
 
+/**
+ * 检查是否应该启用 UBO 批处理
+ * 
+ * UBO 批处理允许将多个材质实例的统一数据打包到单个 UBO 中，
+ * 减少绘制调用和状态切换。
+ * 
+ * @param engine 引擎引用
+ * @param batchingMode 批处理模式
+ * @param domain 材质域
+ * @return 如果应该启用批处理返回 true，否则返回 false
+ */
 bool shouldEnableBatching(FEngine& engine, UboBatchingMode batchingMode, MaterialDomain domain) {
+    // 批处理必须：
+    // 1. 未明确禁用
+    // 2. 引擎支持批处理
+    // 3. 材质域为 SURFACE（表面材质）
     return batchingMode != UboBatchingMode::DISABLED && engine.isUboBatchingEnabled() &&
            domain == MaterialDomain::SURFACE;
 }
 
 } // anonymous namespace
 
+/**
+ * 材质构建器详情结构
+ * 
+ * 存储材质的构建参数。
+ */
 struct Material::BuilderDetails {
-    const void* mPayload = nullptr;
-    size_t mSize = 0;
-    bool mDefaultMaterial = false;
-    int32_t mShBandsCount = 3;
-    Builder::ShadowSamplingQuality mShadowSamplingQuality = Builder::ShadowSamplingQuality::LOW;
-    UboBatchingMode mUboBatchingMode = UboBatchingMode::DEFAULT;
+    const void* mPayload = nullptr;  // 材质包数据指针（包含编译后的材质数据）
+    size_t mSize = 0;  // 材质包大小（字节）
+    bool mDefaultMaterial = false;  // 是否为默认材质（用于错误情况）
+    int32_t mShBandsCount = 3;  // 球谐函数频带数（1-3，默认 3，用于 IBL）
+    Builder::ShadowSamplingQuality mShadowSamplingQuality = Builder::ShadowSamplingQuality::LOW;  // 阴影采样质量（默认 LOW）
+    UboBatchingMode mUboBatchingMode = UboBatchingMode::DEFAULT;  // UBO 批处理模式（默认使用引擎设置）
     std::unordered_map<
-        CString,
-        std::variant<int32_t, float, bool>,
-        CString::Hasher> mConstantSpecializations;
+        CString,  // 常量名称
+        std::variant<int32_t, float, bool>,  // 常量值（可以是整数、浮点数或布尔值）
+        CString::Hasher> mConstantSpecializations;  // 常量特化映射（用于编译时优化）
 };
 
+/**
+ * 默认材质构建器构造函数
+ * 
+ * 创建默认材质构建器，用于错误情况下的回退材质。
+ */
 FMaterial::DefaultMaterialBuilder::DefaultMaterialBuilder() {
-    mImpl->mDefaultMaterial = true;
+    mImpl->mDefaultMaterial = true;  // 标记为默认材质
 }
 
 using BuilderType = Material;
@@ -109,32 +134,79 @@ BuilderType::Builder::Builder(Builder&& rhs) noexcept = default;
 BuilderType::Builder& BuilderType::Builder::operator=(Builder const& rhs) noexcept = default;
 BuilderType::Builder& BuilderType::Builder::operator=(Builder&& rhs) noexcept = default;
 
+/**
+ * 设置材质包数据
+ * 
+ * 设置包含编译后的材质数据的包。
+ * 
+ * @param payload 材质包数据指针
+ * @param size 材质包大小（字节）
+ * @return 构建器引用（支持链式调用）
+ */
 Material::Builder& Material::Builder::package(const void* payload, size_t const size) {
-    mImpl->mPayload = payload;
-    mImpl->mSize = size;
-    return *this;
+    mImpl->mPayload = payload;  // 设置数据指针
+    mImpl->mSize = size;  // 设置数据大小
+    return *this;  // 返回自身引用
 }
 
+/**
+ * 设置球谐函数频带数
+ * 
+ * 设置用于间接光照（IBL）的球谐函数频带数。
+ * 更高的频带数提供更精确的光照，但会增加计算成本。
+ * 
+ * @param shBandCount 频带数（1-3，1=4 个系数，2=9 个系数，3=16 个系数）
+ * @return 构建器引用（支持链式调用）
+ */
 Material::Builder& Material::Builder::sphericalHarmonicsBandCount(size_t const shBandCount) noexcept {
-    mImpl->mShBandsCount = math::clamp(shBandCount, size_t(1), size_t(3));
-    return *this;
+    mImpl->mShBandsCount = math::clamp(shBandCount, size_t(1), size_t(3));  // 限制在 1-3 范围内
+    return *this;  // 返回自身引用
 }
 
+/**
+ * 设置阴影采样质量
+ * 
+ * 设置阴影贴图的采样质量，影响阴影的精度和性能。
+ * 
+ * @param quality 阴影采样质量（LOW、MEDIUM、HIGH）
+ * @return 构建器引用（支持链式调用）
+ */
 Material::Builder& Material::Builder::shadowSamplingQuality(ShadowSamplingQuality const quality) noexcept {
-    mImpl->mShadowSamplingQuality = quality;
-    return *this;
+    mImpl->mShadowSamplingQuality = quality;  // 设置质量
+    return *this;  // 返回自身引用
 }
 
+/**
+ * 设置 UBO 批处理模式
+ * 
+ * 设置统一缓冲区对象（UBO）的批处理模式。
+ * 批处理可以将多个材质实例的数据打包到单个 UBO 中，减少绘制调用。
+ * 
+ * @param mode 批处理模式（DISABLED、ENABLED、DEFAULT）
+ * @return 构建器引用（支持链式调用）
+ */
 Material::Builder& Material::Builder::uboBatching(UboBatchingMode const mode) noexcept {
-    mImpl->mUboBatchingMode = mode;
-    return *this;
+    mImpl->mUboBatchingMode = mode;  // 设置批处理模式
+    return *this;  // 返回自身引用
 }
 
+/**
+ * 设置常量特化值
+ * 
+ * 设置材质中的编译时常量值，用于编译时优化。
+ * 这些值会在编译时替换材质中的常量，生成优化的着色器变体。
+ * 
+ * @tparam T 常量类型（int32_t、float 或 bool）
+ * @param name 常量名称
+ * @param nameLength 名称长度
+ * @param value 常量值
+ * @return 构建器引用（支持链式调用）
+ */
 template<typename T, typename>
 Material::Builder& Material::Builder::constant(const char* name, size_t nameLength, T value) {
-    FILAMENT_CHECK_PRECONDITION(name != nullptr) << "name cannot be null";
-    mImpl->mConstantSpecializations[{name, nameLength}] = value;
-    return *this;
+    FILAMENT_CHECK_PRECONDITION(name != nullptr) << "name cannot be null";  // 验证名称不为空
+    mImpl->mConstantSpecializations[{name, nameLength}] = value;  // 存储常量特化值
+    return *this;  // 返回自身引用
 }
 
 template Material::Builder& Material::Builder::constant<int32_t>(const char*, size_t, int32_t);
@@ -506,7 +578,7 @@ Program FMaterial::getProgramWithVariants(
         program.attributes(mDefinition.attributeInfo);
     }
 
-    // 设置描述符集绑定信息（用于 Vulkan/Metal 的 Descriptor Set 绑定）
+    // 设置描述符堆绑定信息（用于 Vulkan/Metal 的 Descriptor Set 绑定）
     program.descriptorBindings(+DescriptorSetBindingPoints::PER_VIEW,
             mDefinition.programDescriptorBindings[+DescriptorSetBindingPoints::PER_VIEW]);
     program.descriptorBindings(+DescriptorSetBindingPoints::PER_RENDERABLE,

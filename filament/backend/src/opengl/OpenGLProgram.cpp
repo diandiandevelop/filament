@@ -56,7 +56,7 @@ using namespace backend;
  * 这些数据在程序编译完成后会被删除。
  */
 struct OpenGLProgram::LazyInitializationData {
-    Program::DescriptorSetInfo descriptorBindings;        // 描述符集绑定信息
+    Program::DescriptorSetInfo descriptorBindings;        // 描述符堆绑定信息
     Program::BindingUniformsInfo bindingUniformInfo;      // 绑定 Uniform 信息（仅 ES2）
     FixedCapacityVector<Program::PushConstant> vertexPushConstants;      // 顶点着色器 Push Constant
     FixedCapacityVector<Program::PushConstant> fragmentPushConstants;    // 片段着色器 Push Constant
@@ -181,7 +181,7 @@ void OpenGLProgram::initializeProgramState(OpenGLContext& context, GLuint progra
     // 从管线布局计算 {set, binding} 到 {binding} 的映射
     // 用于缓冲区和纹理
 
-    // 对每个描述符集的描述符按绑定索引排序
+    // 对每个描述符堆的描述符按绑定索引排序
     for (auto&& entry: lazyInitializationData.descriptorBindings) {
         std::sort(entry.begin(), entry.end(),
                 [](Program::Descriptor const& lhs, Program::Descriptor const& rhs) {
@@ -195,10 +195,10 @@ void OpenGLProgram::initializeProgramState(OpenGLContext& context, GLuint progra
     // 需要先使用程序，以便设置采样器 Uniform
     context.useProgram(program);
 
-    // 遍历所有描述符集
+    // 遍历所有描述符堆
     UTILS_NOUNROLL
     for (descriptor_set_t set = 0; set < MAX_DESCRIPTOR_SET_COUNT; set++) {
-        // 遍历当前描述符集的所有描述符
+        // 遍历当前描述符堆的所有描述符
         for (Program::Descriptor const& entry: lazyInitializationData.descriptorBindings[set]) {
             switch (entry.type) {
                 case DescriptorType::UNIFORM_BUFFER:

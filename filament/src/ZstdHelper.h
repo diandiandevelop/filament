@@ -21,31 +21,40 @@
 
 namespace filament {
 
+/**
+ * Zstd 辅助类
+ * 
+ * 提供 Zstd 压缩/解压缩的辅助功能。
+ * Zstd 是 Facebook 开发的高性能压缩算法。
+ */
 class ZstdHelper {
 public:
     /**
-     * Checks if the given binary blob is Zstd compressed.
-     * @param src Pointer to the source data.
-     * @param src_size Size of the source data.
-     * @return True if the data is Zstd compressed, false otherwise.
+     * 检查给定的二进制数据是否被 Zstd 压缩
+     * 
+     * @param src 源数据指针
+     * @param src_size 源数据大小
+     * @return 如果数据被 Zstd 压缩则返回 true，否则返回 false
      */
     static bool isCompressed(const void* src, size_t src_size) noexcept;
 
     /**
-     * Returns the decompressed size of a Zstd compressed blob.
-     * @param src Pointer to the source data.
-     * @param src_size Size of the source data.
-     * @return The decompressed size, or 0 if an error occurs.
+     * 返回 Zstd 压缩数据的解压后大小
+     * 
+     * @param src 源数据指针
+     * @param src_size 源数据大小
+     * @return 解压后的大小，如果发生错误则返回 0
      */
     static size_t getDecodedSize(const void* src, size_t src_size) noexcept;
 
     /**
-     * Decompresses a Zstd compressed blob into a pre-allocated buffer.
-     * @param dst Pointer to the destination buffer.
-     * @param dst_size Size of the destination buffer.
-     * @param src Pointer to the source data.
-     * @param src_size Size of the source data.
-     * @return The number of bytes decompressed, or 0 if an error occurs.
+     * 将 Zstd 压缩的数据解压到预分配的缓冲区
+     * 
+     * @param dst 目标缓冲区指针
+     * @param dst_size 目标缓冲区大小
+     * @param src 源数据指针
+     * @param src_size 源数据大小
+     * @return 解压的字节数，如果发生错误则返回 0
      */
     static size_t decompress(void* dst, size_t dst_size, const void* src, size_t src_size) noexcept;
 };

@@ -113,24 +113,72 @@ static_assert(kMaxBloomLevels >= 3, "We require at least 3 bloom levels");
 
 namespace {
 
+/**
+ * Halton 序列生成器
+ * 
+ * 生成 Halton 低差异序列的值。
+ * 跳过一些条目使序列的平均值更接近 0.5。
+ * 
+ * @param i 序列索引
+ * @param b 基数
+ * @return Halton 序列值（0-1 范围）
+ */
 constexpr float halton(unsigned int i, unsigned int const b) noexcept {
     // skipping a bunch of entries makes the average of the sequence closer to 0.5
+    /**
+     * 跳过 409 个条目，使平均值更接近 0.5
+     */
     i += 409;
+    /**
+     * 分数因子（初始为 1）
+     */
     float f = 1.0f;
+    /**
+     * 结果值
+     */
     float r = 0.0f;
+    /**
+     * 计算 Halton 序列值
+     */
     while (i > 0u) {
+        /**
+         * 除以基数得到下一个分数因子
+         */
         f /= float(b);
+        /**
+         * 累加当前位的贡献
+         */
         r += f * float(i % b);
+        /**
+         * 移动到下一位
+         */
         i /= b;
     }
     return r;
 }
 
+/**
+ * 设置常量参数
+ * 
+ * 设置材质的特化常量参数。
+ * 
+ * @tparam ValueType 值类型
+ * @param material 材质指针
+ * @param name 常量名称
+ * @param value 常量值
+ * @param dirty 输出标志，如果值改变则设置为 true
+ */
 template <typename ValueType>
 void setConstantParameter(FMaterial* const material, std::string_view const name,
         ValueType value, bool& dirty) noexcept {
+    /**
+     * 获取特化常量 ID
+     */
     auto id = material->getSpecializationConstantId(name);
     if (id.has_value()) {
+        /**
+         * 如果设置成功（值改变），标记为脏
+         */
         if (material->setConstant(id.value(), value)) {
             dirty = true;
         }
@@ -141,9 +189,22 @@ void setConstantParameter(FMaterial* const material, std::string_view const name
 
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * PostProcessMaterial 构造函数（静态材质信息版本）
+ * 
+ * 从静态材质信息创建后处理材质。
+ * 
+ * @param info 静态材质信息
+ */
 PostProcessManager::PostProcessMaterial::PostProcessMaterial(StaticMaterialInfo const& info) noexcept
-    : mConstants(info.constants.begin(), info.constants.size()) {
+    : mConstants(info.constants.begin(), info.constants.size()) {  // 复制常量列表
+    /**
+     * 保存材质数据指针（别名到 mMaterial）
+     */
     mData = info.data; // aliased to mMaterial
+    /**
+     * 保存材质数据大小
+     */
     mSize = info.size;
 }
 
@@ -177,18 +238,43 @@ void PostProcessManager::PostProcessMaterial::terminate(FEngine& engine) noexcep
     }
 }
 
+/**
+ * 加载材质
+ * 
+ * 从材质数据加载材质对象。
+ * 
+ * @param engine 引擎引用
+ */
 UTILS_NOINLINE
 void PostProcessManager::PostProcessMaterial::loadMaterial(FEngine& engine) const noexcept {
     // TODO: After all materials using this class have been converted to the post-process material
     //       domain, load both OPAQUE and TRANSPARENT variants here.
+    /**
+     * 创建材质构建器
+     */
     auto builder = Material::Builder();
+    /**
+     * 设置材质包数据
+     */
     builder.package(mData, mSize);
+    /**
+     * 设置所有特化常量
+     */
     for (auto const& constant: mConstants) {
+        /**
+         * 使用 std::visit 处理不同类型的常量值
+         */
         std::visit([&](auto&& arg) {
             builder.constant(constant.name.data(), constant.name.size(), arg);
         }, constant.value);
     }
+    /**
+     * 构建材质并转换为内部类型
+     */
     mMaterial = downcast(builder.build(engine));
+    /**
+     * 标记材质已加载（mSize = 0）
+     */
     mSize = 0; // material loaded
 }
 

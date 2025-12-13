@@ -23,21 +23,44 @@
 
 namespace filament {
 
-using DriverApi = backend::DriverApi;
+using DriverApi = backend::DriverApi;  // 驱动 API 类型别名
 
+/**
+ * 同步对象构造函数
+ * 
+ * 创建同步对象并分配驱动资源。
+ * 
+ * @param engine 引擎引用
+ */
 FSync::FSync(FEngine& engine)
-    : mEngine(engine) {
-    DriverApi& driverApi = engine.getDriverApi();
-    mHwSync = driverApi.createSync();
+    : mEngine(engine) {  // 初始化引擎引用
+    DriverApi& driverApi = engine.getDriverApi();  // 获取驱动 API
+    mHwSync = driverApi.createSync();  // 创建硬件同步对象
 }
 
+/**
+ * 终止同步对象
+ * 
+ * 释放驱动资源，对象变为无效。
+ * 
+ * @param engine 引擎引用
+ */
 void FSync::terminate(FEngine& engine) noexcept {
-    engine.getDriverApi().destroySync(mHwSync);
+    engine.getDriverApi().destroySync(mHwSync);  // 销毁硬件同步对象
 }
 
+/**
+ * 获取外部句柄
+ * 
+ * 获取平台特定的同步对象句柄，用于跨进程或跨 API 同步。
+ * 
+ * @param handler 回调处理器指针
+ * @param callback 回调函数
+ * @param userData 用户数据指针
+ */
 void FSync::getExternalHandle(Sync::CallbackHandler* handler, Sync::Callback callback,
         void* userData) noexcept {
-    mEngine.getDriverApi().getPlatformSync(mHwSync, handler, callback, userData);
+    mEngine.getDriverApi().getPlatformSync(mHwSync, handler, callback, userData);  // 获取平台同步对象
 }
 
 } // namespace filament

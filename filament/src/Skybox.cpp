@@ -20,22 +20,48 @@
 
 namespace filament {
 
+/**
+ * 设置天空盒层掩码
+ * 
+ * @param select 选择掩码
+ * @param values 值掩码
+ */
 void Skybox::setLayerMask(uint8_t const select, uint8_t const values) noexcept {
     downcast(this)->setLayerMask(select, values);
 }
 
+/**
+ * 获取天空盒层掩码
+ * 
+ * @return 层掩码
+ */
 uint8_t Skybox::getLayerMask() const noexcept {
     return downcast(this)->getLayerMask();
 }
 
+/**
+ * 获取天空盒强度
+ * 
+ * @return 强度值
+ */
 float Skybox::getIntensity() const noexcept {
     return downcast(this)->getIntensity();
 }
 
+/**
+ * 设置天空盒颜色
+ * 
+ * @param color 颜色值（RGBA）
+ */
 void Skybox::setColor(math::float4 const color) noexcept {
     downcast(this)->setColor(color);
 }
 
+/**
+ * 获取天空盒纹理
+ * 
+ * @return 纹理指针
+ */
 Texture const* Skybox::getTexture() const noexcept {
     return downcast(this)->getTexture();
 }

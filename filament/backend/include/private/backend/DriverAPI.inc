@@ -675,12 +675,12 @@ DECL_DRIVER_API_N(bindRenderPrimitive,
         backend::RenderPrimitiveHandle, rph)
 
 /**
- * 绑定描述符集
+ * 绑定描述符堆
  * 
  * 绑定资源集合到着色器（纹理、Uniform Buffer 等）。
  * 
- * @param dsh 描述符集句柄
- * @param set 描述符集索引（PER_VIEW、PER_MATERIAL、PER_RENDERABLE 等）
+ * @param dsh 描述符堆句柄
+ * @param set 描述符堆索引（PER_VIEW、PER_MATERIAL、PER_RENDERABLE 等）
  * @param offsets 偏移数组（用于动态 Uniform Buffer 偏移）
  */
 DECL_DRIVER_API_N(bindDescriptorSet,
@@ -809,7 +809,7 @@ DECL_DRIVER_API_N(blit,
 /**
  * 绘制（使用当前绑定的状态）
  * 
- * 执行绘制调用，使用当前绑定的管线状态、渲染图元和描述符集。
+ * 执行绘制调用，使用当前绑定的管线状态、渲染图元和描述符堆。
  * 这是推荐的绘制方法，性能更好。
  * 
  * @param indexOffset 索引偏移（从索引缓冲区的哪个位置开始）

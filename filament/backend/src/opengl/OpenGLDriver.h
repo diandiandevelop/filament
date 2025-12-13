@@ -23,8 +23,8 @@
 #include "OpenGLDriverBase.h"        // OpenGL 驱动基类
 #include "OpenGLTimerQuery.h"        // OpenGL 定时器查询
 #include "GLBufferObject.h"          // OpenGL 缓冲区对象
-#include "GLDescriptorSet.h"         // OpenGL 描述符集
-#include "GLDescriptorSetLayout.h"   // OpenGL 描述符集布局
+#include "GLDescriptorSet.h"         // OpenGL 描述符堆
+#include "GLDescriptorSetLayout.h"   // OpenGL 描述符堆布局
 #include "GLMemoryMappedBuffer.h"   // OpenGL 内存映射缓冲区
 #include "GLTexture.h"               // OpenGL 纹理
 #include "ShaderCompilerService.h"   // 着色器编译服务
@@ -280,8 +280,8 @@ public:
     using GLBufferObject = filament::backend::GLBufferObject;              // OpenGL 缓冲区对象
     using GLTexture = filament::backend::GLTexture;                        // OpenGL 纹理
     using GLTimerQuery = filament::backend::GLTimerQuery;                  // OpenGL 定时器查询
-    using GLDescriptorSetLayout = filament::backend::GLDescriptorSetLayout; // OpenGL 描述符集布局
-    using GLDescriptorSet = filament::backend::GLDescriptorSet;             // OpenGL 描述符集
+    using GLDescriptorSetLayout = filament::backend::GLDescriptorSetLayout; // OpenGL 描述符堆布局
+    using GLDescriptorSet = filament::backend::GLDescriptorSet;             // OpenGL 描述符堆
     using GLMemoryMappedBuffer = filament::backend::GLMemoryMappedBuffer;  // OpenGL 内存映射缓冲区
 
     /**
@@ -835,25 +835,25 @@ private:
     GLRenderPrimitive const* mBoundRenderPrimitive = nullptr;  // 当前绑定的渲染图元
     OpenGLProgram* mBoundProgram = nullptr;                     // 当前绑定的程序
     bool mValidProgram = false;                                 // 程序是否有效（编译/链接成功）
-    utils::bitset8 mInvalidDescriptorSetBindings;              // 无效的描述符集绑定位掩码
-    utils::bitset8 mInvalidDescriptorSetBindingOffsets;       // 无效的描述符集偏移位掩码
+    utils::bitset8 mInvalidDescriptorSetBindings;              // 无效的描述符堆绑定位掩码
+    utils::bitset8 mInvalidDescriptorSetBindingOffsets;       // 无效的描述符堆偏移位掩码
     
     /**
      * 更新描述符
      * 
-     * 将无效的描述符集绑定到 OpenGL 上下文。
+     * 将无效的描述符堆绑定到 OpenGL 上下文。
      * 
-     * @param invalidDescriptorSets 无效描述符集的位掩码
+     * @param invalidDescriptorSets 无效描述符堆的位掩码
      */
     void updateDescriptors(utils::bitset8 invalidDescriptorSets) noexcept;
 
     /**
-     * 绑定的描述符集数组
+     * 绑定的描述符堆数组
      * 
-     * 存储每个槽位绑定的描述符集和偏移。
+     * 存储每个槽位绑定的描述符堆和偏移。
      */
     struct {
-        DescriptorSetHandle dsh;                                    // 描述符集句柄
+        DescriptorSetHandle dsh;                                    // 描述符堆句柄
         std::array<uint32_t, CONFIG_UNIFORM_BINDING_COUNT> offsets; // 动态偏移数组
     } mBoundDescriptorSets[MAX_DESCRIPTOR_SET_COUNT] = {};
 
@@ -980,7 +980,7 @@ private:
     bool mRec709OutputColorspace = false;          // 是否使用 Rec.709 输出颜色空间
 
     PushConstantBundle* mCurrentPushConstants = nullptr;  // 当前推送常量包
-    PipelineLayout::SetLayout mCurrentSetLayout;            // 当前管线布局（描述符集布局）
+    PipelineLayout::SetLayout mCurrentSetLayout;            // 当前管线布局（描述符堆布局）
 };
 
 // ------------------------------------------------------------------------------------------------

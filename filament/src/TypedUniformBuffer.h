@@ -26,48 +26,94 @@
 
 namespace filament {
 
+/**
+ * 类型化缓冲区
+ * 
+ * 类型安全的统一缓冲区包装器。
+ * 
+ * @tparam T 元素类型
+ * @tparam N 元素数量（默认 1）
+ */
 template<typename T, size_t N = 1>
 class TypedBuffer { // NOLINT(cppcoreguidelines-pro-type-member-init)
 public:
 
+    /**
+     * 获取指定索引的元素（可编辑）
+     * 
+     * @param i 索引
+     * @return 元素引用
+     */
     T& itemAt(size_t i) noexcept {
         mSomethingDirty = true;
         return mBuffer[i];
     }
 
+    /**
+     * 编辑第一个元素
+     * 
+     * @return 第一个元素的引用
+     */
     T& edit() noexcept {
         return itemAt(0);
     }
 
-    // size of the uniform buffer in bytes
+    /**
+     * 获取统一缓冲区大小
+     * 
+     * @return 大小（字节）
+     */
     size_t getSize() const noexcept { return sizeof(T) * N; }
 
-    // return if any uniform has been changed
+    /**
+     * 检查是否有 uniform 被修改
+     * 
+     * @return true 如果有修改
+     */
     bool isDirty() const noexcept { return mSomethingDirty; }
 
-    // mark the whole buffer as "clean" (no modified uniforms)
+    /**
+     * 标记整个缓冲区为"干净"（没有修改的 uniform）
+     */
     void clean() const noexcept { mSomethingDirty = false; }
 
-    // helper functions
+    /**
+     * 辅助函数
+     */
 
+    /**
+     * 转换为缓冲区描述符
+     * 
+     * @param driver 驱动 API 引用
+     * @return 缓冲区描述符
+     */
     backend::BufferDescriptor toBufferDescriptor(backend::DriverApi& driver) const noexcept {
         return toBufferDescriptor(driver, 0, getSize());
     }
 
-    // copy the UBO data and cleans the dirty bits
+    /**
+     * 转换为缓冲区描述符（指定范围）
+     * 
+     * 复制 UBO 数据并清理脏位。
+     * 
+     * @param driver 驱动 API 引用
+     * @param offset 偏移量（字节）
+     * @param size 大小（字节）
+     * @return 缓冲区描述符
+     */
     backend::BufferDescriptor toBufferDescriptor(
             backend::DriverApi& driver, size_t offset, size_t size) const noexcept {
         backend::BufferDescriptor p;
         p.size = size;
-        p.buffer = driver.allocate(p.size); // TODO: use out-of-line buffer if too large
-        memcpy(p.buffer, reinterpret_cast<const char*>(mBuffer) + offset, p.size); // inlined
+        p.buffer = driver.allocate(p.size); // TODO: 如果太大，使用离线缓冲区
+        memcpy(p.buffer, reinterpret_cast<const char*>(mBuffer) + offset, p.size); // 内联
         clean();
         return p;
     }
 
 private:
-    T mBuffer[N];
-    mutable bool mSomethingDirty = false;
+    T mBuffer[N];  // 缓冲区数组
+    mutable bool mSomethingDirty = false;  // 脏标记
 };
 
 } // namespace filament

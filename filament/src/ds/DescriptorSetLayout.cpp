@@ -30,39 +30,81 @@
 
 namespace filament {
 
+/**
+ * 默认构造函数
+ * 
+ * 创建一个空的描述符集布局。
+ */
 DescriptorSetLayout::DescriptorSetLayout() noexcept = default;
 
+/**
+ * 构造函数
+ * 
+ * 从后端描述符集布局创建描述符集布局。
+ * 
+ * @param factory 硬件描述符集布局工厂引用
+ * @param driver 驱动 API 引用
+ * @param descriptorSetLayout 后端描述符集布局（将被移动）
+ */
 DescriptorSetLayout::DescriptorSetLayout(
         HwDescriptorSetLayoutFactory& factory,
         backend::DriverApi& driver,
         backend::DescriptorSetLayout descriptorSetLayout) noexcept  {
-    for (auto&& desc : descriptorSetLayout.bindings) {
-        mMaxDescriptorBinding = std::max(mMaxDescriptorBinding, desc.binding);
-        mSamplers.set(desc.binding, backend::DescriptorSetLayoutBinding::isSampler(desc.type));
-        mUniformBuffers.set(desc.binding, desc.type == backend::DescriptorType::UNIFORM_BUFFER);
+    /**
+     * 遍历所有绑定，计算最大绑定点并设置标志位
+     */
+    for (auto&& desc : descriptorSetLayout.bindings) {  // 遍历绑定
+        mMaxDescriptorBinding = std::max(mMaxDescriptorBinding, desc.binding);  // 更新最大绑定点
+        mSamplers.set(desc.binding, backend::DescriptorSetLayoutBinding::isSampler(desc.type));  // 设置采样器标志
+        mUniformBuffers.set(desc.binding, desc.type == backend::DescriptorType::UNIFORM_BUFFER);  // 设置统一缓冲区标志
     }
 
-    assert_invariant(mMaxDescriptorBinding < utils::bitset64::BIT_COUNT);
+    assert_invariant(mMaxDescriptorBinding < utils::bitset64::BIT_COUNT);  // 断言最大绑定点在有效范围内
 
-    mDescriptorTypes = utils::FixedCapacityVector<backend::DescriptorType>(mMaxDescriptorBinding + 1);
-    for (auto&& desc : descriptorSetLayout.bindings) {
-        mDescriptorTypes[desc.binding] = desc.type;
+    /**
+     * 创建描述符类型向量并填充
+     */
+    mDescriptorTypes = utils::FixedCapacityVector<backend::DescriptorType>(mMaxDescriptorBinding + 1);  // 创建类型向量
+    for (auto&& desc : descriptorSetLayout.bindings) {  // 遍历绑定
+        mDescriptorTypes[desc.binding] = desc.type;  // 存储描述符类型
     }
 
+    /**
+     * 通过工厂创建硬件描述符集布局
+     */
     mDescriptorSetLayoutHandle = factory.create(driver,
-            std::move(descriptorSetLayout));
+            std::move(descriptorSetLayout));  // 创建硬件布局
 }
 
+/**
+ * 终止描述符集布局
+ * 
+ * 释放描述符集布局的硬件资源。
+ * 
+ * @param factory 硬件描述符集布局工厂引用
+ * @param driver 驱动 API 引用
+ */
 void DescriptorSetLayout::terminate(
         HwDescriptorSetLayoutFactory& factory,
         backend::DriverApi& driver) noexcept {
-    if (mDescriptorSetLayoutHandle) {
-        factory.destroy(driver, mDescriptorSetLayoutHandle);
+    if (mDescriptorSetLayoutHandle) {  // 如果句柄有效
+        factory.destroy(driver, mDescriptorSetLayoutHandle);  // 销毁硬件布局
     }
 }
 
+/**
+ * 移动构造函数
+ * 
+ * @param rhs 右值引用
+ */
 DescriptorSetLayout::DescriptorSetLayout(DescriptorSetLayout&& rhs) noexcept = default;
 
+/**
+ * 移动赋值运算符
+ * 
+ * @param rhs 右值引用
+ * @return 自身引用
+ */
 DescriptorSetLayout& DescriptorSetLayout::operator=(DescriptorSetLayout&& rhs) noexcept = default;
 
 } // namespace filament

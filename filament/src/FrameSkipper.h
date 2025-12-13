@@ -27,60 +27,101 @@
 
 namespace filament {
 
-/*
- * FrameSkipper is used to determine if the current frame needs to be skipped so that we don't
- * outrun the GPU.
+/**
+ * 帧跳过器
+ * 
+ * 用于确定当前帧是否需要跳过，以防止 CPU 超过 GPU。
+ * 
+ * 工作原理：
+ * - 使用栅栏跟踪未完成的帧
+ * - 如果 GPU 仍在处理较旧的帧，则跳过当前帧
+ * - 这有助于保持帧率稳定并避免卡顿
  */
 class FrameSkipper {
-    /*
-     * The maximum frame latency acceptable on ANDROID is 2 because higher latencies will be
-     * throttled anyway in BufferQueueProducer::dequeueBuffer(), because ANDROID is generally
-     * triple-buffered no more; that case is actually pretty bad because the GL thread can block
-     * anywhere (usually inside the first draw command that touches the swapchain).
-     *
-     * A frame latency of 1 has the benefit of reducing render latency,
-     * but the drawback of preventing CPU / GPU overlap.
-     *
-     * Generally a frame latency of 2 is the best compromise.
+    /**
+     * 最大帧延迟
+     * 
+     * 在 ANDROID 上可接受的最大帧延迟为 2，因为更高的延迟会在
+     * BufferQueueProducer::dequeueBuffer() 中被限制，因为 ANDROID 通常最多是三缓冲；
+     * 这种情况实际上很糟糕，因为 GL 线程可能在任何地方阻塞
+     * （通常在触及交换链的第一个绘制命令内部）。
+     * 
+     * 帧延迟为 1 的好处是减少渲染延迟，
+     * 但缺点是阻止 CPU / GPU 重叠。
+     * 
+     * 通常帧延迟为 2 是最好的折衷方案。
      */
     static constexpr size_t MAX_FRAME_LATENCY = 2;
 public:
-    /*
-     * The latency parameter defines how many unfinished frames we want to accept before we start
-     * dropping frames. This affects frame latency.
-     *
-     * A latency of 1 means that the GPU must be finished with the previous frame so that
-     * we don't drop the current frame. While this provides the best latency this doesn't allow
-     * much overlap between the main thread, the back thread and the GPU.
-     *
-     * A latency of 2 (default) allows full overlap between the CPU And GPU, but the main and driver
-     * thread can't fully overlap.
-     *
-     * A latency 3 allows the main thread, driver thread and GPU to overlap, each being able to
-     * use up to 16ms (or whatever the refresh rate is).
+    /**
+     * 构造函数
+     * 
+     * latency 参数定义在开始丢帧之前我们想要接受多少个未完成的帧。
+     * 这会影响帧延迟。
+     * 
+     * - 延迟为 1：GPU 必须完成前一帧，这样我们才不会丢当前帧。
+     *   虽然这提供了最好的延迟，但这不允许主线程、后端线程和 GPU 之间有很多重叠。
+     * 
+     * - 延迟为 2（默认）：允许 CPU 和 GPU 完全重叠，但主线程和驱动线程不能完全重叠。
+     * 
+     * - 延迟为 3：允许主线程、驱动线程和 GPU 重叠，每个都可以使用最多 16ms
+     *   （或任何刷新率）。
+     * 
+     * @param latency 帧延迟（默认 2）
      */
     explicit FrameSkipper(size_t latency = 2) noexcept;
     ~FrameSkipper() noexcept;
 
+    /**
+     * 终止帧跳过器
+     * 
+     * 清理所有栅栏资源。
+     * 
+     * @param driver 驱动 API 引用
+     */
     void terminate(backend::DriverApi& driver) noexcept;
 
-    // Returns false if we should skip this frame because the GPU is running behind the CPU.
-    // In that case, don't call submitFrame().
-    // Returns true if rendering can proceed. Always call submitFrame() when done.
+    /**
+     * 是否应该渲染帧
+     * 
+     * 如果 GPU 落后于 CPU，返回 false，在这种情况下，不要调用 submitFrame()。
+     * 如果渲染可以继续，返回 true。完成后始终调用 submitFrame()。
+     * 
+     * @param driver 驱动 API 引用
+     * @return true 如果可以渲染，false 如果应该跳过
+     */
     bool shouldRenderFrame(backend::DriverApi& driver) const noexcept;
 
+    /**
+     * 提交帧
+     * 
+     * 在帧渲染完成后调用，创建新的栅栏并更新栅栏队列。
+     * 
+     * @param driver 驱动 API 引用
+     */
     void submitFrame(backend::DriverApi& driver) noexcept;
 
-    // set frameCount frame to report as "skip". For debugging.
+    /**
+     * 跳过接下来的帧
+     * 
+     * 设置要报告为"跳过"的帧数。用于调试。
+     * 
+     * @param frameCount 要跳过的帧数
+     */
     void skipNextFrames(size_t frameCount) const noexcept;
-    // return remaining number of frame to be skipped
+    
+    /**
+     * 获取待跳过的帧数
+     * 
+     * @return 剩余要跳过的帧数
+     */
     size_t getFrameToSkipCount() const noexcept;
 
 private:
-    using Container = std::array<backend::Handle<backend::HwFence>, MAX_FRAME_LATENCY>;
-    Container mDelayedFences{};
-    uint8_t const mLatency;
-    mutable uint16_t mFrameToSkip{};
+    using Container = std::array<backend::Handle<backend::HwFence>, MAX_FRAME_LATENCY>;  // 栅栏容器
+    Container mDelayedFences{};  // 延迟的栅栏数组（用于跟踪未完成的帧）
+    uint8_t const mLatency;  // 帧延迟（实际值减 1）
+    mutable uint16_t mFrameToSkip{};  // 待跳过的帧数（用于调试）
 };
 
 } // namespace filament

@@ -18,8 +18,14 @@
 
 namespace filament {
 
+/**
+ * 帧图通道执行器析构函数
+ */
 FrameGraphPassExecutor::~FrameGraphPassExecutor() noexcept = default;
 
+/**
+ * 帧图通道基类析构函数
+ */
 FrameGraphPassBase::~FrameGraphPassBase() noexcept = default;
 
 } // namespace filament

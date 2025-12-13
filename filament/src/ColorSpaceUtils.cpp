@@ -20,46 +20,49 @@ namespace filament {
 
 using namespace math;
 
-/*
- * The section below is subject to the following license.
- * Source: https://bottosson.github.io/posts/gamutclipping/
- *
+/**
+ * 色域裁剪实现
+ * 
+ * 以下部分遵循以下许可证：
+ * 来源：https://bottosson.github.io/posts/gamutclipping/
+ * 
  * Copyright (c) 2021 Björn Ottosson
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy of
- * this software and associated documentation files (the "Software"), to deal in
- * the Software without restriction, including without limitation the rights to
- * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
- * of the Software, and to permit persons to whom the Software is furnished to do
- * so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * 
+ * 许可条款：允许自由使用、修改、分发等。
  */
 
-// TODO: Replace compute_max_saturation() with solution from
-//       https://simonstechblog.blogspot.com/2021/06/implementing-gamut-mapping.html to
-//       target arbitrary output gamuts. The solution below works only for sRGB/Rec.709
+/**
+ * TODO: 用来自以下链接的解决方案替换 compute_max_saturation()：
+ *       https://simonstechblog.blogspot.com/2021/06/implementing-gamut-mapping.html
+ *       以支持任意输出色域。下面的解决方案仅适用于 sRGB/Rec.709
+ */
 
-// Finds the maximum saturation possible for a given hue that fits in sRGB
-// Saturation here is defined as S = C/L
-// a and b must be normalized so a^2 + b^2 == 1
+/**
+ * 计算给定色调在 sRGB 色域内的最大饱和度
+ * 
+ * 饱和度定义为 S = C/L（色度/亮度）。
+ * 
+ * @param a OkLab 颜色空间的 a 分量（必须归一化，使得 a^2 + b^2 == 1）
+ * @param b OkLab 颜色空间的 b 分量（必须归一化，使得 a^2 + b^2 == 1）
+ * @return 最大饱和度
+ * 
+ * 实现细节：
+ * - 最大饱和度出现在 r、g 或 b 之一降为零时
+ * - 根据哪个分量先降为零选择不同的系数
+ * - 使用多项式近似，然后用 Halley 方法进行一步迭代以提高精度
+ */
 static float compute_max_saturation(float const a, float const b) noexcept {
-    // Max saturation will be when one of r, g or b goes below zero.
-
-    // Select different coefficients depending on which component goes below zero first
+    /**
+     * 最大饱和度出现在 r、g 或 b 之一降为零时。
+     * 
+     * 根据哪个分量先降为零选择不同的系数。
+     */
     float k0, k1, k2, k3, k4, wl, wm, ws;
 
     if (-1.88170328f * a - 0.80936493f * b > 1) {
-        // Red component
+        /**
+         * 红色分量先降为零
+         */
         k0 = +1.19086277f;
         k1 = +1.76576728f;
         k2 = +0.59662641f;
@@ -69,7 +72,9 @@ static float compute_max_saturation(float const a, float const b) noexcept {
         wm = -3.3077115913f;
         ws = +0.2309699292f;
     } else if (1.81444104f * a - 1.19445276f * b > 1) {
-        // Green component
+        /**
+         * 绿色分量先降为零
+         */
         k0 = +0.73956515f;
         k1 = -0.45954404f;
         k2 = +0.08285427f;
@@ -79,7 +84,9 @@ static float compute_max_saturation(float const a, float const b) noexcept {
         wm = +2.6097574011f;
         ws = -0.3413193965f;
     } else {
-        // Blue component
+        /**
+         * 蓝色分量先降为零
+         */
         k0 = +1.35733652f;
         k1 = -0.00915799f;
         k2 = -1.15130210f;
@@ -90,13 +97,17 @@ static float compute_max_saturation(float const a, float const b) noexcept {
         ws = +1.7076147010f;
     }
 
-    // Approximate max saturation using a polynomial:
+    /**
+     * 使用多项式近似最大饱和度
+     */
     float S = k0 + k1 * a + k2 * b + k3 * a * a + k4 * a * b;
 
-    // Do one step Halley's method to get closer
-    // this gives an error less than 10e6, except for some blue hues where the dS/dh
-    // is close to infinite
-    // this should be sufficient for most applications, otherwise do two/three steps
+    /**
+     * 使用 Halley 方法进行一步迭代以提高精度
+     * 
+     * 这给出的误差小于 10e-6，除了某些蓝色色调（dS/dh 接近无穷大）。
+     * 对于大多数应用来说这应该足够了，否则可以进行 2-3 步迭代。
+     */
 
     float const k_l = +0.3963377774f * a + 0.2158037573f * b;
     float const k_m = -0.1055613458f * a - 0.0638541728f * b;
@@ -129,13 +140,24 @@ static float compute_max_saturation(float const a, float const b) noexcept {
     return S;
 }
 
-// finds L_cusp and C_cusp for a given hue
-// a and b must be normalized so a^2 + b^2 == 1
+/**
+ * 查找给定色调的 L_cusp 和 C_cusp
+ * 
+ * cusp 是色域三角形的顶点，表示该色调在色域边界上的点。
+ * 
+ * @param a OkLab 颜色空间的 a 分量（必须归一化，使得 a^2 + b^2 == 1）
+ * @param b OkLab 颜色空间的 b 分量（必须归一化，使得 a^2 + b^2 == 1）
+ * @return (L_cusp, C_cusp) 对
+ */
 static float2 find_cusp(float const a, float const b) noexcept {
-    // First, find the maximum saturation (saturation S = C/L)
+    /**
+     * 首先，找到最大饱和度（饱和度 S = C/L）
+     */
     float const S_cusp = compute_max_saturation(a, b);
 
-    // Convert to linear sRGB to find the first point where at least one of r,g or b >= 1:
+    /**
+     * 转换为线性 sRGB，找到至少一个 r、g 或 b >= 1 的第一个点
+     */
     float3 const rgb_at_max = OkLab_to_sRGB({1.0f, S_cusp * a, S_cusp * b});
     float const L_cusp = std::cbrt(1.0f / max(rgb_at_max));
     float const C_cusp = L_cusp * S_cusp;
@@ -143,26 +165,47 @@ static float2 find_cusp(float const a, float const b) noexcept {
     return { L_cusp, C_cusp };
 }
 
-// Finds intersection of the line defined by
-// L = L0 * (1 - t) + t * L1;
-// C = t * C1;
-// a and b must be normalized so a^2 + b^2 == 1
+/**
+ * 查找由以下直线定义的色域交点
+ * 
+ * L = L0 * (1 - t) + t * L1;
+ * C = t * C1;
+ * 
+ * @param a OkLab 颜色空间的 a 分量（必须归一化，使得 a^2 + b^2 == 1）
+ * @param b OkLab 颜色空间的 b 分量（必须归一化，使得 a^2 + b^2 == 1）
+ * @param L1 目标亮度
+ * @param C1 目标色度
+ * @param L0 起始亮度
+ * @return 交点参数 t
+ */
 static float find_gamut_intersection(float const a, float const b, float const L1, float const C1, float const L0) noexcept {
-    // Find the cusp of the gamut triangle
+    /**
+     * 查找色域三角形的 cusp（顶点）
+     */
     float2 const cusp = find_cusp(a, b);
 
-    // Find the intersection for upper and lower half separately
+    /**
+     * 分别查找上半部分和下半部分的交点
+     */
     float t;
     if (((L1 - L0) * cusp.y - (cusp.x - L0) * C1) <= 0.f) {
-        // Lower half
+        /**
+         * 下半部分
+         */
         t = cusp.y * L0 / (C1 * cusp.x + cusp.y * (L0 - L1));
     } else {
-        // Upper half
+        /**
+         * 上半部分
+         */
 
-        // First intersect with triangle
+        /**
+         * 首先与三角形相交
+         */
         t = cusp.y * (L0 - 1.f) / (C1 * (cusp.x - 1.f) + cusp.y * (L0 - L1));
 
-        // Then one step Halley's method
+        /**
+         * 然后使用 Halley 方法进行一步迭代
+         */
         {
             float const dL = L1 - L0;
             float const dC = C1;
@@ -231,14 +274,33 @@ static float find_gamut_intersection(float const a, float const b, float const L
     return t;
 }
 
+/**
+ * 符号函数
+ * 
+ * 返回 x 的符号：正数返回 1，负数返回 -1，零返回 0。
+ * 
+ * @param x 输入值
+ * @return 符号（1、-1 或 0）
+ */
 constexpr float sgn(float const x) noexcept {
     return (float) (0.f < x) - (float) (x < 0.f);
 }
 
-// Adaptive L0 = 0.5, with alpha set to 0.05 by default
-// The threshold parameters defines a flexible range above 1.0 and below 0.0 where out-of-gamut
-// values are still considered in-gamut. This helps control for inaccuracies in the previous
-// color grading steps that may slightly deviate from in-gamut values when they shouldn't.
+/**
+ * 自适应 L0 = 0.5 的色域裁剪
+ * 
+ * 使用自适应 L0 = 0.5，alpha 默认设置为 0.05。
+ * 
+ * threshold 参数定义了 1.0 以上和 0.0 以下的灵活范围，
+ * 在此范围内的超出色域值仍被视为在色域内。
+ * 这有助于控制先前颜色分级步骤中的不准确性，
+ * 这些步骤可能在不应该偏离色域值时略微偏离。
+ * 
+ * @param rgb RGB 颜色值
+ * @param alpha 自适应参数（默认 0.05）
+ * @param threshold 阈值参数（默认 0.03）
+ * @return 裁剪后的 RGB 颜色值
+ */
 inline float3 gamut_clip_adaptive_L0_0_5(float3 rgb,
         float alpha = 0.05f, float threshold = 0.03f) noexcept {
 
@@ -266,12 +328,20 @@ inline float3 gamut_clip_adaptive_L0_0_5(float3 rgb,
     return OkLab_to_sRGB({L_clipped, C_clipped * a_, C_clipped * b_});
 }
 
+/**
+ * sRGB 色域映射
+ * 
+ * 将颜色映射到 sRGB 色域内，使用自适应 L0 = 0.5 的色域裁剪算法。
+ * 
+ * @param rgb RGB 颜色值
+ * @return 映射后的 RGB 颜色值（在 sRGB 色域内）
+ */
 float3 gamutMapping_sRGB(float3 const rgb) noexcept {
     return gamut_clip_adaptive_L0_0_5(rgb);
 }
 
-/*
- * End source: https://bottosson.github.io/posts/gamutclipping/
+/**
+ * 结束来源：https://bottosson.github.io/posts/gamutclipping/
  */
 
 } //namespace filament

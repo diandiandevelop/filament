@@ -67,10 +67,25 @@ class FTransformManager;
  * ~~~~~~~~~~~
  *
  */
+/**
+ * TransformManager 用于向实体添加变换组件。
+ *
+ * 变换组件为实体提供在其父变换的坐标空间中的位置和方向。
+ * TransformManager 负责计算每个组件的世界空间变换（即相对于根节点的变换）。
+ *
+ * 创建和销毁
+ * ========================
+ *
+ * 变换组件使用 TransformManager::create() 创建，并通过调用
+ * TransformManager::destroy() 销毁。
+ */
 class UTILS_PUBLIC TransformManager : public FilamentAPI {
 public:
-    using Instance = utils::EntityInstance<TransformManager>;
+    using Instance = utils::EntityInstance<TransformManager>;  //!< 实例类型
 
+    /**
+     * 子节点迭代器类，用于遍历变换组件的子节点
+     */
     class children_iterator {
         friend class FTransformManager;
         TransformManager const& mManager;
@@ -108,6 +123,11 @@ public:
      * @param e An Entity.
      * @return true if this Entity has a component associated with this manager.
      */
+    /**
+     * 返回特定实体是否与此 TransformManager 的组件关联
+     * @param e 实体
+     * @return 如果此实体有与此管理器关联的组件则返回 true
+     */
     bool hasComponent(utils::Entity e) const noexcept;
 
     /**
@@ -117,15 +137,28 @@ public:
      * @note Use Instance::isValid() to make sure the component exists.
      * @see hasComponent()
      */
+    /**
+     * 获取表示与给定实体关联的变换组件的 Instance。
+     * @param e 实体
+     * @return 表示与实体 e 关联的变换组件的 Instance 对象
+     * @note 使用 Instance::isValid() 确保组件存在
+     * @see hasComponent()
+     */
     Instance getInstance(utils::Entity e) const noexcept;
 
     /**
      * @return the number of Components
      */
+    /**
+     * @return 组件数量
+     */
     size_t getComponentCount() const noexcept;
 
     /**
      * @return true if the this manager has no components
+     */
+    /**
+     * @return 如果此管理器没有组件则返回 true
      */
     bool empty() const noexcept;
 
@@ -134,11 +167,20 @@ public:
      * @param i Instance of the component obtained from getInstance()
      * @return
      */
+    /**
+     * 从其 `Instance` 检索组件的 `Entity`。
+     * @param i 从 getInstance() 获取的组件实例
+     * @return 实体
+     */
     utils::Entity getEntity(Instance i) const noexcept;
 
     /**
      * Retrieve the Entities of all the components of this manager.
      * @return A list, in no particular order, of all the entities managed by this manager.
+     */
+    /**
+     * 检索此管理器所有组件的实体。
+     * @return 此管理器管理的所有实体的列表（无特定顺序）
      */
     utils::Entity const* UTILS_NONNULL getEntities() const noexcept;
 
@@ -157,11 +199,31 @@ public:
      * @see getTransformAccurate
      * @see getWorldTransformAccurate
      */
+    /**
+     * 启用或禁用精确平移模式。默认禁用。
+     *
+     * 当精确平移模式激活时，所有变换的平移分量
+     * 保持在双精度。这仅在使用 setTransform() 的 mat4 版本
+     * 以及 getTransformAccurate() 时才有用。
+     *
+     * @param enable true 表示启用精确平移模式，false 表示禁用
+     *
+     * @see isAccurateTranslationsEnabled
+     * @see create(utils::Entity, Instance, const math::mat4&);
+     * @see setTransform(Instance, const math::mat4&)
+     * @see getTransformAccurate
+     * @see getWorldTransformAccurate
+     */
     void setAccurateTranslationsEnabled(bool enable) noexcept;
 
     /**
      * Returns whether the high precision translation mode is active.
      * @return true if accurate translations mode is active, false otherwise
+     * @see setAccurateTranslationsEnabled
+     */
+    /**
+     * 返回高精度平移模式是否激活。
+     * @return 如果精确平移模式激活则返回 true，否则返回 false
      * @see setAccurateTranslationsEnabled
      */
     bool isAccurateTranslationsEnabled() const noexcept;
@@ -178,9 +240,27 @@ public:
      *
      * @see destroy()
      */
+    /**
+     * 创建变换组件并将其与给定实体关联。
+     * @param entity            要关联变换组件的实体
+     * @param parent            父变换的 Instance，如果没有父节点则为 Instance{}
+     * @param localTransform    用于初始化变换组件的变换。
+     *                          这始终相对于父节点。
+     *
+     * 如果给定实体上已存在此组件，则首先销毁它，就像
+     * 调用了 destroy(utils::Entity e) 一样。
+     *
+     * @see destroy()
+     */
     void create(utils::Entity entity, Instance parent, const math::mat4f& localTransform);
     void create(utils::Entity entity, Instance parent, const math::mat4& localTransform); //!< \overload
+    /**
+     * 重载版本：使用双精度矩阵，支持精确平移
+     */
     void create(utils::Entity entity, Instance parent = {}); //!< \overload
+    /**
+     * 重载版本：创建时不指定局部变换，使用单位矩阵
+     */
 
     /**
      * Destroys this component from the given entity, children are orphaned.
@@ -189,6 +269,16 @@ public:
      * @note If this transform had children, these are orphaned, which means their local
      * transform becomes a world transform. Usually it's nonsensical. It's recommended to make
      * sure that a destroyed transform doesn't have children.
+     *
+     * @see create()
+     */
+    /**
+     * 从给定实体销毁此组件，子节点将变为孤立节点。
+     * @param e 实体
+     *
+     * @note 如果此变换有子节点，这些子节点将变为孤立节点，这意味着它们的局部
+     * 变换变为世界变换。通常这是没有意义的。建议确保
+     * 被销毁的变换没有子节点。
      *
      * @see create()
      */
@@ -201,11 +291,22 @@ public:
      * @attention It is an error to re-parent an entity to a descendant and will cause undefined behaviour.
      * @see getInstance()
      */
+    /**
+     * 将实体重新指定父节点。
+     * @param i             要重新指定父节点的变换组件实例
+     * @param newParent     新父变换的实例
+     * @attention 将实体重新指定为其后代的父节点是错误的，会导致未定义行为。
+     * @see getInstance()
+     */
     void setParent(Instance i, Instance newParent) noexcept;
 
     /**
      * Returns the parent of a transform component, or the null entity if it is a root.
      * @param i The instance of the transform component to query.
+     */
+    /**
+     * 返回变换组件的父节点，如果是根节点则返回空实体。
+     * @param i 要查询的变换组件实例
      */
     utils::Entity getParent(Instance i) const noexcept;
 
@@ -213,6 +314,11 @@ public:
      * Returns the number of children of a transform component.
      * @param i The instance of the transform component to query.
      * @return The number of children of the queried component.
+     */
+    /**
+     * 返回变换组件的子节点数量。
+     * @param i 要查询的变换组件实例
+     * @return 查询组件的子节点数量
      */
     size_t getChildCount(Instance i) const noexcept;
 
@@ -224,6 +330,14 @@ public:
      * @param count The maximum number of children to retrieve.
      * @return The number of children written to the pointer.
      */
+    /**
+     * 获取变换组件的子节点列表。
+     *
+     * @param i 要查询的变换组件实例
+     * @param children 指向 Entity 数组的指针。数组必须至少有 "count" 个元素
+     * @param count 要检索的最大子节点数量
+     * @return 写入指针的子节点数量
+     */
     size_t getChildren(Instance i, utils::Entity* UTILS_NONNULL children, size_t count) const noexcept;
 
     /**
@@ -233,6 +347,14 @@ public:
      * @return A forward iterator pointing to the first child of the given parent.
      *
      * A child_iterator can only safely be dereferenced if it's different from getChildrenEnd(parent)
+     */
+    /**
+     * 返回指向给定父节点第一个子节点的 Instance 的迭代器。
+     *
+     * @param parent 父节点实例
+     * @return 指向给定父节点第一个子节点的前向迭代器
+     *
+     * 只有当 child_iterator 与 getChildrenEnd(parent) 不同时才能安全解引用
      */
     children_iterator getChildrenBegin(Instance parent) const noexcept;
 
@@ -244,6 +366,14 @@ public:
      *
      * This iterator cannot be dereferenced
      */
+    /**
+     * 返回表示子节点列表末尾的不可解引用迭代器
+     *
+     * @param parent 父节点实例
+     * @return 前向迭代器
+     *
+     * 此迭代器不能解引用
+     */
     children_iterator getChildrenEnd(Instance parent) const noexcept;
 
     /**
@@ -254,6 +384,15 @@ public:
      * @attention This operation can be slow if the hierarchy of transform is too deep, and this
      *            will be particularly bad when updating a lot of transforms. In that case,
      *            consider using openLocalTransformTransaction() / commitLocalTransformTransaction().
+     */
+    /**
+     * 设置变换组件的局部变换。
+     * @param ci              要设置局部变换的变换组件实例
+     * @param localTransform  局部变换（即相对于父节点）
+     * @see getTransform()
+     * @attention 如果变换层次结构太深，此操作可能会很慢，当更新大量变换时
+     *            这尤其糟糕。在这种情况下，
+     *            考虑使用 openLocalTransformTransaction() / commitLocalTransformTransaction()。
      */
     void setTransform(Instance ci, const math::mat4f& localTransform) noexcept;
 
@@ -267,6 +406,16 @@ public:
      *            will be particularly bad when updating a lot of transforms. In that case,
      *            consider using openLocalTransformTransaction() / commitLocalTransformTransaction().
      */
+    /**
+     * 设置变换组件的局部变换并保持双精度平移。
+     * 变换的所有其他值以单精度存储。
+     * @param ci              要设置局部变换的变换组件实例
+     * @param localTransform  局部变换（即相对于父节点）
+     * @see getTransform()
+     * @attention 如果变换层次结构太深，此操作可能会很慢，当更新大量变换时
+     *            这尤其糟糕。在这种情况下，
+     *            考虑使用 openLocalTransformTransaction() / commitLocalTransformTransaction()。
+     */
     void setTransform(Instance ci, const math::mat4& localTransform) noexcept;
 
     /**
@@ -274,6 +423,13 @@ public:
      * @param ci The instance of the transform component to query the local transform from.
      * @return The local transform of the component (i.e. relative to the parent). This always
      *         returns the value set by setTransform().
+     * @see setTransform()
+     */
+    /**
+     * 返回变换组件的局部变换。
+     * @param ci 要查询局部变换的变换组件实例
+     * @return 组件的局部变换（即相对于父节点）。这始终
+     *         返回由 setTransform() 设置的值。
      * @see setTransform()
      */
     const math::mat4f& getTransform(Instance ci) const noexcept;
@@ -285,6 +441,13 @@ public:
      *         returns the value set by setTransform().
      * @see setTransform()
      */
+    /**
+     * 返回变换组件的局部变换（精确版本，双精度平移）。
+     * @param ci 要查询局部变换的变换组件实例
+     * @return 组件的局部变换（即相对于父节点）。这始终
+     *         返回由 setTransform() 设置的值。
+     * @see setTransform()
+     */
     math::mat4 getTransformAccurate(Instance ci) const noexcept;
 
     /**
@@ -294,6 +457,13 @@ public:
      *         composition of this component's local transform with its parent's world transform.
      * @see setTransform()
      */
+    /**
+     * 返回变换组件的世界变换。
+     * @param ci 要查询世界变换的变换组件实例
+     * @return 组件的世界变换（即相对于根节点）。这是
+     *         此组件的局部变换与其父节点的世界变换的组合。
+     * @see setTransform()
+     */
     const math::mat4f& getWorldTransform(Instance ci) const noexcept;
 
     /**
@@ -301,6 +471,13 @@ public:
      * @param ci The instance of the transform component to query the world transform from.
      * @return The world transform of the component (i.e. relative to the root). This is the
      *         composition of this component's local transform with its parent's world transform.
+     * @see setTransform()
+     */
+    /**
+     * 返回变换组件的世界变换（精确版本，双精度平移）。
+     * @param ci 要查询世界变换的变换组件实例
+     * @return 组件的世界变换（即相对于根节点）。这是
+     *         此组件的局部变换与其父节点的世界变换的组合。
      * @see setTransform()
      */
     math::mat4 getWorldTransformAccurate(Instance ci) const noexcept;
@@ -317,6 +494,18 @@ public:
      *
      * @see commitLocalTransformTransaction(), setTransform()
      */
+    /**
+     * 打开局部变换事务。在事务期间，getWorldTransform() 可以
+     * 返回无效变换，直到调用 commitLocalTransformTransaction()。但是，
+     * setTransform() 将执行得更好，并且是常数时间。
+     *
+     * 这在更新大量变换且变换层次结构很深（例如超过
+     * 4 或 5 级）时很有用。
+     *
+     * @note 如果局部变换事务已打开，这是无操作。
+     *
+     * @see commitLocalTransformTransaction(), setTransform()
+     */
     void openLocalTransformTransaction() noexcept;
 
     /**
@@ -328,6 +517,17 @@ public:
      *            automatically.
      *
      * @note If the local transform transaction is not open, this is a no-op.
+     *
+     * @see openLocalTransformTransaction(), setTransform()
+     */
+    /**
+     * 提交当前打开的局部变换事务。当此方法返回时，对
+     * getWorldTransform() 的调用将返回正确的值。
+     *
+     * @attention 在完成局部变换更新后未能调用此方法将导致
+     *            大量渲染问题。系统永远不会自动关闭事务。
+     *
+     * @note 如果局部变换事务未打开，这是无操作。
      *
      * @see openLocalTransformTransaction(), setTransform()
      */

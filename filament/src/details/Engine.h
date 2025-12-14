@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2015 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -230,55 +230,191 @@ public:
      */
     uint32_t getMaterialId() const noexcept { return mMaterialId++; }
 
+    /**
+     * 获取默认材质
+     * 
+     * 返回 Engine 的默认材质实例。默认材质用于未指定材质的渲染对象。
+     * 
+     * @return 默认材质指针
+     */
     const FMaterial* getDefaultMaterial() const noexcept { return mDefaultMaterial; }
+    
+    /**
+     * 获取天空盒材质
+     * 
+     * 返回用于渲染天空盒的材质实例。
+     * 
+     * @return 天空盒材质指针
+     */
     const FMaterial* getSkyboxMaterial() const noexcept;
+    
+    /**
+     * 获取默认间接光
+     * 
+     * 返回默认的基于图像的光照（IBL）实例。
+     * 
+     * @return 默认间接光指针
+     */
     const FIndirectLight* getDefaultIndirectLight() const noexcept { return mDefaultIbl; }
+    
+    /**
+     * 获取虚拟立方体贴图
+     * 
+     * 返回默认的虚拟立方体贴图纹理，用于未指定环境贴图的情况。
+     * 
+     * @return 虚拟立方体贴图纹理指针
+     */
     const FTexture* getDummyCubemap() const noexcept { return mDefaultIblTexture; }
+    
+    /**
+     * 获取默认颜色分级
+     * 
+     * 返回默认的颜色分级实例。
+     * 
+     * @return 默认颜色分级指针
+     */
     const FColorGrading* getDefaultColorGrading() const noexcept { return mDefaultColorGrading; }
+    
+    /**
+     * 获取虚拟变形目标缓冲区
+     * 
+     * 返回默认的虚拟变形目标缓冲区，用于未指定变形目标的情况。
+     * 
+     * @return 虚拟变形目标缓冲区指针
+     */
     FMorphTargetBuffer* getDummyMorphTargetBuffer() const { return mDummyMorphTargetBuffer; }
 
+    /**
+     * 获取全屏渲染图元
+     * 
+     * 返回用于全屏后处理的全屏三角形渲染图元句柄。
+     * 
+     * @return 全屏渲染图元句柄
+     */
     backend::Handle<backend::HwRenderPrimitive> getFullScreenRenderPrimitive() const noexcept {
         return mFullScreenTriangleRph;
     }
 
+    /**
+     * 获取全屏顶点缓冲区
+     * 
+     * 返回用于全屏后处理的全屏三角形顶点缓冲区。
+     * 
+     * @return 全屏顶点缓冲区指针
+     */
     FVertexBuffer* getFullScreenVertexBuffer() const noexcept {
         return mFullScreenTriangleVb;
     }
 
+    /**
+     * 获取全屏索引缓冲区
+     * 
+     * 返回用于全屏后处理的全屏三角形索引缓冲区。
+     * 
+     * @return 全屏索引缓冲区指针
+     */
     FIndexBuffer* getFullScreenIndexBuffer() const noexcept {
         return mFullScreenTriangleIb;
     }
 
+    /**
+     * 获取从裁剪空间到纹理空间的变换矩阵
+     * 
+     * 返回将裁剪坐标 [-1, 1] 转换为纹理坐标 [0, 1] 的变换矩阵。
+     * 用于后处理效果中需要从裁剪空间采样纹理的情况。
+     * 
+     * @return 从裁剪空间到纹理空间的变换矩阵
+     */
     math::mat4f getUvFromClipMatrix() const noexcept {
         return mUvFromClipMatrix;
     }
 
+    /**
+     * 获取支持的特性级别
+     * 
+     * 返回后端驱动支持的最高特性级别。
+     * 
+     * @return 支持的特性级别
+     */
     FeatureLevel getSupportedFeatureLevel() const noexcept;
 
+    /**
+     * 设置活动特性级别
+     * 
+     * 设置 Engine 使用的特性级别。级别不能超过支持的特性级别。
+     * 
+     * @param featureLevel 要设置的特性级别
+     * @return 实际设置的特性级别（可能被限制为支持的最高级别）
+     */
     FeatureLevel setActiveFeatureLevel(FeatureLevel featureLevel);
 
+    /**
+     * 获取活动特性级别
+     * 
+     * 返回当前使用的特性级别。
+     * 
+     * @return 活动特性级别
+     */
     FeatureLevel getActiveFeatureLevel() const noexcept {
         return mActiveFeatureLevel;
     }
 
+    /**
+     * 获取最大自动实例数量
+     * 
+     * 返回系统支持的最大自动实例数量（用于实例化渲染）。
+     * 
+     * @return 最大自动实例数量
+     */
     size_t getMaxAutomaticInstances() const noexcept {
         return CONFIG_MAX_INSTANCES;
     }
 
+    /**
+     * 是否支持立体渲染
+     * 
+     * 检查后端驱动是否支持立体渲染（VR/AR）。
+     * 
+     * @return 如果支持返回 true，否则返回 false
+     */
     bool isStereoSupported() const noexcept {
         return getDriver().isStereoSupported();
     }
 
+    /**
+     * 是否支持异步操作
+     * 
+     * 检查是否支持异步操作模式。
+     * 
+     * @return 如果支持返回 true，否则返回 false
+     */
     bool isAsynchronousOperationSupported() const noexcept;
 
+    /**
+     * 获取最大立体眼睛数量
+     * 
+     * 返回系统支持的最大立体眼睛数量（通常为 2）。
+     * 
+     * @return 最大立体眼睛数量
+     */
     static size_t getMaxStereoscopicEyes() noexcept {
         return CONFIG_MAX_STEREOSCOPIC_EYES;
     }
 
+    /**
+     * 获取后处理管理器（常量版本）
+     * 
+     * @return 后处理管理器常量引用
+     */
     PostProcessManager const& getPostProcessManager() const noexcept {
         return mPostProcessManager;
     }
 
+    /**
+     * 获取后处理管理器
+     * 
+     * @return 后处理管理器引用
+     */
     PostProcessManager& getPostProcessManager() noexcept {
         return mPostProcessManager;
     }
@@ -424,26 +560,79 @@ public:
         return getDriver().getShaderLanguages(preferredLanguage);
     }
 
+    /**
+     * 获取资源分配器处置器
+     * 
+     * 返回用于管理资源分配器生命周期的处置器引用。
+     * 
+     * @return 资源分配器处置器引用
+     */
     ResourceAllocatorDisposer& getResourceAllocatorDisposer() noexcept {
         assert_invariant(mResourceAllocatorDisposer);
         return *mResourceAllocatorDisposer;
     }
 
+    /**
+     * 获取共享的资源分配器处置器
+     * 
+     * 返回资源分配器处置器的共享指针（用于多线程共享）。
+     * 
+     * @return 资源分配器处置器的共享指针
+     */
     std::shared_ptr<ResourceAllocatorDisposer> const& getSharedResourceAllocatorDisposer() noexcept {
         return mResourceAllocatorDisposer;
     }
 
+    /**
+     * 获取材质缓存
+     * 
+     * 返回用于缓存已编译材质的材质缓存引用。
+     * 
+     * @return 材质缓存引用
+     */
     MaterialCache& getMaterialCache() const noexcept {
         return mMaterialCache;
     }
 
+    /**
+     * 流式分配内存
+     * 
+     * 从流式内存分配器中分配指定大小和对齐的内存。
+     * 用于临时分配，会在帧结束时自动释放。
+     * 
+     * @param size 要分配的内存大小（字节）
+     * @param alignment 内存对齐要求（字节）
+     * @return 分配的内存指针，如果分配失败返回 nullptr
+     */
     void* streamAlloc(size_t size, size_t alignment) noexcept;
 
+    /**
+     * 获取 Engine 纪元时间点
+     * 
+     * 返回 Engine 创建时的时间点，用于计算相对时间。
+     * 
+     * @return Engine 纪元时间点
+     */
     Epoch getEngineEpoch() const { return mEngineEpoch; }
+    
+    /**
+     * 获取 Engine 运行时间
+     * 
+     * 返回从 Engine 创建到现在的持续时间。
+     * 
+     * @return Engine 运行时间
+     */
     duration getEngineTime() const noexcept {
         return clock::now() - getEngineEpoch();
     }
 
+    /**
+     * 获取默认渲染目标
+     * 
+     * 返回默认的渲染目标句柄（通常是交换链的后台缓冲区）。
+     * 
+     * @return 默认渲染目标句柄
+     */
     backend::Handle<backend::HwRenderTarget> getDefaultRenderTarget() const noexcept {
         return mDefaultRenderTarget;
     }
@@ -843,48 +1032,310 @@ public:
      */
     bool destroy(const FInstanceBuffer* p);
 
+    /**
+     * 检查缓冲区对象是否有效
+     * 
+     * @param p 缓冲区对象指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FBufferObject* p) const;
+    
+    /**
+     * 检查顶点缓冲区是否有效
+     * 
+     * @param p 顶点缓冲区指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FVertexBuffer* p) const;
+    
+    /**
+     * 检查栅栏是否有效
+     * 
+     * @param p 栅栏指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FFence* p) const;
+    
+    /**
+     * 检查同步对象是否有效
+     * 
+     * @param p 同步对象指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FSync* p) const;
+    
+    /**
+     * 检查索引缓冲区是否有效
+     * 
+     * @param p 索引缓冲区指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FIndexBuffer* p) const;
+    
+    /**
+     * 检查蒙皮缓冲区是否有效
+     * 
+     * @param p 蒙皮缓冲区指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FSkinningBuffer* p) const;
+    
+    /**
+     * 检查变形目标缓冲区是否有效
+     * 
+     * @param p 变形目标缓冲区指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FMorphTargetBuffer* p) const;
+    
+    /**
+     * 检查间接光照是否有效
+     * 
+     * @param p 间接光照指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FIndirectLight* p) const;
+    
+    /**
+     * 检查材质是否有效
+     * 
+     * @param p 材质指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FMaterial* p) const;
+    
+    /**
+     * 检查材质实例是否有效（关联到指定材质）
+     * 
+     * @param m 材质指针
+     * @param p 材质实例指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FMaterial* m, const FMaterialInstance* p) const;
+    
+    /**
+     * 检查材质实例是否有效（昂贵版本，进行完整验证）
+     * 
+     * @param p 材质实例指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValidExpensive(const FMaterialInstance* p) const;
+    
+    /**
+     * 检查渲染器是否有效
+     * 
+     * @param p 渲染器指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FRenderer* p) const;
+    
+    /**
+     * 检查场景是否有效
+     * 
+     * @param p 场景指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FScene* p) const;
+    
+    /**
+     * 检查天空盒是否有效
+     * 
+     * @param p 天空盒指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FSkybox* p) const;
+    
+    /**
+     * 检查颜色分级是否有效
+     * 
+     * @param p 颜色分级指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FColorGrading* p) const;
+    
+    /**
+     * 检查交换链是否有效
+     * 
+     * @param p 交换链指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FSwapChain* p) const;
+    
+    /**
+     * 检查流是否有效
+     * 
+     * @param p 流指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FStream* p) const;
+    
+    /**
+     * 检查纹理是否有效
+     * 
+     * @param p 纹理指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FTexture* p) const;
+    
+    /**
+     * 检查渲染目标是否有效
+     * 
+     * @param p 渲染目标指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FRenderTarget* p) const;
+    
+    /**
+     * 检查视图是否有效
+     * 
+     * @param p 视图指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FView* p) const;
+    
+    /**
+     * 检查实例缓冲区是否有效
+     * 
+     * @param p 实例缓冲区指针
+     * @return 如果有效返回 true，否则返回 false
+     */
     bool isValid(const FInstanceBuffer* p) const;
 
+    /**
+     * 获取缓冲区对象数量
+     * 
+     * @return 当前存在的缓冲区对象数量
+     */
     size_t getBufferObjectCount() const noexcept;
+    
+    /**
+     * 获取视图数量
+     * 
+     * @return 当前存在的视图数量
+     */
     size_t getViewCount() const noexcept;
+    
+    /**
+     * 获取场景数量
+     * 
+     * @return 当前存在的场景数量
+     */
     size_t getSceneCount() const noexcept;
+    
+    /**
+     * 获取交换链数量
+     * 
+     * @return 当前存在的交换链数量
+     */
     size_t getSwapChainCount() const noexcept;
+    
+    /**
+     * 获取流数量
+     * 
+     * @return 当前存在的流数量
+     */
     size_t getStreamCount() const noexcept;
+    
+    /**
+     * 获取索引缓冲区数量
+     * 
+     * @return 当前存在的索引缓冲区数量
+     */
     size_t getIndexBufferCount() const noexcept;
+    
+    /**
+     * 获取蒙皮缓冲区数量
+     * 
+     * @return 当前存在的蒙皮缓冲区数量
+     */
     size_t getSkinningBufferCount() const noexcept;
+    
+    /**
+     * 获取变形目标缓冲区数量
+     * 
+     * @return 当前存在的变形目标缓冲区数量
+     */
     size_t getMorphTargetBufferCount() const noexcept;
+    
+    /**
+     * 获取实例缓冲区数量
+     * 
+     * @return 当前存在的实例缓冲区数量
+     */
     size_t getInstanceBufferCount() const noexcept;
+    
+    /**
+     * 获取顶点缓冲区数量
+     * 
+     * @return 当前存在的顶点缓冲区数量
+     */
     size_t getVertexBufferCount() const noexcept;
+    
+    /**
+     * 获取间接光照数量
+     * 
+     * @return 当前存在的间接光照数量
+     */
     size_t getIndirectLightCount() const noexcept;
+    
+    /**
+     * 获取材质数量
+     * 
+     * @return 当前存在的材质数量
+     */
     size_t getMaterialCount() const noexcept;
+    
+    /**
+     * 获取纹理数量
+     * 
+     * @return 当前存在的纹理数量
+     */
     size_t getTextureCount() const noexcept;
+    
+    /**
+     * 获取天空盒数量
+     * 
+     * @return 当前存在的天空盒数量
+     */
     size_t getSkyboxeCount() const noexcept;
+    
+    /**
+     * 获取颜色分级数量
+     * 
+     * @return 当前存在的颜色分级数量
+     */
     size_t getColorGradingCount() const noexcept;
+    
+    /**
+     * 获取渲染目标数量
+     * 
+     * @return 当前存在的渲染目标数量
+     */
     size_t getRenderTargetCount() const noexcept;
 
+    /**
+     * 销毁实体
+     * 
+     * 销毁指定实体的所有组件。
+     * 
+     * @param e 实体
+     */
     void destroy(utils::Entity e);
 
+    /**
+     * 检查 Engine 是否暂停
+     * 
+     * @return 如果暂停返回 true，否则返回 false
+     */
     bool isPaused() const noexcept;
+    
+    /**
+     * 设置 Engine 暂停状态
+     * 
+     * 暂停时，Engine 不会处理命令队列。
+     * 
+     * @param paused 是否暂停
+     */
     void setPaused(bool paused);
 
     /**
@@ -930,6 +1381,14 @@ public:
     /**
      * Processes the platform's event queue when called from the platform's event-handling thread.
      * Returns false when called from any other thread.
+     */
+    /**
+     * 处理平台事件队列
+     * 
+     * 当从平台的事件处理线程调用时处理平台的事件队列。
+     * 从任何其他线程调用时返回 false。
+     * 
+     * @return 如果成功处理返回 true，否则返回 false
      */
     bool pumpPlatformEvents() {
         return mPlatform->pumpEvents();

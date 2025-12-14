@@ -91,12 +91,59 @@ class FIndirectLight;
  *
  * @see Scene, Light, Texture, Skybox
  */
+/**
+ * IndirectLight 用于模拟环境光照，这是一种全局光照形式。
+ *
+ * 环境光照有两个组成部分：
+ *  1. 辐照度（irradiance）
+ *  2. 反射（镜面反射分量）
+ *
+ * 环境通常被捕获为高分辨率 HDR 等距柱状投影图像，并通过
+ * **cmgen** 工具处理以生成 IndirectLight 所需的数据。
+ *
+ * @note
+ * 当前 IndirectLight 旨在用于"远距离探针"，即表示
+ * 来自远距离（即无穷远）环境的全局光照，例如天空或远处的
+ * 山脉。场景中只能使用单个 IndirectLight。此限制将在未来取消。
+ *
+ * 创建和销毁
+ * ========================
+ *
+ * IndirectLight 对象使用 IndirectLight::Builder 创建，通过调用
+ * Engine::destroy(const IndirectLight*) 销毁。
+ *
+ * 辐照度
+ * ==========
+ *
+ * 辐照度表示来自环境并照射到
+ * 物体表面的光。
+ *
+ * 辐照度从反射（见下文）自动计算，通常
+ * 不需要显式提供。但是，它可以与反射分开提供，作为
+ * [球谐函数](https://en.wikipedia.org/wiki/Spherical_harmonics) (SH)，1、2 或
+ * 3 个频带，分别对应 1、4 或 9 个系数。
+ *
+ * @note
+ * 使用 **cmgen** 工具为给定环境生成 `SH`。
+ *
+ * 反射
+ * ===========
+ *
+ * 物体表面的反射（镜面反射分量）由 **cmgen** 工具生成的
+ * 特殊过滤的立方体贴图金字塔计算。
+ *
+ *
+ * @see Scene, Light, Texture, Skybox
+ */
 class UTILS_PUBLIC IndirectLight : public FilamentAPI {
     struct BuilderDetails;
 
 public:
 
     //! Use Builder to construct an IndirectLight object instance
+    /**
+     * 使用 Builder 构造 IndirectLight 对象实例
+     */
     class Builder : public BuilderBase<BuilderDetails> {
         friend struct BuilderDetails;
     public:
@@ -114,6 +161,15 @@ public:
          *                  encodes a the irradiance for a roughness level.
          *
          * @return This Builder, for chaining calls.
+         *
+         */
+        /**
+         * 设置反射立方体贴图 mipmap 链。
+         *
+         * @param cubemap   由 **cmgen** 生成的 mipmap 立方体贴图。每个立方体贴图层级
+         *                  编码一个粗糙度级别的辐照度。
+         *
+         * @return 此 Builder，用于链接调用。
          *
          */
         Builder& reflections(Texture const* UTILS_NULLABLE cubemap) noexcept;
@@ -164,6 +220,39 @@ public:
          * Because the coefficients are pre-scaled, `sh[0]` is the environment's
          * average irradiance.
          */
+        /**
+         * 将辐照度设置为球谐函数。
+         *
+         * 辐照度必须通过 \f$ \langle n \cdot l \rangle \f$ 预卷积，并
+         * 预乘 Lambert 漫反射 BRDF \f$ \frac{1}{\pi} \f$，然后
+         * 指定为球谐函数系数。
+         *
+         * 此外，这些球谐函数系数必须通过以下
+         * 重建因子 \f$ A_{l}^{m} \f$ 预缩放。
+         *
+         * 最终系数可以使用 `cmgen` 工具生成。
+         *
+         * \p sh 数组中的索引由下式给出：
+         *
+         *  `index(l, m) = l * (l + 1) + m`
+         *
+         *  \f$ sh[index(l,m)] = L_{l}^{m} \frac{1}{\pi} A_{l}^{m} \hat{C_{l}} \f$
+         *
+         * 仅允许 1、2 或 3 个频带。
+         *
+         * @param bands     球谐函数频带数。必须是 1、2 或 3。
+         * @param sh        包含球谐函数系数的数组。
+         *                  数组大小必须是 \f$ bands^{2} \f$。
+         *                  （即分别为 1、4 或 9 个系数）。
+         *
+         * @return 此 Builder，用于链接调用。
+         *
+         * @see Material::Builder::sphericalHarmonicsBandCount()
+         *
+         * @note
+         * 因为系数是预缩放的，所以 `sh[0]` 是环境的
+         * 平均辐照度。
+         */
         Builder& irradiance(uint8_t bands, math::float3 const* UTILS_NONNULL sh) noexcept;
 
         /**
@@ -196,6 +285,24 @@ public:
          *
          * @return This Builder, for chaining calls.
          */
+        /**
+         * 从以球谐函数表示的辐射度设置辐照度。
+         *
+         * 辐射度必须指定为球谐函数系数 \f$ L_{l}^{m} \f$
+         *
+         * \p sh 数组中的索引由下式给出：
+         *
+         *  `index(l, m) = l * (l + 1) + m`
+         *
+         *  \f$ sh[index(l,m)] = L_{l}^{m} \f$
+         *
+         * @param bands     球谐函数频带数。必须是 1、2 或 3。
+         * @param sh        包含球谐函数系数的数组。
+         *                  数组大小必须是 \f$ bands^{2} \f$。
+         *                  （即分别为 1、4 或 9 个系数）。
+         *
+         * @return 此 Builder，用于链接调用。
+         */
         Builder& radiance(uint8_t bands, math::float3 const* UTILS_NONNULL sh) noexcept;
 
         /**
@@ -215,6 +322,23 @@ public:
          *
          * @see irradiance(uint8_t bands, math::float3 const* sh)
          */
+        /**
+         * 将辐照度设置为立方体贴图。
+         *
+         * 辐照度也可以指定为立方体贴图而不是球谐函数
+         * 系数。这可能更高效，也可能不会，取决于你的
+         * 硬件（本质上，这是用 ALU 换取带宽）。
+         *
+         * @param cubemap   表示通过
+         *                  \f$ \langle n \cdot l \rangle \f$ 预卷积的辐照度的立方体贴图。
+         *
+         * @return 此 Builder，用于链接调用。
+         *
+         * @note
+         * 此辐照度立方体贴图可以使用 **cmgen** 工具生成。
+         *
+         * @see irradiance(uint8_t bands, math::float3 const* sh)
+         */
         Builder& irradiance(Texture const* UTILS_NULLABLE cubemap) noexcept;
 
         /**
@@ -228,6 +352,17 @@ public:
          *
          * @return This Builder, for chaining calls.
          */
+        /**
+         * （可选）环境强度。
+         *
+         * 因为环境通常相对于某个参考值进行编码，所以可以使用此方法
+         * 调整范围。
+         *
+         * @param envIntensity  应用于环境和辐照度的缩放因子，使得
+         *                      结果以勒克斯（lux）或流明/平方米（lumen/m^2）为单位（默认值 = 30000）
+         *
+         * @return 此 Builder，用于链接调用。
+         */
         Builder& intensity(float envIntensity) noexcept;
 
         /**
@@ -236,6 +371,13 @@ public:
          * @param rotation 3x3 rotation matrix. Must be a rigid-body transform.
          *
          * @return This Builder, for chaining calls.
+         */
+        /**
+         * 指定要应用于 IBL 的刚体变换。
+         *
+         * @param rotation 3x3 旋转矩阵。必须是刚体变换。
+         *
+         * @return 此 Builder，用于链接调用。
          */
         Builder& rotation(math::mat3f const& rotation) noexcept;
 
@@ -250,6 +392,18 @@ public:
          * @exception utils::PostConditionPanic if a runtime error occurred, such as running out of
          *            memory or other resources.
          * @exception utils::PreConditionPanic if a parameter to a builder function was invalid.
+         */
+        /**
+         * 创建 IndirectLight 对象并返回指向它的指针。
+         *
+         * @param engine 要与此 IndirectLight 关联的 filament::Engine 的引用。
+         *
+         * @return 指向新创建对象的指针，如果禁用异常且
+         *         发生错误则为 nullptr。
+         *
+         * @exception utils::PostConditionPanic 如果发生运行时错误，例如用完
+         *           内存或其他资源。
+         * @exception utils::PreConditionPanic 如果构建器函数的参数无效。
          */
         IndirectLight* UTILS_NONNULL build(Engine& engine);
 
@@ -266,10 +420,22 @@ public:
      * @param intensity  Scale factor applied to the environment and irradiance such that
      *                   the result is in lux, or <i>lumen/m^2</i> (default = 30000)
      */
+    /**
+     * 设置环境的强度。
+     *
+     * 因为环境通常相对于某个参考值进行编码，所以可以使用此方法
+     * 调整范围。
+     *
+     * @param intensity  应用于环境和辐照度的缩放因子，使得
+     *                   结果以勒克斯（lux）或<i>流明/平方米</i>（lumen/m^2）为单位（默认值 = 30000）
+     */
     void setIntensity(float intensity) noexcept;
 
     /**
      * Returns the environment's intensity in <i>lux</i>, or <i>lumen/m^2</i>.
+     */
+    /**
+     * 返回环境的强度，单位为<i>勒克斯</i>（lux）或<i>流明/平方米</i>（lumen/m^2）。
      */
     float getIntensity() const noexcept;
 
@@ -278,20 +444,34 @@ public:
      *
      * @param rotation 3x3 rotation matrix. Must be a rigid-body transform.
      */
+    /**
+     * 设置要应用于 IBL 的刚体变换。
+     *
+     * @param rotation 3x3 旋转矩阵。必须是刚体变换。
+     */
     void setRotation(math::mat3f const& rotation) noexcept;
 
     /**
      * Returns the rigid-body transformation applied to the IBL.
+     */
+    /**
+     * 返回应用于 IBL 的刚体变换。
      */
     const math::mat3f& getRotation() const noexcept;
 
     /**
      * Returns the associated reflection map, or null if it does not exist.
      */
+    /**
+     * 返回关联的反射贴图，如果不存在则返回 null。
+     */
     Texture const* UTILS_NULLABLE getReflectionsTexture() const noexcept;
 
     /**
      * Returns the associated irradiance map, or null if it does not exist.
+     */
+    /**
+     * 返回关联的辐照度贴图，如果不存在则返回 null。
      */
     Texture const* UTILS_NULLABLE getIrradianceTexture() const noexcept;
 
@@ -316,6 +496,25 @@ public:
      * @see LightManager::Builder::direction()
      * @see getColorEstimate()
      */
+    /**
+     * 帮助估算由球谐函数表示的环境中主导光的方向。
+     *
+     * 这假设只有一个主导光（例如户外环境中的太阳），如果不是这种情况，
+     * 返回的方向将是根据各种光的强度计算的平均值。
+     *
+     * 如果没有明确的主导光，这在低动态范围（LDR）
+     * 环境中很常见，此方法可能返回错误或意外的方向。
+     *
+     * 主导光方向可用于设置定向光的方向，
+     * 例如产生与环境匹配的阴影。
+     *
+     * @param sh        3 频带球谐函数
+     *
+     * @return 表示主导光方向的单位向量
+     *
+     * @see LightManager::Builder::direction()
+     * @see getColorEstimate()
+     */
     static math::float3 getDirectionEstimate(const math::float3 sh[UTILS_NONNULL 9]) noexcept;
 
     /**
@@ -336,6 +535,23 @@ public:
      * @see LightManager::Builder::intensity()
      * @see getDirectionEstimate, getIntensity, setIntensity
      */
+    /**
+     * 帮助估算由球谐函数表示的环境在给定方向上的颜色和相对强度。
+     *
+     * 这可用于设置定向光的颜色和强度。在这种情况下，
+     * 请确保将此相对强度乘以此间接光的强度。
+     *
+     * @param sh        3 频带球谐函数
+     * @param direction 表示要估算颜色
+     *                  的光方向的单位向量。通常这是 getDirectionEstimate() 返回的值。
+     *
+     * @return 一个 4 个浮点数的向量，其中前 3 个分量表示线性颜色，
+     *         第 4 个分量表示主导光的强度
+     *
+     * @see LightManager::Builder::color()
+     * @see LightManager::Builder::intensity()
+     * @see getDirectionEstimate, getIntensity, setIntensity
+     */
     static math::float4 getColorEstimate(const math::float3 sh[UTILS_NONNULL 9],
             math::float3 direction) noexcept;
 
@@ -347,12 +563,26 @@ public:
      * @see Builder::irradiance(uint8_t, math::float3 const*)
      * @see Builder::radiance(uint8_t, math::float3 const*)
      */
+    /**
+     * 帮助估算由球谐函数表示的环境中主导光的方向。
+     * 必须在 Builder 中设置球谐函数，否则结果未定义。
+     * @see getDirectionEstimate(const math::float3)
+     * @see Builder::irradiance(uint8_t, math::float3 const*)
+     * @see Builder::radiance(uint8_t, math::float3 const*)
+     */
     math::float3 getDirectionEstimate() const noexcept;
 
     /**
      * Helper to estimate the color and relative intensity of the environment represented by
      * spherical harmonics in a given direction.
      * Spherical harmonics must be set in the Builder or the result is undefined.
+     * @see getColorEstimate(const math::float3, math::float3)
+     * @see Builder::irradiance(uint8_t, math::float3 const*)
+     * @see Builder::radiance(uint8_t, math::float3 const*)
+     */
+    /**
+     * 帮助估算由球谐函数表示的环境在给定方向上的颜色和相对强度。
+     * 必须在 Builder 中设置球谐函数，否则结果未定义。
      * @see getColorEstimate(const math::float3, math::float3)
      * @see Builder::irradiance(uint8_t, math::float3 const*)
      * @see Builder::radiance(uint8_t, math::float3 const*)

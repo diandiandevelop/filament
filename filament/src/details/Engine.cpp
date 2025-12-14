@@ -269,59 +269,158 @@ Engine* FEngine::create(Builder const& builder) {
 
 #if UTILS_HAS_THREADING
 
+/**
+ * 异步创建 Engine 实例
+ * 
+ * 在单独线程中创建 Engine，并通过回调函数通知创建完成。
+ * 这对于需要非阻塞初始化很有用。
+ * 
+ * @param builder Engine 构建器，包含配置参数
+ * @param callback 回调函数（会被移动）
+ *                回调函数签名：void(void*)，参数是创建的 Engine 指针
+ *                回调会在 Driver 初始化完成后在单独线程中执行
+ * 
+ * 实现：
+ * 1. 创建 FEngine 实例
+ * 2. 在单独线程中启动 Driver（在 FEngine::loop 中创建 Driver）
+ * 3. 在另一个线程中等待 Driver 初始化完成，然后调用回调
+ * 4. 回调线程会自动分离，完成后自动销毁
+ * 
+ * 注意：回调函数会在非主线程中执行，不能进行线程相关的操作
+ */
 void FEngine::create(Builder const& builder, Invocable<void(void*)>&& callback) {
     FILAMENT_TRACING_ENABLE(FILAMENT_TRACING_CATEGORY_FILAMENT);
     FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
 
+    /**
+     * 创建 FEngine 实例
+     */
     FEngine* instance = new FEngine(builder);
 
-    // start the driver thread
+    /**
+     * 启动驱动线程（在 FEngine::loop 中创建 Driver）
+     */
     instance->mDriverThread = std::thread(&FEngine::loop, instance);
 
-    // launch a thread to call the callback -- so it can't do any damage.
+    /**
+     * 启动回调线程
+     * 
+     * 在单独线程中等待 Driver 初始化完成，然后调用回调。
+     * 这样可以确保回调在 Driver 完全准备好后才执行。
+     */
     std::thread callbackThread = std::thread([instance, callback = std::move(callback)] {
-        instance->mDriverBarrier.await();
-        callback(instance);
+        instance->mDriverBarrier.await();  // 等待 Driver 初始化完成
+        callback(instance);  // 调用回调函数
     });
 
-    // let the callback thread die on its own
+    /**
+     * 分离回调线程，让它自动完成并销毁
+     * 
+     * 使用 detach() 而不是 join()，因为我们不等待回调完成。
+     * 回调线程会在完成后自动销毁。
+     */
     callbackThread.detach();
 }
 
+/**
+ * 获取异步创建的 Engine 实例
+ * 
+ * 在异步创建后获取 Engine 实例。
+ * 必须在调用 createAsync() 的同一线程中调用此方法。
+ * 
+ * @param token Engine 指针（由 createAsync() 的回调函数传递）
+ * @return Engine 实例指针
+ * 
+ * 实现：
+ * 1. 验证调用线程（必须与 createAsync() 在同一线程）
+ * 2. 如果尚未初始化，则执行初始化
+ * 3. 返回 Engine 实例
+ * 
+ * 注意：
+ * - 必须在调用 createAsync() 的同一线程中调用
+ * - 如果 Driver 初始化失败，返回 nullptr
+ */
 FEngine* FEngine::getEngine(void* token) {
 
+    /**
+     * 将 token 转换为 FEngine 指针
+     */
     FEngine* instance = static_cast<FEngine*>(token);
 
+    /**
+     * 验证调用线程
+     * 
+     * createAsync() 和 getEngine() 必须在同一线程中调用。
+     * 这确保了线程安全性。
+     */
     FILAMENT_CHECK_PRECONDITION(ThreadUtils::isThisThread(instance->mMainThreadId))
             << "Engine::createAsync() and Engine::getEngine() must be called on the same thread.";
 
+    /**
+     * 如果尚未初始化，则执行初始化
+     */
     if (!instance->mInitialized) {
+        /**
+         * 检查 Driver 是否初始化成功
+         * 
+         * 如果 Driver 初始化失败，清理资源并返回 nullptr。
+         */
         if (UTILS_UNLIKELY(!instance->mDriver)) {
-            // something went horribly wrong during driver initialization
-            instance->mDriverThread.join();
-            delete instance;
-            return nullptr;
+            /**
+             * Driver 初始化失败
+             * 
+             * 等待驱动线程结束，然后清理实例。
+             */
+            instance->mDriverThread.join();  // 等待驱动线程结束
+            delete instance;  // 清理实例
+            return nullptr;  // 返回失败
         }
 
-        // now we can initialize the largest part of the engine
+        /**
+         * 初始化 Engine 的大部分子系统
+         * 
+         * 此时 Driver 已经可用，可以执行 Driver 命令。
+         * init() 方法会初始化所有子系统（材质缓存、后处理管理器等）。
+         */
         instance->init();
     }
 
-    return instance;
+    return instance;  // 返回 Engine 实例
 }
 
 #endif
 
-// These must be static because only a pointer is copied to the render stream
-// Note that these coordinates are specified in OpenGL clip space. Other backends can transform
-// these in the vertex shader as needed.
+/**
+ * 全屏三角形顶点数据
+ * 
+ * 用于全屏后处理渲染的三角形顶点。
+ * 这些坐标定义在 OpenGL 裁剪空间中，其他后端可以在顶点着色器中转换。
+ * 
+ * 注意：必须是静态的，因为只有指针被复制到渲染流中。
+ * 
+ * 三角形覆盖整个屏幕（从 (-1, -1) 到 (1, 1)），使用单个大三角形而不是两个。
+ * 这种技术避免了图元设置的开销，比使用两个三角形更高效。
+ * 
+ * 顶点布局：
+ * - 顶点 0: (-1, -1, 1, 1) - 左下角
+ * - 顶点 1: ( 3, -1, 1, 1) - 右下角（延伸到屏幕外）
+ * - 顶点 2: (-1,  3, 1, 1) - 左上角（延伸到屏幕外）
+ */
 static constexpr float4 sFullScreenTriangleVertices[3] = {
-        { -1.0f, -1.0f, 1.0f, 1.0f },
-        {  3.0f, -1.0f, 1.0f, 1.0f },
-        { -1.0f,  3.0f, 1.0f, 1.0f }
+        { -1.0f, -1.0f, 1.0f, 1.0f },  // 左下角
+        {  3.0f, -1.0f, 1.0f, 1.0f },  // 右下角（延伸到屏幕外）
+        { -1.0f,  3.0f, 1.0f, 1.0f }   // 左上角（延伸到屏幕外）
 };
 
-// these must be static because only a pointer is copied to the render stream
+/**
+ * 全屏三角形索引数据
+ * 
+ * 定义全屏三角形的顶点索引顺序。
+ * 
+ * 注意：必须是静态的，因为只有指针被复制到渲染流中。
+ * 
+ * 索引顺序：0 -> 1 -> 2，形成一个顺时针方向的三角形。
+ */
 static constexpr uint16_t sFullScreenTriangleIndices[3] = { 0, 1, 2 };
 
 /**
@@ -480,38 +579,83 @@ void FEngine::init() {
             mFullScreenTriangleVb->getHwHandle(), mFullScreenTriangleIb->getHwHandle(),
             PrimitiveType::TRIANGLES);
 
-    // Compute a clip-space [-1 to 1] to texture space [0 to 1] matrix, taking into account
-    // backend differences.
+    /**
+     * 计算从裁剪空间 [-1, 1] 到纹理空间 [0, 1] 的变换矩阵
+     * 
+     * 考虑到不同后端的差异：
+     * - OpenGL: Y 轴不翻转（从下到上）
+     * - Metal/Vulkan/WebGPU: Y 轴翻转（从上到下）
+     * 
+     * 矩阵将裁剪坐标转换为纹理坐标：
+     * - X: [-1, 1] -> [0, 1]（缩放 0.5，偏移 0.5）
+     * - Y: [-1, 1] -> [0, 1]（缩放 0.5，偏移 0.5，可能翻转）
+     * - Z: 保持不变（用于深度）
+     */
     const bool textureSpaceYFlipped = mBackend == Backend::METAL || mBackend == Backend::VULKAN ||
                                       mBackend == Backend::WEBGPU;
     if (textureSpaceYFlipped) {
+        /**
+         * Metal/Vulkan/WebGPU: Y 轴翻转
+         * 
+         * Y 坐标变换：y_tex = -0.5 * y_clip + 0.5
+         * 将裁剪空间的 [-1, 1] 映射到纹理空间的 [1, 0]（翻转）
+         */
         mUvFromClipMatrix = mat4f(mat4f::row_major_init{
-                0.5f,  0.0f,   0.0f, 0.5f,
-                0.0f, -0.5f,   0.0f, 0.5f,
-                0.0f,  0.0f,   1.0f, 0.0f,
-                0.0f,  0.0f,   0.0f, 1.0f
+                0.5f,  0.0f,   0.0f, 0.5f,  // X: 缩放 0.5，偏移 0.5
+                0.0f, -0.5f,   0.0f, 0.5f,  // Y: 缩放 -0.5（翻转），偏移 0.5
+                0.0f,  0.0f,   1.0f, 0.0f,  // Z: 保持不变
+                0.0f,  0.0f,   0.0f, 1.0f   // W: 保持不变
         });
     } else {
+        /**
+         * OpenGL: Y 轴不翻转
+         * 
+         * Y 坐标变换：y_tex = 0.5 * y_clip + 0.5
+         * 将裁剪空间的 [-1, 1] 映射到纹理空间的 [0, 1]（正常）
+         */
         mUvFromClipMatrix = mat4f(mat4f::row_major_init{
-                0.5f,  0.0f,   0.0f, 0.5f,
-                0.0f,  0.5f,   0.0f, 0.5f,
-                0.0f,  0.0f,   1.0f, 0.0f,
-                0.0f,  0.0f,   0.0f, 1.0f
+                0.5f,  0.0f,   0.0f, 0.5f,  // X: 缩放 0.5，偏移 0.5
+                0.0f,  0.5f,   0.0f, 0.5f,  // Y: 缩放 0.5，偏移 0.5
+                0.0f,  0.0f,   1.0f, 0.0f,  // Z: 保持不变
+                0.0f,  0.0f,   0.0f, 1.0f   // W: 保持不变
         });
     }
 
-    // initialize the dummy textures so that their contents are not undefined
+    /**
+     * 初始化默认纹理
+     * 
+     * 创建引擎内部使用的默认纹理，确保其内容已定义。
+     */
 
+    /**
+     * 创建默认 IBL 纹理（立方体贴图）
+     * 
+     * 用于没有设置间接光的场景，避免着色器读取未定义的纹理。
+     */
     mDefaultIblTexture = downcast(Texture::Builder()
             .width(1).height(1).levels(1)
             .format(Texture::InternalFormat::RGBA8)
             .sampler(Texture::Sampler::SAMPLER_CUBEMAP)
             .build(*this));
 
-    static constexpr std::array<uint32_t, 6> zeroCubemap{};
-    static constexpr std::array<uint32_t, 1> zeroRGBA{};
-    static constexpr std::array<uint32_t, 1> oneRGBA{ 0xffffffff };
-    static constexpr std::array<float   , 1> oneFloat{ 1.0f };
+    /**
+     * 默认纹理数据
+     * 
+     * - zeroCubemap: 零值立方体贴图（6 个面，每个面 1 个像素）
+     * - zeroRGBA: 零值 RGBA（黑色，Alpha=0）
+     * - oneRGBA: 全一 RGBA（白色，Alpha=1）
+     * - oneFloat: 全一浮点数（1.0f，用于深度纹理）
+     */
+    static constexpr std::array<uint32_t, 6> zeroCubemap{};  // 零值立方体贴图（6 个面）
+    static constexpr std::array<uint32_t, 1> zeroRGBA{};     // 零值 RGBA（黑色）
+    static constexpr std::array<uint32_t, 1> oneRGBA{ 0xffffffff };  // 全一 RGBA（白色）
+    static constexpr std::array<float   , 1> oneFloat{ 1.0f };       // 全一浮点数（用于深度）
+    
+    /**
+     * Lambda 函数：计算数组大小（字节数）
+     * 
+     * 用于计算数组在内存中的字节大小。
+     */
     auto const size = [](auto&& array) {
         return array.size() * sizeof(decltype(array[0]));
     };
@@ -525,19 +669,42 @@ void FEngine::init() {
             .irradiance(3, reinterpret_cast<const float3*>(sh))
             .build(*this));
 
+    /**
+     * 创建默认渲染目标
+     * 
+     * 创建默认的渲染目标句柄（通常是交换链的后台缓冲区）。
+     */
     mDefaultRenderTarget = driverApi.createDefaultRenderTarget();
 
     // Create a dummy morph target buffer, without using the builder
+    /**
+     * 创建虚拟变形目标缓冲区（不使用构建器）
+     * 
+     * 用于未指定变形目标的情况，避免着色器读取未定义的缓冲区。
+     */
     mDummyMorphTargetBuffer = createMorphTargetBuffer(
             FMorphTargetBuffer::EmptyMorphTargetBuilder());
 
     // create dummy textures we need throughout the engine
+    /**
+     * 创建引擎中需要的虚拟纹理
+     * 
+     * 这些虚拟纹理用于：
+     * - mDummyOneTexture: 全一纹理（白色，用于未绑定的纹理槽）
+     * - mDummyZeroTexture: 零值纹理（黑色，用于未绑定的纹理槽）
+     */
     mDummyOneTexture = driverApi.createTexture(SamplerType::SAMPLER_2D, 1,
             TextureFormat::RGBA8, 1, 1, 1, 1, TextureUsage::DEFAULT);
 
     mDummyZeroTexture = driverApi.createTexture(SamplerType::SAMPLER_2D, 1,
             TextureFormat::RGBA8, 1, 1, 1, 1, TextureUsage::DEFAULT);
 
+    /**
+     * 更新虚拟纹理数据
+     * 
+     * - mDummyOneTexture: 填充全一 RGBA（白色，Alpha=1）
+     * - mDummyZeroTexture: 填充零值 RGBA（黑色，Alpha=0）
+     */
     driverApi.update3DImage(mDummyOneTexture, 0, 0, 0, 0, 1, 1, 1,
             { oneRGBA.data(), size(oneRGBA), Texture::Format::RGBA, Texture::Type::UBYTE });
 
@@ -545,21 +712,45 @@ void FEngine::init() {
             { zeroRGBA.data(), size(zeroRGBA), Texture::Format::RGBA, Texture::Type::UBYTE });
 
 
+    /**
+     * 创建每视图描述符集布局（SSR 变体）
+     * 
+     * 用于屏幕空间反射（SSR）的着色器变体的描述符集布局。
+     */
     mPerViewDescriptorSetLayoutSsrVariant = {
             mHwDescriptorSetLayoutFactory,
             driverApi,
             descriptor_sets::getSsrVariantLayout() };
 
+    /**
+     * 创建每视图描述符集布局（深度变体）
+     * 
+     * 用于深度通道的着色器变体的描述符集布局。
+     */
     mPerViewDescriptorSetLayoutDepthVariant = {
             mHwDescriptorSetLayoutFactory,
             driverApi,
             descriptor_sets::getDepthVariantLayout() };
 
+    /**
+     * 创建每可渲染对象描述符集布局
+     * 
+     * 用于可渲染对象的描述符集布局，包含材质相关的资源绑定。
+     */
     mPerRenderableDescriptorSetLayout = {
             mHwDescriptorSetLayoutFactory,
             driverApi,
             descriptor_sets::getPerRenderableLayout() };
 
+    /**
+     * 创建默认材质
+     * 
+     * 根据特性级别和立体渲染类型选择相应的默认材质：
+     * - 特性级别 0: 使用特性级别 0 的默认材质
+     * - 特性级别 1+: 根据立体渲染类型选择：
+     *   - NONE/INSTANCED: 标准默认材质
+     *   - MULTIVIEW: 多视图默认材质（需要多视图支持）
+     */
 #ifdef FILAMENT_ENABLE_FEATURE_LEVEL_0
     if (UTILS_UNLIKELY(mActiveFeatureLevel == FeatureLevel::FEATURE_LEVEL_0)) {
         FMaterial::DefaultMaterialBuilder defaultMaterialBuilder;
@@ -595,10 +786,33 @@ void FEngine::init() {
     // Note that this material instance is instantiated before the creation of UboManager, so at
     // this point `isUboBatchingEnabled` is `false`, and it will fall back to individual UBO
     // automatically.
+    /**
+     * 提交默认材质实例
+     * 
+     * 必须在此时提交默认材质实例，因为：
+     * - 它可能不在场景中使用，但其描述符集仍可能用于共享变体
+     * - 此材质实例在 UboManager 创建之前实例化，此时 `isUboBatchingEnabled` 为 false
+     * - 会自动回退到单独的 UBO
+     */
     mDefaultMaterial->getDefaultInstance()->commit(driverApi, mUboManager);
 
+    /**
+     * 特性级别 1 及以上的初始化
+     * 
+     * UBO 批处理、颜色分级等功能仅在特性级别 1 及以上支持。
+     */
     if (UTILS_UNLIKELY(getSupportedFeatureLevel() >= FeatureLevel::FEATURE_LEVEL_1)) {
         // UBO batching is not supported in feature level 0
+        /**
+         * 创建 UBO 管理器（如果启用材质实例 uniform 批处理）
+         * 
+         * UBO 批处理用于合并多个材质实例的 uniform 数据到一个共享缓冲区，
+         * 减少绘制调用次数，提高性能。
+         * 
+         * 槽大小计算：
+         * - 最小 16 字节（每个材质实例的 UBO 大小至少为 16 字节）
+         * - 或驱动要求的 UBO 偏移对齐值（取较大者）
+         */
         if (features.material.enable_material_instance_uniform_batching) {
             // Ubo size of each material instance is at least 16 bytes.
             constexpr BufferAllocator::allocation_size_t minSlotSize = 16;
@@ -608,13 +822,29 @@ void FEngine::init() {
             mUboManager = new UboManager(getDriverApi(), slotSize, mConfig.sharedUboInitialSizeInBytes);
         }
 
+        /**
+         * 创建默认颜色分级
+         */
         mDefaultColorGrading = downcast(ColorGrading::Builder().build(*this));
 
+        /**
+         * 初始化虚拟变形目标缓冲区数据
+         * 
+         * 设置零值位置和切线数据，确保缓冲区已初始化。
+         */
         constexpr float3 dummyPositions[1] = {};
         constexpr short4 dummyTangents[1] = {};
         mDummyMorphTargetBuffer->setPositionsAt(*this, 0, dummyPositions, 1, 0);
         mDummyMorphTargetBuffer->setTangentsAt(*this, 0, dummyTangents, 1, 0);
 
+        /**
+         * 创建虚拟纹理数组
+         * 
+         * 用于未绑定的纹理数组槽：
+         * - mDummyOneTextureArray: 全一 RGBA 纹理数组
+         * - mDummyOneTextureArrayDepth: 全一深度纹理数组
+         * - mDummyZeroTextureArray: 零值 RGBA 纹理数组
+         */
         mDummyOneTextureArray = driverApi.createTexture(SamplerType::SAMPLER_2D_ARRAY, 1,
                 TextureFormat::RGBA8, 1, 1, 1, 1, TextureUsage::DEFAULT);
 
@@ -624,6 +854,9 @@ void FEngine::init() {
         mDummyZeroTextureArray = driverApi.createTexture(SamplerType::SAMPLER_2D_ARRAY, 1,
                 TextureFormat::RGBA8, 1, 1, 1, 1, TextureUsage::DEFAULT);
 
+        /**
+         * 更新虚拟纹理数组数据
+         */
         driverApi.update3DImage(mDummyOneTextureArray, 0, 0, 0, 0, 1, 1, 1,
                 { oneRGBA.data(), size(oneRGBA), Texture::Format::RGBA, Texture::Type::UBYTE });
 
@@ -633,15 +866,34 @@ void FEngine::init() {
         driverApi.update3DImage(mDummyZeroTextureArray, 0, 0, 0, 0, 1, 1, 1,
                 { zeroRGBA.data(), size(zeroRGBA), Texture::Format::RGBA, Texture::Type::UBYTE });
 
+        /**
+         * 创建虚拟 uniform 缓冲区
+         * 
+         * 用于未绑定的 uniform 缓冲区槽，大小为最小规范 UBO 大小。
+         */
         mDummyUniformBuffer = driverApi.createBufferObject(CONFIG_MINSPEC_UBO_SIZE,
                 BufferObjectBinding::UNIFORM, BufferUsage::STATIC);
 
+        /**
+         * 初始化光源管理器和 DFG（分布函数）
+         */
         mLightManager.init(*this);
         mDFG.init(*this);
     }
 
+    /**
+     * 初始化后处理管理器
+     * 
+     * 后处理管理器负责所有后处理效果的渲染（如 Bloom、TAA、SSR 等）。
+     */
     mPostProcessManager.init();
 
+    /**
+     * 注册调试属性：方向阴影贴图调试
+     * 
+     * 用于可视化方向光阴影贴图。当属性改变时，更新所有表面材质的
+     * 专用常量并使其相关变体无效化，触发重新编译。
+     */
     mDebugRegistry.registerProperty("d.shadowmap.debug_directional_shadowmap",
             &debug.shadowmap.debug_directional_shadowmap, [this] {
                 mMaterials.forEach([this](FMaterial* material) {
@@ -658,6 +910,12 @@ void FEngine::init() {
                 });
             });
 
+    /**
+     * 注册调试属性：Froxel 可视化调试
+     * 
+     * 用于可视化光照的 Froxel（体素）结构。当属性改变时，更新所有表面材质的
+     * 专用常量并使其相关变体无效化，触发重新编译。
+     */
     mDebugRegistry.registerProperty("d.lighting.debug_froxel_visualization",
             &debug.lighting.debug_froxel_visualization, [this] {
                 mMaterials.forEach([this](FMaterial* material) {
@@ -674,22 +932,73 @@ void FEngine::init() {
                 });
             });
 
+    /**
+     * 标记 Engine 已初始化
+     * 
+     * 所有子系统初始化完成后，设置此标志表示 Engine 已准备好使用。
+     */
     mInitialized = true;
 }
 
+/**
+ * FEngine 析构函数
+ * 
+ * 清理 Engine 资源。
+ * 注意：必须先调用 shutdown() 再销毁 Engine，否则会触发断言。
+ * 
+ * 清理顺序：
+ * 1. 验证资源分配器已释放（应通过 shutdown() 完成）
+ * 2. 销毁 Driver
+ * 3. 如果拥有 Platform，销毁 Platform
+ */
 FEngine::~FEngine() noexcept {
     FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
+    /**
+     * 验证资源分配器已释放
+     * 
+     * 资源分配器应在 shutdown() 中释放。如果此处仍存在，说明 shutdown() 未被调用。
+     */
     assert_invariant(!mResourceAllocatorDisposer);
+    /**
+     * 销毁 Driver
+     */
     delete mDriver;
+    /**
+     * 如果拥有 Platform，销毁它
+     */
     if (mOwnPlatform) {
         PlatformFactory::destroy(&mPlatform);
     }
 }
 
+/**
+ * 关闭 Engine
+ * 
+ * 清理所有资源并关闭后端。必须在销毁 Engine 前调用此方法。
+ * 
+ * 清理顺序：
+ * 1. 验证在主线程中调用
+ * 2. 打印统计信息（调试模式）
+ * 3. 释放后处理管理器资源
+ * 4. 释放资源分配器
+ * 5. 释放 DFG（分布函数）
+ * 6. 释放所有组件管理器（Renderable、Light、Camera）
+ * 7. 释放描述符集布局
+ * 8. 释放全屏三角形
+ * 9. 释放默认资源（IBL、材质、颜色分级等）
+ * 10. 清理用户创建的资源列表
+ * 11. 释放虚拟纹理
+ * 12. 关闭后端（刷新命令、等待线程退出）
+ * 13. 终止 JobSystem
+ */
 void FEngine::shutdown() {
     FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
 
-    // by construction this should never be nullptr
+    /**
+     * 验证资源分配器存在
+     * 
+     * 根据构造方式，资源分配器应该始终存在。
+     */
     assert_invariant(mResourceAllocatorDisposer);
 
     FILAMENT_CHECK_PRECONDITION(ThreadUtils::isThisThread(mMainThreadId))
@@ -828,35 +1137,72 @@ void FEngine::shutdown() {
     mJobSystem.emancipate();
 }
 
+/**
+ * 准备帧
+ * 
+ * 在每帧渲染前调用一次，准备材质实例和 UBO。
+ * 
+ * 处理流程：
+ * 1. 如果启用 UBO 批处理，开始帧（分配 UBO 槽位）
+ * 2. 提交所有表面材质实例的 uniform（后处理材质实例需要显式提交）
+ * 3. 如果启用 UBO 批处理，完成帧开始（映射 UBO 缓冲区）
+ * 4. 检查材质程序编辑（调试模式）
+ * 
+ * 注意：
+ * - 理想情况下只上传可见对象的 UBO，但当前实现上传所有实例
+ * - 由于 UBO 未改变时跳过上传，性能影响不大
+ * - 后处理材质实例的 uniform 通常在此时还未设置，需要显式提交
+ */
 void FEngine::prepare() {
     FILAMENT_TRACING_CALL(FILAMENT_TRACING_CATEGORY_FILAMENT);
-    // prepare() is called once per Renderer frame. Ideally we would upload the content of
-    // UBOs that are visible only. It's not such a big issue because the actual upload() is
-    // skipped if the UBO hasn't changed. Still we could have a lot of these.
     DriverApi& driver = getDriverApi();
     const bool useUboBatching = isUboBatchingEnabled();
 
+    /**
+     * 如果启用 UBO 批处理，开始帧
+     * 
+     * 这会：
+     * - 释放不再被 GPU 使用的 UBO 槽位
+     * - 为需要槽位的材质实例分配新槽位
+     * - 如果缓冲区不足，重新分配更大的共享 UBO
+     * - 映射共享 UBO 到 CPU 可访问的内存
+     */
     if (useUboBatching) {
         assert_invariant(mUboManager != nullptr);
         mUboManager->beginFrame(driver);
     }
 
+    /**
+     * 提交所有表面材质实例的 uniform
+     * 
+     * 只提交表面材质实例，因为：
+     * - 后处理材质实例的 uniform 通常在此时还未设置
+     * - 后处理材质实例需要显式调用 commit()
+     */
     UboManager* uboManager = mUboManager;
     for (auto& materialInstanceList: mMaterialInstances) {
         materialInstanceList.second.forEach([&driver, uboManager](FMaterialInstance* item) {
-            // post-process materials instances must be commited explicitly because their
-            // parameters are typically not set at this point in time.
             if (item->getMaterial()->getMaterialDomain() == MaterialDomain::SURFACE) {
                 item->commit(driver, uboManager);
             }
         });
     }
 
+    /**
+     * 如果启用 UBO 批处理，完成帧开始
+     * 
+     * 这会取消映射共享 UBO 缓冲区。
+     */
     if (useUboBatching) {
         assert_invariant(mUboManager != nullptr);
         getUboManager()->finishBeginFrame(getDriverApi());
     }
 
+    /**
+     * 检查材质程序编辑（仅在调试模式启用）
+     * 
+     * 用于材质调试工具，检查是否有程序修改。
+     */
     mMaterials.forEach([](FMaterial* material) {
 #if FILAMENT_ENABLE_MATDBG // NOLINT(*-include-cleaner)
         material->checkProgramEdits();
@@ -864,15 +1210,33 @@ void FEngine::prepare() {
     });
 }
 
+/**
+ * 垃圾回收
+ * 
+ * 清理已删除实体的组件。此方法在 Job 中运行。
+ * 
+ * 处理流程：
+ * 1. 获取实体管理器
+ * 2. 对所有组件管理器执行垃圾回收（Renderable、Light、Transform、Camera）
+ * 
+ * 注意：此方法在后台线程中运行，必须确保线程安全。
+ */
 void FEngine::gc() {
-    // Note: this runs in a Job
     auto& em = mEntityManager;
-    mRenderableManager.gc(em);
-    mLightManager.gc(em);
-    mTransformManager.gc(em);
-    mCameraManager.gc(*this, em);
+    mRenderableManager.gc(em);   // 清理 Renderable 组件
+    mLightManager.gc(em);        // 清理 Light 组件
+    mTransformManager.gc(em);    // 清理 Transform 组件
+    mCameraManager.gc(*this, em); // 清理 Camera 组件
 }
 
+/**
+ * 提交帧
+ * 
+ * 在帧结束时调用，标记帧完成。
+ * 
+ * 如果启用 UBO 批处理，会创建栅栏并跟踪该帧使用的 UBO 分配。
+ * 这些分配的 gpuUseCount 会增加，并在相应帧完成后减少。
+ */
 void FEngine::submitFrame() {
     if (isUboBatchingEnabled()) {
         DriverApi& driver = getDriverApi();
@@ -880,33 +1244,84 @@ void FEngine::submitFrame() {
     }
 }
 
+/**
+ * 刷新命令缓冲区
+ * 
+ * 将当前命令缓冲区中的命令提交到 Driver 线程执行。
+ * 这是一个异步操作，不会等待 GPU 完成。
+ */
 void FEngine::flush() {
-    // flush the command buffer
     flushCommandBuffer(mCommandBufferQueue);
 }
 
+/**
+ * 刷新并等待（无限等待）
+ * 
+ * 刷新命令缓冲区并等待所有 GPU 命令完成。
+ * 这是一个同步操作，会阻塞直到 GPU 完成所有命令。
+ * 
+ * @return 如果所有命令成功完成返回 true，否则返回 false
+ */
 void FEngine::flushAndWait() {
     flushAndWait(FENCE_WAIT_FOR_EVER);
 }
 
+/**
+ * 刷新并等待（指定超时）
+ * 
+ * 刷新命令缓冲区并等待所有 GPU 命令完成，最多等待指定时间。
+ * 
+ * @param timeout 超时时间（纳秒）
+ *                - FENCE_WAIT_FOR_EVER: 无限等待
+ *                - 其他值: 最大等待时间
+ * @return 如果所有命令在超时前完成返回 true，否则返回 false
+ * 
+ * 实现流程：
+ * 1. 验证命令队列未暂停
+ * 2. 验证 Engine 未关闭
+ * 3. 入队 finish 命令（阻塞直到 GPU 完成）
+ * 4. 创建栅栏并等待
+ * 5. 执行可能已调度的回调
+ * 
+ * 注意：如果渲染线程已暂停或 Engine 已关闭，会触发断言。
+ */
 bool FEngine::flushAndWait(uint64_t const timeout) {
+    /**
+     * 验证命令队列未暂停
+     */
     FILAMENT_CHECK_PRECONDITION(!mCommandBufferQueue.isPaused())
             << "Cannot call Engine::flushAndWait() when rendering thread is paused!";
 
-    // first make sure we've not terminated filament
+    /**
+     * 验证 Engine 未关闭
+     */
     FILAMENT_CHECK_PRECONDITION(!mCommandBufferQueue.isExitRequested())
             << "Calling Engine::flushAndWait() after Engine::shutdown()!";
 
-    // enqueue finish command -- this will stall in the driver until the GPU is done
+    /**
+     * 入队 finish 命令
+     * 
+     * 这会阻塞 Driver 线程直到 GPU 完成所有命令。
+     */
     getDriverApi().finish();
 
+    /**
+     * 创建栅栏并等待
+     */
     FFence* fence = createFence();
     FenceStatus const status = fence->wait(FFence::Mode::FLUSH, timeout);
     destroy(fence);
 
-    // finally, execute callbacks that might have been scheduled
+    /**
+     * 执行可能已调度的回调
+     * 
+     * 这些回调可能包含资源清理等操作。
+     */
     getDriver().purge();
 
+    /**
+     * 返回是否成功完成
+     */
     return status == FenceStatus::CONDITION_SATISFIED;
 }
 
@@ -914,18 +1329,55 @@ bool FEngine::flushAndWait(uint64_t const timeout) {
 // Render thread / command queue
 // -----------------------------------------------------------------------------------------------
 
+/**
+ * Driver 线程循环
+ * 
+ * 在单独线程中运行，处理 GPU 命令执行。
+ * 这是多线程模式下的后端线程主循环。
+ * 
+ * 处理流程：
+ * 1. 如果没有 Platform，创建默认 Platform
+ * 2. 设置线程名称和优先级
+ * 3. 创建 Driver
+ * 4. 通知主线程 Driver 已创建（通过栅栏）
+ * 5. 进入命令处理循环（执行命令队列）
+ * 6. 关闭时终止 Driver
+ * 
+ * @return 退出代码（0 表示成功）
+ * 
+ * 注意：
+ * - 此方法在单独线程中运行
+ * - 使用栅栏与主线程同步
+ * - 如果 Platform 创建失败，会通知主线程并退出
+ */
 int FEngine::loop() {
+    /**
+     * 如果没有 Platform，创建默认 Platform
+     * 
+     * 在多线程模式下，如果没有提供 Platform，则创建默认的。
+     */
     if (mPlatform == nullptr) {
         mPlatform = PlatformFactory::create(&mBackend);
         mOwnPlatform = true;
         LOG(INFO) << "FEngine resolved backend: " << to_string(mBackend);
         if (mPlatform == nullptr) {
+            /**
+             * Platform 创建失败
+             * 
+             * 通知主线程并返回失败。
+             */
             LOG(ERROR) << "Selected backend not supported in this build.";
-            mDriverBarrier.latch();
+            mDriverBarrier.latch();  // 通知主线程（创建失败）
             return 0;
         }
     }
 
+    /**
+     * 设置线程名称和优先级
+     * 
+     * 线程名称用于调试和性能分析。
+     * 优先级设置为 DISPLAY，确保渲染线程有足够的 CPU 时间。
+     */
     JobSystem::setThreadName("FEngine::loop");
     JobSystem::setThreadPriority(JobSystem::Priority::DISPLAY);
 
@@ -1003,11 +1455,25 @@ int FEngine::loop() {
     return 0;
 }
 
+/**
+ * 刷新命令缓冲区
+ * 
+ * 刷新命令缓冲区队列并清理驱动。
+ * 
+ * @param commandBufferQueue 命令缓冲区队列引用
+ */
 void FEngine::flushCommandBuffer(CommandBufferQueue& commandBufferQueue) const {
     getDriver().purge();
     commandBufferQueue.flush();
 }
 
+/**
+ * 获取天空盒材质
+ * 
+ * 返回天空盒材质。如果尚未创建，则延迟创建。
+ * 
+ * @return 天空盒材质指针
+ */
 const FMaterial* FEngine::getSkyboxMaterial() const noexcept {
     FMaterial const* material = mSkyboxMaterial;
     if (UTILS_UNLIKELY(material == nullptr)) {
@@ -1574,23 +2040,33 @@ void* FEngine::streamAlloc(size_t const size, size_t const alignment) noexcept {
     return getDriverApi().allocate(size, alignment);
 }
 
+/**
+ * 执行命令缓冲区
+ * 
+ * 等待并执行命令缓冲区队列中的命令。
+ * 在 Driver 线程循环中调用。
+ * 
+ * @return 如果成功执行返回 true，如果线程退出请求返回 false
+ */
 bool FEngine::execute() {
     // wait until we get command buffers to be executed (or thread exit requested)
+    // 等待直到获取要执行的命令缓冲区（或线程退出请求）
     auto const buffers = mCommandBufferQueue.waitForCommands();
     if (UTILS_UNLIKELY(buffers.empty())) {
-        return false;
+        return false;  // 队列为空表示线程退出请求
     }
 
     // execute all command buffers
+    // 执行所有命令缓冲区
     auto& driver = getDriverApi();
     for (auto& item : buffers) {
         if (UTILS_LIKELY(item.begin)) {
-            driver.execute(item.begin);
-            mCommandBufferQueue.releaseBuffer(item);
+            driver.execute(item.begin);  // 执行命令
+            mCommandBufferQueue.releaseBuffer(item);  // 释放缓冲区
         }
     }
 
-    return true;
+    return true;  // 成功执行
 }
 
 void FEngine::destroy(FEngine* engine) {
@@ -1639,6 +2115,15 @@ void FEngine::unprotected() noexcept {
     mUnprotectedDummySwapchain->makeCurrent(getDriverApi());
 }
 
+/**
+ * 设置特性标志
+ * 
+ * 设置指定名称的特性标志值。
+ * 
+ * @param name 特性标志名称
+ * @param value 要设置的值
+ * @return 如果成功设置返回 true，如果特性不存在或为常量返回 false
+ */
 bool FEngine::setFeatureFlag(char const* name, bool const value) const noexcept {
     auto* const p = getFeatureFlagPtr(name);
     if (p) {
@@ -1647,6 +2132,14 @@ bool FEngine::setFeatureFlag(char const* name, bool const value) const noexcept 
     return p != nullptr;
 }
 
+/**
+ * 获取特性标志
+ * 
+ * 获取指定名称的特性标志值。
+ * 
+ * @param name 特性标志名称
+ * @return 如果特性存在返回其值，否则返回 std::nullopt
+ */
 std::optional<bool> FEngine::getFeatureFlag(char const* name) const noexcept {
     auto* const p = getFeatureFlagPtr(name, true);
     if (p) {
@@ -1655,6 +2148,15 @@ std::optional<bool> FEngine::getFeatureFlag(char const* name) const noexcept {
     return std::nullopt;
 }
 
+/**
+ * 获取特性标志指针
+ * 
+ * 获取指定名称的特性标志的指针。用于直接访问特性标志值。
+ * 
+ * @param name 特性标志名称
+ * @param allowConstant 是否允许返回常量特性标志的指针
+ * @return 如果特性存在返回其指针，否则返回 nullptr
+ */
 bool* FEngine::getFeatureFlagPtr(std::string_view name, bool const allowConstant) const noexcept {
     auto pos = std::find_if(mFeatures.begin(), mFeatures.end(),
             [name](FeatureFlag const& entry) {

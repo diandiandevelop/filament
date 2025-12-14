@@ -36,6 +36,10 @@ namespace filament {
  * a structured UBO.
  * @see RenderableManager::setSkinningBuffer
  */
+/**
+ * SkinningBuffer 用于保存蒙皮数据（骨骼）。它是结构化 UBO 的简单包装器
+ * @see RenderableManager::setSkinningBuffer
+ */
 class UTILS_PUBLIC SkinningBuffer : public FilamentAPI {
     struct BuilderDetails;
 
@@ -61,12 +65,28 @@ public:
          * @param boneCount Number of bones the skinning buffer can hold.
          * @return A reference to this Builder for chaining calls.
          */
+        /**
+         * 蒙皮缓冲区的大小（以骨骼为单位）
+         *
+         * 由于 GLSL 的限制，SkinningBuffer 必须始终是 256 的倍数，
+         * 此调整会自动完成，但可能导致
+         * 一些内存开销。可以通过使用相同的
+         * SkinningBuffer 来存储多个 RenderPrimitive 的骨骼信息来减轻此内存开销。
+         *
+         * @param boneCount 蒙皮缓冲区可以容纳的骨骼数量
+         * @return 对此 Builder 的引用，用于链接调用
+         */
         Builder& boneCount(uint32_t boneCount) noexcept;
 
         /**
          * The new buffer is created with identity bones
          * @param initialize true to initializing the buffer, false to not.
          * @return A reference to this Builder for chaining calls.
+         */
+        /**
+         * 使用单位矩阵骨骼创建新缓冲区
+         * @param initialize true 以初始化缓冲区，false 则不初始化
+         * @return 对此 Builder 的引用，用于链接调用
          */
         Builder& initialize(bool initialize = true) noexcept;
 
@@ -84,6 +104,20 @@ public:
          * @return This Builder, for chaining calls.
          * @deprecated Use name(utils::StaticString const&) instead.
          */
+        /**
+         * 将可选名称与此 SkinningBuffer 关联，用于调试目的
+         *
+         * 名称将显示在错误消息中，应尽可能简短。名称
+         * 会被截断为最多 128 个字符。
+         *
+         * 名称字符串在此方法期间被复制，因此客户端可以在
+         * 函数返回后释放其内存。
+         *
+         * @param name 用于标识此 SkinningBuffer 的字符串
+         * @param len 名称长度，应小于或等于 128
+         * @return 此 Builder，用于链接调用
+         * @deprecated 改用 name(utils::StaticString const&)
+         */
         UTILS_DEPRECATED
         Builder& name(const char* UTILS_NONNULL name, size_t len) noexcept;
 
@@ -94,6 +128,14 @@ public:
          *
          * @param name A string literal to identify this SkinningBuffer
          * @return This Builder, for chaining calls.
+         */
+        /**
+         * 将可选名称与此 SkinningBuffer 关联，用于调试目的
+         *
+         * 名称将显示在错误消息中，应尽可能简短。
+         *
+         * @param name 用于标识此 SkinningBuffer 的字符串字面量
+         * @return 此 Builder，用于链接调用
          */
         Builder& name(utils::StaticString const& name) noexcept;
 
@@ -110,6 +152,19 @@ public:
          *
          * @see SkinningBuffer::setBones
          */
+        /**
+         * 创建 SkinningBuffer 对象并返回指向它的指针
+         *
+         * @param engine 要与此 SkinningBuffer 关联的 filament::Engine 的引用
+         *
+         * @return 指向新创建对象的指针
+         *
+         * @exception 如果发生运行时错误（例如内存或其他资源耗尽），
+         *           则抛出 utils::PostConditionPanic
+         * @exception 如果构建器函数的参数无效，则抛出 utils::PreConditionPanic
+         *
+         * @see SkinningBuffer::setBones
+         */
         SkinningBuffer* UTILS_NONNULL build(Engine& engine);
     private:
         friend class FSkinningBuffer;
@@ -123,6 +178,14 @@ public:
      * @param offset offset in elements (not bytes) in the SkinningBuffer (not in transforms)
      * @see RenderableManager::setSkinningBuffer
      */
+    /**
+     * 更新 [offset, offset + count) 范围内的骨骼变换
+     * @param engine 要与此 SkinningBuffer 关联的 filament::Engine 的引用
+     * @param transforms 指向至少 count 个 Bone 的指针
+     * @param count transforms 中 Bone 元素的数量
+     * @param offset SkinningBuffer（不是 transforms）中的偏移量（以元素为单位，不是字节）
+     * @see RenderableManager::setSkinningBuffer
+     */
     void setBones(Engine& engine, RenderableManager::Bone const* UTILS_NONNULL transforms,
             size_t count, size_t offset = 0);
 
@@ -134,12 +197,24 @@ public:
      * @param offset offset in elements (not bytes) in the SkinningBuffer (not in transforms)
      * @see RenderableManager::setSkinningBuffer
      */
+    /**
+     * 更新 [offset, offset + count) 范围内的骨骼变换
+     * @param engine 要与此 SkinningBuffer 关联的 filament::Engine 的引用
+     * @param transforms 指向至少 count 个 mat4f 的指针
+     * @param count transforms 中 mat4f 元素的数量
+     * @param offset SkinningBuffer（不是 transforms）中的偏移量（以元素为单位，不是字节）
+     * @see RenderableManager::setSkinningBuffer
+     */
     void setBones(Engine& engine, math::mat4f const* UTILS_NONNULL transforms,
             size_t count, size_t offset = 0);
 
     /**
      * Returns the size of this SkinningBuffer in elements.
      * @return The number of bones the SkinningBuffer holds.
+     */
+    /**
+     * 返回此 SkinningBuffer 的大小（以元素为单位）
+     * @return SkinningBuffer 容纳的骨骼数量
      */
     size_t getBoneCount() const noexcept;
 

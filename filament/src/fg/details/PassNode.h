@@ -117,8 +117,19 @@ public:
      */
     utils::CString graphvizifyEdgeColor() const noexcept override;
 
-    Vector<VirtualResource*> devirtualize;         // 执行前需要创建的资源（具体化）
-    Vector<VirtualResource*> destroy;              // 执行后需要销毁的资源
+    /**
+     * 执行前需要创建的资源（具体化）
+     * 
+     * 存储需要在执行此通道之前具体化的虚拟资源。
+     */
+    Vector<VirtualResource*> devirtualize;
+    
+    /**
+     * 执行后需要销毁的资源
+     * 
+     * 存储需要在此通道执行后销毁的虚拟资源。
+     */
+    Vector<VirtualResource*> destroy;
 };
 
 /**
@@ -140,14 +151,59 @@ public:
      */
     class RenderPassData {
     public:
-        static constexpr size_t ATTACHMENT_COUNT = backend::MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT + 2;  // 附件数量
-        utils::StaticString name{};  // 通道名称
-        FrameGraphRenderPass::Descriptor descriptor;  // 渲染通道描述符
-        bool imported = false;  // 是否为导入的渲染目标
-        backend::TargetBufferFlags targetBufferFlags = {};  // 目标缓冲区标志
-        FrameGraphId<FrameGraphTexture> attachmentInfo[ATTACHMENT_COUNT] = {};  // 附件信息数组
-        ResourceNode* incoming[ATTACHMENT_COUNT] = {};  // 入边附件节点（读取源）
-        ResourceNode* outgoing[ATTACHMENT_COUNT] = {};  // 出边附件节点（写入目标）
+        /**
+         * 附件数量
+         * 
+         * 支持的最大附件数量（颜色附件 + 深度附件 + 模板附件）。
+         */
+        static constexpr size_t ATTACHMENT_COUNT = backend::MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT + 2;
+        
+        /**
+         * 通道名称
+         */
+        utils::StaticString name{};
+        
+        /**
+         * 渲染通道描述符
+         * 
+         * 包含渲染通道的配置信息。
+         */
+        FrameGraphRenderPass::Descriptor descriptor;
+        
+        /**
+         * 是否为导入的渲染目标
+         * 
+         * 如果为 true，表示此渲染目标是从外部导入的，不应在帧图内部销毁。
+         */
+        bool imported = false;
+        
+        /**
+         * 目标缓冲区标志
+         * 
+         * 指定哪些缓冲区需要清除（颜色、深度、模板）。
+         */
+        backend::TargetBufferFlags targetBufferFlags = {};
+        
+        /**
+         * 附件信息数组
+         * 
+         * 存储所有附件的纹理 ID。
+         */
+        FrameGraphId<FrameGraphTexture> attachmentInfo[ATTACHMENT_COUNT] = {};
+        
+        /**
+         * 入边附件节点（读取源）
+         * 
+         * 存储作为读取源的资源节点指针。
+         */
+        ResourceNode* incoming[ATTACHMENT_COUNT] = {};
+        
+        /**
+         * 出边附件节点（写入目标）
+         * 
+         * 存储作为写入目标的资源节点指针。
+         */
+        ResourceNode* outgoing[ATTACHMENT_COUNT] = {};
         
         /**
          * 后端数据结构
@@ -155,8 +211,19 @@ public:
          * 存储硬件渲染目标和渲染参数。
          */
         struct {
-            backend::Handle<backend::HwRenderTarget> target;  // 渲染目标句柄
-            backend::RenderPassParams params;  // 渲染参数
+            /**
+             * 渲染目标句柄
+             * 
+             * 硬件渲染目标对象句柄。
+             */
+            backend::Handle<backend::HwRenderTarget> target;
+            
+            /**
+             * 渲染参数
+             * 
+             * 渲染通道的参数（视口、清除值等）。
+             */
+            backend::RenderPassParams params;
         } backend;
 
         /**
@@ -221,17 +288,58 @@ public:
     RenderPassData const* getRenderPassData(uint32_t id) const noexcept;
 
 private:
-    // virtuals from DependencyGraph::Node
+    /**
+     * 获取名称（来自 DependencyGraph::Node 的虚函数）
+     * 
+     * @return 通道名称
+     */
     char const* getName() const noexcept override { return mName; }
+    
+    /**
+     * 生成 Graphviz 表示（来自 DependencyGraph::Node 的虚函数）
+     * 
+     * @return Graphviz 字符串
+     */
     utils::CString graphvizify() const noexcept override;
+    
+    /**
+     * 执行渲染通道（来自 PassNode 的虚函数）
+     * 
+     * @param resources 帧图资源引用
+     * @param driver 驱动 API 引用
+     */
     void execute(FrameGraphResources const& resources, backend::DriverApi& driver) noexcept override;
+    
+    /**
+     * 解析渲染通道（来自 PassNode 的虚函数）
+     * 
+     * 计算丢弃标志、视口等配置。
+     */
     void resolve() noexcept override;
 
-    // constants
+    /**
+     * 常量成员
+     */
+    /**
+     * 通道名称
+     */
     const char* const mName = nullptr;
+    
+    /**
+     * 通道基类指针
+     * 
+     * 存储通道的用户定义逻辑。
+     */
     UniquePtr<FrameGraphPassBase, LinearAllocatorArena> mPassBase;
 
-    // set during setup
+    /**
+     * 设置期间设置的成员
+     */
+    /**
+     * 渲染目标数据数组
+     * 
+     * 存储此通道的所有渲染目标配置。
+     */
     std::vector<RenderPassData> mRenderTargetData;
 };
 

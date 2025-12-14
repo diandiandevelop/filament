@@ -148,7 +148,6 @@ namespace filament {
  * The Camera is also used to set the scene's exposure, just like with a real camera. The lights
  * intensity and the Camera exposure interact to produce the final scene's brightness.
  *
- *
  * Stereoscopic rendering
  * ======================
  *
@@ -164,18 +163,112 @@ namespace filament {
  *
  * \see Frustum, View
  */
+/**
+ * Camera 表示观察场景的眼睛（或双眼）
+ *
+ * Camera 具有位置和方向，并控制投影和曝光参数。
+ *
+ * 对于立体渲染，Camera 维护两个独立的"眼睛"：Eye 0 和 Eye 1。这些是
+ * 任意的，不一定需要对应"左"和"右"。
+ *
+ * 创建和销毁
+ * ========================
+ *
+ * 在 Filament 中，Camera 是一个组件，必须与实体关联。为此，
+ * 使用 Engine::createCamera(Entity)。Camera 组件使用
+ * Engine::destroyCameraComponent(Entity) 销毁。
+ *
+ * 坐标系
+ * =================
+ *
+ * 相机坐标系定义了*视图空间*。相机指向其 -z 轴
+ * 并定向为其顶部在 +y 方向，其右侧在
+ * +x 方向。
+ *
+ * @note
+ * 由于*近*和*远*平面由距相机的距离定义，
+ * 它们各自的坐标是 -\p distance(near) 和 -\p distance(far)。
+ *
+ * 裁剪平面
+ * ===============
+ *
+ * 相机定义了六个*裁剪平面*，它们共同创建一个*裁剪体积*。
+ * 此体积外的几何体被裁剪。
+ *
+ * 裁剪体积可以是盒子或截头体，取决于使用的投影类型，
+ * 分别是 Projection.ORTHO 或 Projection.PERSPECTIVE。六个平面通过
+ * 直接指定或使用 setProjection() 间接指定。
+ *
+ * 六个平面是：
+ * - left（左）
+ * - right（右）
+ * - bottom（底）
+ * - top（顶）
+ * - near（近）
+ * - far（远）
+ *
+ * @note
+ * 为了提高深度缓冲区精度，*远*裁剪平面在渲染时总是被假设为
+ * 无穷远。也就是说，它在渲染期间不用于裁剪几何体。
+ * 但是，它在剔除阶段使用（完全在*远*平面后面的对象被剔除）。
+ *
+ *
+ * 选择*近*平面距离
+ * ==================================
+ *
+ * *近*平面距离极大地影响深度缓冲区的分辨率。
+ *
+ * 示例：假设 32 位浮点深度缓冲区，在不同近距离下在 1m、10m、100m 和 1Km 处的精度：
+ *
+ * 如上表所示，深度缓冲区精度随
+ * 距相机的距离而快速下降。
+ *
+ * 确保选择尽可能高的*近*平面距离。
+ *
+ * 在 Vulkan 和 Metal 平台上（或支持 EXT_clip_control 或
+ * ARB_clip_control 扩展的 OpenGL 平台），深度缓冲区精度对*近*
+ * 平面值的依赖要小得多。
+ *
+ *
+ * 选择*远*平面距离
+ * =================================
+ *
+ * 远平面距离在渲染时总是在内部设置为无穷大，但用于
+ * 剔除和阴影计算。保持
+ * 近平面和远平面距离之间的合理比例很重要。通常建议比例在 1:100 到 1:100000 范围内。
+ * 更大的值可能导致渲染伪影或在调试构建中触发断言。
+ *
+ *
+ * 曝光
+ * ========
+ *
+ * Camera 也用于设置场景的曝光，就像真实相机一样。光源
+ * 强度和 Camera 曝光相互作用以产生最终场景的亮度。
+ *
+ * \see Frustum, View
+ */
 class UTILS_PUBLIC Camera : public FilamentAPI {
 public:
     //! Denotes the projection type used by this camera. \see setProjection
+    /**
+     * 表示此相机使用的投影类型
+     */
     enum class Projection : int {
         PERSPECTIVE,    //!< perspective projection, objects get smaller as they are farther
+        /** 透视投影，对象越远越小 */
         ORTHO           //!< orthonormal projection, preserves distances
+        /** 正交投影，保持距离 */
     };
 
     //! Denotes a field-of-view direction. \see setProjection
+    /**
+     * 表示视场方向
+     */
     enum class Fov : int {
         VERTICAL,       //!< the field-of-view angle is defined on the vertical axis
+        /** 视场角在垂直轴上定义 */
         HORIZONTAL      //!< the field-of-view angle is defined on the horizontal axis
+        /** 视场角在水平轴上定义 */
     };
 
     /** Returns the projection matrix from the field-of-view.
@@ -188,6 +281,17 @@ public:
      *
      * @see Fov.
      */
+    /**
+     * 从视场返回投影矩阵
+     *
+     * @param fovInDegrees 完整视场（度）。0 < \p fov < 180
+     * @param aspect       宽高比 \f$ \frac{width}{height} \f$。\p aspect > 0
+     * @param near         从相机到近平面的距离（世界单位）。\p near > 0
+     * @param far          从相机到远平面的距离（世界单位）。\p far > \p near
+     * @param direction    \p fovInDegrees 参数的方向
+     *
+     * @see Fov
+     */
     static math::mat4 projection(Fov direction, double fovInDegrees,
             double aspect, double near, double far = INFINITY);
 
@@ -197,6 +301,14 @@ public:
      * @param aspect      aspect ratio \f$ \frac{width}{height} \f$. \p aspect > 0.
      * @param near        distance in world units from the camera to the near plane. \p near > 0.
      * @param far         distance in world units from the camera to the far plane. \p far > \p near.
+     */
+    /**
+     * 从焦距返回投影矩阵
+     *
+     * @param focalLengthInMillimeters 镜头焦距（毫米）。\p focalLength > 0
+     * @param aspect      宽高比 \f$ \frac{width}{height} \f$。\p aspect > 0
+     * @param near        从相机到近平面的距离（世界单位）。\p near > 0
+     * @param far         从相机到远平面的距离（世界单位）。\p far > \p near
      */
     static math::mat4 projection(double focalLengthInMillimeters,
             double aspect, double near, double far = INFINITY);
@@ -234,6 +346,39 @@ public:
      *
      * @see Projection, Frustum
      */
+    /**
+     * 从由六个平面定义的截头体设置投影矩阵
+     *
+     * @param projection    要使用的 #Projection 类型
+     *
+     * @param left      从相机到左平面的距离（世界单位），
+     *                  在近平面处。
+     *                  前置条件：\p left != \p right
+     *
+     * @param right     从相机到右平面的距离（世界单位），
+     *                  在近平面处。
+     *                  前置条件：\p left != \p right
+     *
+     * @param bottom    从相机到底平面的距离（世界单位），
+     *                  在近平面处。
+     *                  前置条件：\p bottom != \p top
+     *
+     * @param top       从相机到顶平面的距离（世界单位），
+     *                  在近平面处。
+     *                  前置条件：\p left != \p right
+     *
+     * @param near      从相机到近平面的距离（世界单位）。近平面的
+     *                  位置在视图空间中为 z = -\p near。
+     *                  前置条件：对于 PROJECTION::PERSPECTIVE，\p near > 0 或
+     *                            对于 PROJECTION::ORTHO，\p near != far
+     *
+     * @param far       从相机到远平面的距离（世界单位）。远平面的
+     *                  位置在视图空间中为 z = -\p far。
+     *                  前置条件：对于 PROJECTION::PERSPECTIVE，\p far > near 或
+     *                            对于 PROJECTION::ORTHO，\p far != near
+     *
+     * @see Projection, Frustum
+     */
     void setProjection(Projection projection,
             double left, double right,
             double bottom, double top,
@@ -250,6 +395,17 @@ public:
      *
      * @see Fov.
      */
+    /**
+     * 从视场设置投影矩阵的实用方法
+     *
+     * @param fovInDegrees 完整视场（度）。0 < \p fov < 180
+     * @param aspect    宽高比 \f$ \frac{width}{height} \f$。\p aspect > 0
+     * @param near      从相机到近平面的距离（世界单位）。\p near > 0
+     * @param far       从相机到远平面的距离（世界单位）。\p far > \p near
+     * @param direction \p fovInDegrees 参数的方向
+     *
+     * @see Fov
+     */
     void setProjection(double fovInDegrees, double aspect, double near, double far,
                        Fov direction = Fov::VERTICAL);
 
@@ -259,6 +415,14 @@ public:
      * @param aspect    aspect ratio \f$ \frac{width}{height} \f$. \p aspect > 0.
      * @param near      distance in world units from the camera to the near plane. \p near > 0.
      * @param far       distance in world units from the camera to the far plane. \p far > \p near.
+     */
+    /**
+     * 从焦距设置投影矩阵的实用方法
+     *
+     * @param focalLengthInMillimeters 镜头焦距（毫米）。\p focalLength > 0
+     * @param aspect    宽高比 \f$ \frac{width}{height} \f$。\p aspect > 0
+     * @param near      从相机到近平面的距离（世界单位）。\p near > 0
+     * @param far       从相机到远平面的距离（世界单位）。\p far > \p near
      */
     void setLensProjection(double focalLengthInMillimeters,
             double aspect, double near, double far);
@@ -273,6 +437,16 @@ public:
      * @param near      distance in world units from the camera to the near plane.
      * @param far       distance in world units from the camera to the far plane. \p far != \p near.
      */
+    /**
+     * 设置自定义投影矩阵
+     *
+     * 投影矩阵必须定义一个符合 OpenGL 约定的 NDC 系统，
+     * 即所有 3 个轴都映射到 [-1, 1]。
+     *
+     * @param projection  用于渲染和剔除的自定义投影矩阵
+     * @param near      从相机到近平面的距离（世界单位）
+     * @param far       从相机到远平面的距离（世界单位）。\p far != \p near
+     */
     void setCustomProjection(math::mat4 const& projection, double near, double far) noexcept;
 
     /** Sets the projection matrix.
@@ -284,6 +458,17 @@ public:
      * @param projectionForCulling  custom projection matrix used for culling
      * @param near      distance in world units from the camera to the near plane.
      * @param far       distance in world units from the camera to the far plane. \p far != \p near.
+     */
+    /**
+     * 设置投影矩阵
+     *
+     * 投影矩阵必须定义一个符合 OpenGL 约定的 NDC 系统，
+     * 即所有 3 个轴都映射到 [-1, 1]。
+     *
+     * @param projection          用于渲染的自定义投影矩阵
+     * @param projectionForCulling  用于剔除的自定义投影矩阵
+     * @param near                从相机到近平面的距离（世界单位）
+     * @param far                 从相机到远平面的距离（世界单位）。\p far != \p near
      */
     void setCustomProjection(math::mat4 const& projection, math::mat4 const& projectionForCulling,
             double near, double far) noexcept;
@@ -303,6 +488,22 @@ public:
      * @param near distance in world units from the camera to the culling near plane. \p near > 0.
      * @param far distance in world units from the camera to the culling far plane. \p far > \p
      * near.
+     * @see setCustomProjection
+     * @see Engine::Config::stereoscopicEyeCount
+     */
+    /**
+     * 为每个眼睛设置自定义投影矩阵
+     *
+     * projectionForCulling、near 和 far 参数建立一个"剔除截头体"，必须
+     * 包含任何眼睛都能看到的任何内容。所有投影矩阵必须同时设置。
+     * 立体眼睛的数量由 Engine::Config 中的 stereoscopicEyeCount 设置控制。
+     *
+     * @param projection          投影矩阵数组，只读取前 config.stereoscopicEyeCount 个
+     * @param count              要设置的投影矩阵数组的大小，必须
+     *                          >= config.stereoscopicEyeCount
+     * @param projectionForCulling  用于剔除的自定义投影矩阵，必须包含两个眼睛
+     * @param near               从相机到剔除近平面的距离（世界单位）。\p near > 0
+     * @param far                从相机到剔除远平面的距离（世界单位）。\p far > \p near
      * @see setCustomProjection
      * @see Engine::Config::stereoscopicEyeCount
      */
@@ -330,6 +531,19 @@ public:
      *
      * @see setProjection, setLensProjection, setCustomProjection
      */
+    /**
+     * 设置用于缩放投影矩阵的附加矩阵
+     *
+     * 这对于独立于投影调整相机的宽高比很有用。
+     * 首先，将 aspect 设置为 1.0 传递给 setProjection。然后用所需的宽高比
+     * 设置缩放：
+     *
+     * 默认情况下，这是一个单位矩阵。
+     *
+     * @param scaling     要在投影矩阵之后应用的 2x2 缩放矩阵的对角线
+     *
+     * @see setProjection, setLensProjection, setCustomProjection
+     */
     void setScaling(math::double2 scaling) noexcept;
 
     /**
@@ -342,6 +556,16 @@ public:
      *
      * @see setProjection, setLensProjection, setCustomProjection
      */
+    /**
+     * 设置用于平移投影矩阵的附加矩阵
+     * 默认情况下，这是一个单位矩阵。
+     *
+     * @param shift     添加到投影矩阵的 x 和 y 平移，以 NDC
+     *                  坐标指定，也就是说，如果必须以像素指定平移，
+     *                  shift 必须按 1.0 / { viewport.width, viewport.height } 缩放。
+     *
+     * @see setProjection, setLensProjection, setCustomProjection
+     */
     void setShift(math::double2 shift) noexcept;
 
     /** Returns the scaling amount used to scale the projection matrix.
@@ -350,11 +574,25 @@ public:
      *
      * @see setScaling
      */
+    /**
+     * 返回用于缩放投影矩阵的缩放量
+     *
+     * @return 在投影矩阵之后应用的缩放矩阵的对角线
+     *
+     * @see setScaling
+     */
     math::double4 getScaling() const noexcept;
 
     /** Returns the shift amount used to translate the projection matrix.
      *
      * @return the 2D translation x and y offsets applied after the projection matrix.
+     *
+     * @see setShift
+     */
+    /**
+     * 返回用于平移投影矩阵的平移量
+     *
+     * @return 在投影矩阵之后应用的 2D 平移 x 和 y 偏移
      *
      * @see setShift
      */
@@ -372,6 +610,19 @@ public:
      * @see setProjection, setLensProjection, setCustomProjection, getCullingProjectionMatrix,
      * setCustomEyeProjection
      */
+    /**
+     * 返回用于渲染的投影矩阵
+     *
+     * 用于渲染的投影矩阵总是将其远平面设置为无穷大。这就是
+     * 为什么它可能不同于通过 setProjection() 或 setLensProjection() 设置的矩阵。
+     *
+     * @param eyeId 要返回投影矩阵的眼睛索引，必须
+     *              < config.stereoscopicEyeCount
+     * @return 用于渲染的投影矩阵
+     *
+     * @see setProjection, setLensProjection, setCustomProjection, getCullingProjectionMatrix,
+     * setCustomEyeProjection
+     */
     math::mat4 getProjectionMatrix(uint8_t eyeId = 0) const;
 
 
@@ -381,13 +632,26 @@ public:
      *
      * @see setProjection, setLensProjection, getProjectionMatrix
      */
+    /**
+     * 返回用于剔除的投影矩阵（远平面是有限的）
+     *
+     * @return 由 setProjection 或 setLensProjection 设置的投影矩阵
+     *
+     * @see setProjection, setLensProjection, getProjectionMatrix
+     */
     math::mat4 getCullingProjectionMatrix() const noexcept;
 
 
     //! Returns the frustum's near plane
+    /**
+     * 返回截头体的近平面
+     */
     double getNear() const noexcept;
 
     //! Returns the frustum's far plane used for culling
+    /**
+     * 返回用于剔除的截头体远平面
+     */
     double getCullingFar() const noexcept;
 
     /** Sets the camera's model matrix.
@@ -405,6 +669,18 @@ public:
      * @note The Camera "looks" towards its -z axis
      *
      * @warning \p model must be a rigid transform
+     */
+    /**
+     * 设置相机的模型矩阵
+     *
+     * 设置相机实体变换组件的辅助方法。
+     * 它与调用以下代码效果相同：
+     *
+     * @param modelMatrix 作为刚体变换矩阵提供的相机位置和方向
+     *
+     * @note 相机"看向"其 -z 轴
+     *
+     * @warning \p model 必须是刚体变换
      */
     void setModelMatrix(const math::mat4& modelMatrix) noexcept;
     void setModelMatrix(const math::mat4f& modelMatrix) noexcept; //!< @overload
@@ -427,6 +703,17 @@ public:
      * @param eyeId the index of the eye to set, must be < config.stereoscopicEyeCount
      * @param model the model matrix for an individual eye
      */
+    /**
+     * 设置眼睛相对于此 Camera（头部）的位置
+     *
+     * 默认情况下，两个眼睛的模型矩阵都是单位矩阵。
+     *
+     * 此方法不打算每帧调用。相反，要更新
+     * 头部的位置，请使用 Camera::setModelMatrix。
+     *
+     * @param eyeId 要设置的眼睛的索引，必须 < config.stereoscopicEyeCount
+     * @param model 单个眼睛的模型矩阵
+     */
     void setEyeModelMatrix(uint8_t eyeId, math::mat4 const& model);
 
     /** Sets the camera's model matrix
@@ -434,6 +721,13 @@ public:
      * @param eye       The position of the camera in world space.
      * @param center    The point in world space the camera is looking at.
      * @param up        A unit vector denoting the camera's "up" direction.
+     */
+    /**
+     * 设置相机的模型矩阵（通过观察点和目标点）
+     *
+     * @param eye       相机在世界空间中的位置
+     * @param center    相机在世界空间中观察的点
+     * @param up        表示相机"向上"方向的单位向量
      */
     void lookAt(math::double3 const& eye,
                 math::double3 const& center,
@@ -452,30 +746,68 @@ public:
      * @return The camera's pose in world space as a rigid transform. Parent transforms, if any,
      * are taken into account.
      */
+    /**
+     * 返回相机的模型矩阵
+     *
+     * 返回相机实体变换组件的辅助方法。
+     * 它与调用以下代码效果相同：
+     *
+     * ~~~~~~~~~~~{.cpp}
+     *  engine.getTransformManager().getWorldTransform(
+     *          engine.getTransformManager().getInstance(camera->getEntity()));
+     * ~~~~~~~~~~~
+     *
+     * @return 相机在世界空间中的姿态，作为刚体变换。如果存在父变换，
+     * 则会考虑在内。
+     */
     math::mat4 getModelMatrix() const noexcept;
 
     //! Returns the camera's view matrix (inverse of the model matrix)
+    /**
+     * 返回相机的视图矩阵（模型矩阵的逆）
+     */
     math::mat4 getViewMatrix() const noexcept;
 
     //! Returns the camera's position in world space
+    /**
+     * 返回相机在世界空间中的位置
+     */
     math::double3 getPosition() const noexcept;
 
     //! Returns the camera's normalized left vector
+    /**
+     * 返回相机的归一化左向量
+     */
     math::float3 getLeftVector() const noexcept;
 
     //! Returns the camera's normalized up vector
+    /**
+     * 返回相机的归一化上向量
+     */
     math::float3 getUpVector() const noexcept;
 
     //! Returns the camera's forward vector
+    /**
+     * 返回相机的前向量
+     */
     math::float3 getForwardVector() const noexcept;
 
     //! Returns the camera's field of view in degrees
+    /**
+     * 返回相机的视场（度）
+     */
     float getFieldOfViewInDegrees(Fov direction) const noexcept;
 
     //! Returns the camera's culling Frustum in world space
+    /**
+     * 返回相机在世界空间中的剔除截头体
+     */
     class Frustum getFrustum() const noexcept;
 
     //! Returns the entity representing this camera
+    /**
+     * 返回表示此相机的实体
+     */
     utils::Entity getEntity() const noexcept;
 
     /** Sets this camera's exposure (default is f/16, 1/125s, 100 ISO)
@@ -502,6 +834,31 @@ public:
      *
      * @see LightManager, Exposure
      */
+    /**
+     * 设置此相机的曝光（默认值为 f/16、1/125s、100 ISO）
+     *
+     * 曝光最终控制场景的亮度，就像真实相机一样。
+     * 默认值为在晴朗天气、太阳位于天顶时放置在户外的相机提供
+     * 充足的曝光。
+     *
+     * @param aperture      光圈（f 值），钳制在 0.5 到 64 之间。
+     *                      较低的 \p aperture 值*增加*曝光，导致
+     *                      场景更亮。实际值在 0.95 到 32 之间。
+     *
+     * @param shutterSpeed  快门速度（秒），钳制在 1/25,000 到 60 之间。
+     *                      较低的快门速度会增加曝光。实际值
+     *                      在 1/8000 到 30 之间。
+     *
+     * @param sensitivity   感光度（ISO），钳制在 10 到 204,800 之间。
+     *                      较高的 \p sensitivity 会增加曝光。实际值
+     *                      在 50 到 25600 之间。
+     *
+     * @note
+     * 使用默认参数时，场景必须包含至少一个强度
+     * 类似于太阳的光源（例如：100,000 lux 的方向光）。
+     *
+     * @see LightManager, Exposure
+     */
     void setExposure(float aperture, float shutterSpeed, float sensitivity) noexcept;
 
     /** Sets this camera's exposure directly. Calling this method will set the aperture
@@ -514,21 +871,47 @@ public:
      * the exposure manually. This can be typically achieved by setting the exposure to
      * 1.0.
      */
+    /**
+     * 直接设置此相机的曝光。调用此方法将设置光圈
+     * 为 1.0，快门速度为 1.2，感光度将计算为匹配
+     * 请求的曝光（对于期望的曝光 1.0，感光度将
+     * 设置为 100 ISO）。
+     *
+     * 此方法在尝试匹配其他引擎或工具的照明时很有用。
+     * 许多引擎/工具使用无单位的光强度，可以通过手动设置
+     * 曝光来匹配。这通常可以通过将曝光设置为
+     * 1.0 来实现。
+     *
+     * @param exposure 曝光值
+     */
     void setExposure(float exposure) noexcept {
         setExposure(1.0f, 1.2f, 100.0f * (1.0f / exposure));
     }
 
     //! returns this camera's aperture in f-stops
+    /**
+     * 返回此相机的光圈（f 值）
+     */
     float getAperture() const noexcept;
 
     //! returns this camera's shutter speed in seconds
+    /**
+     * 返回此相机的快门速度（秒）
+     */
     float getShutterSpeed() const noexcept;
 
     //! returns this camera's sensitivity in ISO
+    /**
+     * 返回此相机的感光度（ISO）
+     */
     float getSensitivity() const noexcept;
 
     /** Returns the focal length in meters [m] for a 35mm camera.
      * Eye 0's projection matrix is used to compute the focal length.
+     */
+    /**
+     * 返回 35mm 相机的焦距（米 [m]）
+     * 使用 Eye 0 的投影矩阵计算焦距。
      */
     double getFocalLength() const noexcept;
 
@@ -537,9 +920,17 @@ public:
      * @param distance Distance from the camera to the plane of focus in world units.
      *                 Must be positive and larger than the near clipping plane.
      */
+    /**
+     * 设置相机对焦距离。这用于景深后处理效果。
+     * @param distance 从相机到对焦平面的距离（世界单位）。
+     *                 必须为正且大于近裁剪平面。
+     */
     void setFocusDistance(float distance) noexcept;
 
     //! Returns the focus distance in world units
+    /**
+     * 返回对焦距离（世界单位）
+     */
     float getFocusDistance() const noexcept;
 
     /**
@@ -548,10 +939,20 @@ public:
      * \param p the projection matrix to inverse
      * \returns the inverse of the projection matrix \p p
      */
+    /**
+     * 返回投影矩阵的逆矩阵。
+     *
+     * \param p 要求逆的投影矩阵
+     * \returns 投影矩阵 \p p 的逆矩阵
+     */
     static math::mat4 inverseProjection(const math::mat4& p) noexcept;
 
     /**
      * Returns the inverse of a projection matrix.
+     * @see inverseProjection(const math::mat4&)
+     */
+    /**
+     * 返回投影矩阵的逆矩阵（float 版本）。
      * @see inverseProjection(const math::mat4&)
      */
     static math::mat4f inverseProjection(const math::mat4f& p) noexcept;
@@ -563,6 +964,13 @@ public:
      * @param focusDistance     focus distance in same unit as focalLength
      * @return                  the effective focal length in same unit as focalLength
      */
+    /**
+     * 辅助函数：计算考虑对焦距离的有效焦距
+     *
+     * @param focalLength       焦距（任何单位，例如 [m] 或 [mm]）
+     * @param focusDistance     对焦距离（与 focalLength 相同的单位）
+     * @return                  有效焦距（与 focalLength 相同的单位）
+     */
     static double computeEffectiveFocalLength(double focalLength, double focusDistance) noexcept;
 
     /**
@@ -571,6 +979,13 @@ public:
      * @param fovInDegrees      full field of view in degrees
      * @param focusDistance     focus distance in meters [m]
      * @return                  effective full field of view in degrees
+     */
+    /**
+     * 辅助函数：计算考虑对焦距离的有效视场角
+     *
+     * @param fovInDegrees      全视场角（度）
+     * @param focusDistance     对焦距离（米 [m]）
+     * @return                  有效全视场角（度）
      */
     static double computeEffectiveFov(double fovInDegrees, double focusDistance) noexcept;
 

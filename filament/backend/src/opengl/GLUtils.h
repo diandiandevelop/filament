@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2015 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -517,10 +517,6 @@ constexpr GLenum getTextureCompareFunc(SamplerCompareFunc const func) noexcept {
     return getCompareFunc(func);
 }
 #endif
-
-constexpr GLenum getDepthFunc(SamplerCompareFunc const func) noexcept {
-    return getCompareFunc(func);
-}
 
 /**
  * 获取深度测试函数

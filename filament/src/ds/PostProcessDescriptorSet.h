@@ -94,12 +94,12 @@ public:
      * 
      * @return 描述符堆布局常量引用
      */
-    DescriptorSetLayout const& getLayout() const noexcept {
+    filament::DescriptorSetLayout const& getLayout() const noexcept {
         return mDescriptorSetLayout;
     }
 
 private:
-    DescriptorSetLayout mDescriptorSetLayout;  // 描述符堆布局
+    filament::DescriptorSetLayout mDescriptorSetLayout;  // 描述符堆布局（明确指定 filament 命名空间以避免与 backend::DescriptorSetLayout 冲突）
     DescriptorSet mDescriptorSet;  // 描述符堆
 };
 

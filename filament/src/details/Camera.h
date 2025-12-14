@@ -257,40 +257,108 @@ public:
      */
     void setEyeModelMatrix(uint8_t eyeId, math::mat4 const& model);
 
+    /**
+     * 设置相机的模型矩阵（通过观察点）
+     * 
+     * 根据观察位置、目标位置和上向量计算并设置相机的模型矩阵。
+     * 
+     * @param eye 观察位置（世界空间）
+     * @param center 目标位置（世界空间）
+     * @param up 上向量（世界空间，通常为 (0, 1, 0)）
+     */
     // sets the camera's model matrix
     void lookAt(math::double3 const& eye, math::double3 const& center, math::double3 const& up) noexcept;
 
+    /**
+     * 获取模型矩阵
+     * 
+     * 返回相机的模型矩阵（从世界空间到相机空间）。
+     * 
+     * @return 模型矩阵（双精度）
+     */
     // returns the model matrix
     math::mat4 getModelMatrix() const noexcept;
 
+    /**
+     * 获取视图矩阵
+     * 
+     * 返回相机的视图矩阵（模型矩阵的逆矩阵，从相机空间到世界空间）。
+     * 
+     * @return 视图矩阵（双精度）
+     */
     // returns the view matrix (inverse of the model matrix)
     math::mat4 getViewMatrix() const noexcept;
 
+    /**
+     * 刚体变换的逆矩阵
+     * 
+     * 计算刚体变换矩阵的逆矩阵。
+     * 刚体变换的逆可以通过转置旋转部分并调整平移部分来计算：
+     *  | R T |^-1    | Rt -Rt*T |
+     *  | 0 1 |     = |  0   1   |
+     * 
+     * @tparam T 矩阵元素类型
+     * @param v 刚体变换矩阵
+     * @return 逆矩阵
+     */
     template<typename T>
     static math::details::TMat44<T> rigidTransformInverse(math::details::TMat44<T> const& v) noexcept {
-        // The inverse of a rigid transform can be computed from the transpose
-        //  | R T |^-1    | Rt -Rt*T |
-        //  | 0 1 |     = |  0   1   |
-        const auto rt(transpose(v.upperLeft()));
-        const auto t(rt * v[3].xyz);
-        return { rt, -t };
+        /**
+         * 刚体变换的逆可以通过转置来计算
+         *  | R T |^-1    | Rt -Rt*T |
+         *  | 0 1 |     = |  0   1   |
+         */
+        const auto rt(transpose(v.upperLeft()));  // 转置旋转部分
+        const auto t(rt * v[3].xyz);  // 计算新的平移部分
+        return { rt, -t };  // 返回逆矩阵
     }
 
+    /**
+     * 获取相机位置
+     * 
+     * 返回相机在世界空间中的位置。
+     * 
+     * @return 相机位置（双精度向量）
+     */
     math::double3 getPosition() const noexcept {
-        return getModelMatrix()[3].xyz;
+        return getModelMatrix()[3].xyz;  // 模型矩阵的第 4 列包含位置
     }
 
+    /**
+     * 获取左向量
+     * 
+     * 返回相机坐标系中的左方向向量（归一化）。
+     * 
+     * @return 左向量（单精度向量）
+     */
     math::float3 getLeftVector() const noexcept {
-        return normalize(getModelMatrix()[0].xyz);
+        return normalize(getModelMatrix()[0].xyz);  // 模型矩阵的第 1 列
     }
 
+    /**
+     * 获取上向量
+     * 
+     * 返回相机坐标系中的上方向向量（归一化）。
+     * 
+     * @return 上向量（单精度向量）
+     */
     math::float3 getUpVector() const noexcept {
-        return normalize(getModelMatrix()[1].xyz);
+        return normalize(getModelMatrix()[1].xyz);  // 模型矩阵的第 2 列
     }
 
+    /**
+     * 获取前向量
+     * 
+     * 返回相机坐标系中的前方向向量（归一化）。
+     * 相机朝向 -z 方向。
+     * 
+     * @return 前向量（单精度向量）
+     */
     math::float3 getForwardVector() const noexcept {
-        // the camera looks towards -z
-        return normalize(-getModelMatrix()[2].xyz);
+        /**
+         * 相机朝向 -z 方向
+         */
+        return normalize(-getModelMatrix()[2].xyz);  // 模型矩阵的第 3 列（取反）
     }
 
     float getFieldOfView(Fov const direction) const noexcept {

@@ -25,10 +25,21 @@
 
 namespace filament {
 
+/**
+ * Sync 同步对象
+ * 
+ * 用于在渲染管道中同步操作的同步原语。可以获取平台特定的外部句柄。
+ */
 class UTILS_PUBLIC Sync : public FilamentAPI {
 public:
     using CallbackHandler = backend::CallbackHandler;
+    /**
+     * 回调处理器类型
+     */
     using Callback = backend::Platform::SyncCallback;
+    /**
+     * 同步回调函数类型
+     */
 
     /**
      * Fetches a handle to the external, platform-specific representation of
@@ -40,6 +51,15 @@ public:
      *                 can identify what frame the sync is relevant to.
      * @return The external handle for the Sync. This is valid destroy() is
      *         called on this Sync object.
+     */
+    /**
+     * 获取此同步对象的外部、平台特定表示的句柄
+     *
+     * @param handler 将接收句柄的回调处理器
+     * @param callback 当句柄准备好时将接收句柄的回调函数
+     * @param userData 传递给回调的数据，以便应用程序
+     *                 可以识别同步相关的帧
+     * @return Sync 的外部句柄。这在对此 Sync 对象调用 destroy() 之前有效
      */
     void getExternalHandle(CallbackHandler* handler, Callback callback, void* userData) noexcept;
 

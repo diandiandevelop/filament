@@ -66,15 +66,80 @@ namespace filament::backend {
  *
  * @see Renderer, SwapChain::setFrameScheduledCallback
  */
+/**
+ * 可调用的呈现对象
+ * 
+ * PresentCallable 是一个可调用对象，当被调用时，会在 SwapChain 上调度一帧进行呈现。
+ * 
+ * 典型用法：
+ * - 通常，Filament 的后端负责调度帧的呈现
+ * - 但在某些情况下，应用程序可能希望控制何时调度帧的呈现
+ * 
+ * 使用场景示例（iOS）：
+ * - 在 CATransaction 中同步 UIKit 元素和 3D 内容
+ * - 确保 UI 更新和帧呈现在同一事务中
+ * 
+ * 获取 PresentCallable：
+ * - 在 SwapChain 上设置 FrameScheduledCallback
+ * - 回调在帧准备好呈现时被调用，并传递 PresentCallable 对象
+ * 
+ * 后端支持：
+ * - 用户控制的呈现机制仅在 Metal 后端支持
+ * - 其他后端：FrameScheduledCallback 仍会被调用，但 PresentCallable 是空操作
+ * 
+ * Metal 后端重要提示：
+ * - 应用程序必须调用接收到的每个 PresentCallable
+ * - 每个 PresentCallable 代表一个等待呈现的帧
+ * - 不调用会导致内存泄漏
+ * - 要"取消"帧的呈现，传递 false 给 PresentCallable
+ */
 class UTILS_PUBLIC PresentCallable {
 public:
 
+    /**
+     * 呈现函数类型
+     * 
+     * 签名：void(*)(bool presentFrame, void* user)
+     * - presentFrame: 如果为 true，呈现帧；如果为 false，取消呈现但释放内存
+     * - user: 用户数据指针
+     */
     using PresentFn = void(*)(bool presentFrame, void* user);
+    
+    /**
+     * 空操作呈现函数
+     * 
+     * 用于不支持用户控制呈现的后端。
+     * 调用此函数不会有任何效果。
+     */
     static void noopPresent(bool, void*) {}
 
+    /**
+     * 构造函数
+     * 
+     * @param fn   呈现函数指针
+     * @param user 用户数据指针
+     */
     PresentCallable(PresentFn fn, void* user) noexcept;
+    
+    /**
+     * 析构函数
+     * 
+     * 使用默认实现，不执行任何操作。
+     */
     ~PresentCallable() noexcept = default;
+    
+    /**
+     * 拷贝构造函数
+     * 
+     * 使用默认实现，支持拷贝。
+     */
     PresentCallable(const PresentCallable& rhs) = default;
+    
+    /**
+     * 拷贝赋值操作符
+     * 
+     * 使用默认实现，支持拷贝赋值。
+     */
     PresentCallable& operator=(const PresentCallable& rhs) = default;
 
     /**
@@ -82,6 +147,26 @@ public:
      * presentFrame to effectively "cancel" the presentation of the frame.
      *
      * @param presentFrame if false, will not present the frame but releases associated memory
+     */
+    /**
+     * 调用操作符：调度关联的帧进行呈现
+     * 
+     * 调用此 PresentCallable，调度关联的帧进行呈现。
+     * 
+     * @param presentFrame 如果为 true，呈现帧；如果为 false，取消呈现但释放关联的内存
+     * 
+     * 实现说明：
+     * - 调用内部存储的呈现函数
+     * - 传递 presentFrame 参数和用户数据
+     * - 在 Metal 后端，这会实际调度帧呈现
+     * - 在其他后端，这是空操作
+     * 
+     * 使用示例：
+     * ```cpp
+     * PresentCallable callable = ...;
+     * callable();           // 呈现帧
+     * callable(false);      // 取消呈现但释放内存
+     * ```
      */
     void operator()(bool presentFrame = true) noexcept;
 

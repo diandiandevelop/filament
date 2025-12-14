@@ -30,22 +30,28 @@ class ostream;
 
 namespace filament::backend {
 
-struct HwBufferObject;
-struct HwFence;
-struct HwIndexBuffer;
-struct HwProgram;
-struct HwRenderPrimitive;
-struct HwRenderTarget;
-struct HwStream;
-struct HwSwapChain;
-struct HwSync;
-struct HwTexture;
-struct HwTimerQuery;
-struct HwVertexBufferInfo;
-struct HwVertexBuffer;
-struct HwDescriptorSetLayout;
-struct HwDescriptorSet;
-struct HwMemoryMappedBuffer;
+/**
+ * 硬件资源类型前向声明
+ * 
+ * 这些是不透明类型，仅用于类型安全的句柄系统。
+ * 实际定义在后端实现中。
+ */
+struct HwBufferObject;          // 缓冲区对象（用于存储任意数据）
+struct HwFence;                 // 栅栏（用于同步 GPU 操作）
+struct HwIndexBuffer;           // 索引缓冲区（用于存储索引数据）
+struct HwProgram;               // 着色器程序（编译后的着色器）
+struct HwRenderPrimitive;       // 渲染图元（顶点和索引的组合）
+struct HwRenderTarget;          // 渲染目标（帧缓冲区）
+struct HwStream;                // 流（外部纹理流）
+struct HwSwapChain;             // 交换链（用于呈现到屏幕）
+struct HwSync;                  // 同步对象（用于同步）
+struct HwTexture;               // 纹理（图像数据）
+struct HwTimerQuery;            // 计时查询（用于性能测量）
+struct HwVertexBufferInfo;      // 顶点缓冲区信息（布局信息）
+struct HwVertexBuffer;          // 顶点缓冲区（用于存储顶点数据）
+struct HwDescriptorSetLayout;   // 描述符集布局（资源绑定布局）
+struct HwDescriptorSet;         // 描述符集（资源绑定集合）
+struct HwMemoryMappedBuffer;    // 内存映射缓冲区（可映射的缓冲区）
 
 /**
  * 后端资源句柄基类
@@ -110,14 +116,50 @@ public:
     }
 
 protected:
+    /**
+     * 受保护的拷贝构造函数
+     * 
+     * 允许派生类（Handle<T>）进行拷贝，但不允许外部直接拷贝 HandleBase。
+     * 使用默认实现，简单复制句柄 ID。
+     */
     HandleBase(HandleBase const& rhs) noexcept = default;
+    
+    /**
+     * 受保护的拷贝赋值操作符
+     * 
+     * 允许派生类进行拷贝赋值。
+     */
     HandleBase& operator=(HandleBase const& rhs) noexcept = default;
 
+    /**
+     * 受保护的移动构造函数
+     * 
+     * 转移句柄所有权，原对象变为空。
+     * 
+     * @param rhs 要移动的源对象
+     * 
+     * 实现步骤：
+     * 1. 复制句柄 ID
+     * 2. 将源对象的 ID 设置为 nullid
+     */
     HandleBase(HandleBase&& rhs) noexcept
             : object(rhs.object) {
         rhs.object = nullid;
     }
 
+    /**
+     * 受保护的移动赋值操作符
+     * 
+     * 转移句柄所有权，原对象变为空。
+     * 
+     * @param rhs 要移动的源对象
+     * @return 当前对象的引用
+     * 
+     * 实现步骤：
+     * 1. 检查自赋值
+     * 2. 复制句柄 ID
+     * 3. 将源对象的 ID 设置为 nullid
+     */
     HandleBase& operator=(HandleBase&& rhs) noexcept {
         if (this != &rhs) {
             object = rhs.object;
@@ -127,6 +169,13 @@ protected:
     }
 
 private:
+    /**
+     * 句柄 ID
+     * 
+     * 存储实际的句柄标识符。
+     * - nullid (UINT32_MAX) 表示空句柄
+     * - 其他值表示有效的资源 ID
+     */
     HandleId object;
 };
 

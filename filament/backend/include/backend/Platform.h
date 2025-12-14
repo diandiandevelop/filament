@@ -42,53 +42,297 @@ class Driver;
  * selected automatically. It is possible however to provide a custom Platform when creating
  * the filament Engine.
  */
+/**
+ * 平台接口
+ * 
+ * Platform 是一个接口，用于抽象后端（也称为 Driver）的创建方式。
+ * 
+ * 功能：
+ * - 抽象底层图形 API 的初始化（OpenGL、Vulkan、Metal 等）
+ * - 创建和管理 Driver 实例
+ * - 提供平台特定的功能（事件处理、缓存、调试等）
+ * 
+ * 实现：
+ * - 后端提供了多个常见的 Platform 具体实现
+ * - 这些实现会根据平台自动选择
+ * - 也可以在创建 Filament Engine 时提供自定义 Platform
+ * 
+ * 使用场景：
+ * - 需要自定义图形上下文创建
+ * - 需要集成到现有的图形系统
+ * - 需要平台特定的优化
+ */
 class UTILS_PUBLIC Platform {
 public:
+    /**
+     * 交换链类型标记
+     * 
+     * 空结构体，仅用于类型标记。
+     * 实际类型由 Platform 实现定义。
+     */
     struct SwapChain {};
+    
+    /**
+     * 栅栏类型标记
+     * 
+     * 空结构体，仅用于类型标记。
+     */
     struct Fence {};
+    
+    /**
+     * 流类型标记
+     * 
+     * 空结构体，仅用于类型标记。
+     */
     struct Stream {};
+    
+    /**
+     * 同步对象类型标记
+     * 
+     * 空结构体，仅用于类型标记。
+     */
     struct Sync {};
 
+    /**
+     * 同步回调函数类型
+     * 
+     * 签名：void(*)(Sync* sync, void* userData)
+     * - sync: 同步对象指针
+     * - userData: 用户数据指针
+     */
     using SyncCallback = void(*)(Sync* UTILS_NONNULL sync, void* UTILS_NULLABLE userData);
 
+    /**
+     * 外部图像句柄类前向声明
+     */
     class ExternalImageHandle;
 
+    /**
+     * 外部图像类
+     * 
+     * 表示由外部系统管理的图像（如 Android 的 SurfaceTexture、iOS 的 CVPixelBuffer）。
+     * 
+     * 特性：
+     * - 使用引用计数管理生命周期
+     * - 线程安全的引用计数（使用原子操作）
+     * - 只能通过 ExternalImageHandle 访问
+     * 
+     * 用途：
+     * - 视频纹理
+     * - 相机预览
+     * - 外部渲染结果
+     */
     class ExternalImage {
         friend class ExternalImageHandle;
+        
+        /**
+         * 引用计数
+         * 
+         * 使用原子操作保证线程安全。
+         * 初始值为 0。
+         */
         std::atomic_uint32_t mRefCount{0};
+        
     protected:
+        /**
+         * 受保护的虚析构函数
+         * 
+         * 确保只能通过基类指针删除，防止直接删除派生类对象。
+         */
         virtual ~ExternalImage() noexcept;
     };
 
+    /**
+     * 外部图像句柄类
+     * 
+     * 智能指针风格的句柄，用于管理 ExternalImage 的生命周期。
+     * 
+     * 特性：
+     * - 自动管理引用计数
+     * - 支持拷贝和移动语义
+     * - 提供类似指针的接口（->、*、get()）
+     * - 线程安全（引用计数使用原子操作）
+     * 
+     * 使用方式：
+     * - 类似 std::shared_ptr，但针对 ExternalImage 优化
+     * - 拷贝时增加引用计数
+     * - 析构时减少引用计数，计数为 0 时删除对象
+     */
     class ExternalImageHandle {
+        /**
+         * 目标外部图像指针
+         * 
+         * 指向被管理的 ExternalImage 对象。
+         * nullptr 表示空句柄。
+         */
         ExternalImage* UTILS_NULLABLE mTarget = nullptr;
+        
+        /**
+         * 增加引用计数（静态方法）
+         * 
+         * @param p 外部图像指针
+         * 
+         * 实现：原子地增加 p->mRefCount
+         */
         static void incref(ExternalImage* UTILS_NULLABLE p) noexcept;
+        
+        /**
+         * 减少引用计数（静态方法）
+         * 
+         * @param p 外部图像指针
+         * 
+         * 实现：
+         * 1. 原子地减少 p->mRefCount
+         * 2. 如果计数为 0，删除对象
+         */
         static void decref(ExternalImage* UTILS_NULLABLE p) noexcept;
 
     public:
+        /**
+         * 默认构造函数
+         * 
+         * 创建一个空句柄（不管理任何对象）。
+         */
         ExternalImageHandle() noexcept;
+        
+        /**
+         * 析构函数
+         * 
+         * 减少引用计数，如果计数为 0 则删除对象。
+         */
         ~ExternalImageHandle() noexcept;
+        
+        /**
+         * 从指针构造
+         * 
+         * @param p 外部图像指针
+         * 
+         * 如果 p 不为 nullptr，增加引用计数。
+         */
         explicit ExternalImageHandle(ExternalImage* UTILS_NULLABLE p) noexcept;
+        
+        /**
+         * 拷贝构造函数
+         * 
+         * @param rhs 要拷贝的源对象
+         * 
+         * 如果 rhs 管理对象，增加引用计数。
+         */
         ExternalImageHandle(ExternalImageHandle const& rhs) noexcept;
+        
+        /**
+         * 移动构造函数
+         * 
+         * @param rhs 要移动的源对象
+         * 
+         * 转移所有权，不改变引用计数。
+         */
         ExternalImageHandle(ExternalImageHandle&& rhs) noexcept;
+        
+        /**
+         * 拷贝赋值操作符
+         * 
+         * @param rhs 要拷贝的源对象
+         * @return 当前对象的引用
+         * 
+         * 实现步骤：
+         * 1. 如果当前对象管理对象，减少其引用计数
+         * 2. 复制指针
+         * 3. 如果新对象不为空，增加其引用计数
+         */
         ExternalImageHandle& operator=(ExternalImageHandle const& rhs) noexcept;
+        
+        /**
+         * 移动赋值操作符
+         * 
+         * @param rhs 要移动的源对象
+         * @return 当前对象的引用
+         * 
+         * 实现步骤：
+         * 1. 如果当前对象管理对象，减少其引用计数
+         * 2. 转移指针所有权
+         * 3. 将源对象指针设置为 nullptr
+         */
         ExternalImageHandle& operator=(ExternalImageHandle&& rhs) noexcept;
 
+        /**
+         * 相等比较操作符
+         * 
+         * @param rhs 要比较的对象
+         * @return 如果两个句柄指向同一个对象返回 true
+         */
         bool operator==(const ExternalImageHandle& rhs) const noexcept {
             return mTarget == rhs.mTarget;
         }
+        
+        /**
+         * 布尔转换操作符
+         * 
+         * @return 如果句柄管理对象返回 true，否则返回 false
+         */
         explicit operator bool() const noexcept { return mTarget != nullptr; }
 
+        /**
+         * 获取原始指针（非 const）
+         * 
+         * @return 指向外部图像的指针
+         */
         ExternalImage* UTILS_NULLABLE get() noexcept { return mTarget; }
+        
+        /**
+         * 获取原始指针（const）
+         * 
+         * @return 指向外部图像的常量指针
+         */
         ExternalImage const* UTILS_NULLABLE get() const noexcept { return mTarget; }
 
+        /**
+         * 箭头操作符（非 const）
+         * 
+         * @return 指向外部图像的指针
+         */
         ExternalImage* UTILS_NULLABLE operator->() noexcept { return mTarget; }
+        
+        /**
+         * 箭头操作符（const）
+         * 
+         * @return 指向外部图像的常量指针
+         */
         ExternalImage const* UTILS_NULLABLE operator->() const noexcept { return mTarget; }
 
+        /**
+         * 解引用操作符（非 const）
+         * 
+         * @return 外部图像的引用
+         */
         ExternalImage& operator*() noexcept { return *mTarget; }
+        
+        /**
+         * 解引用操作符（const）
+         * 
+         * @return 外部图像的常量引用
+         */
         ExternalImage const& operator*() const noexcept { return *mTarget; }
 
+        /**
+         * 清空句柄
+         * 
+         * 释放当前管理的对象（减少引用计数），句柄变为空。
+         */
         void clear() noexcept;
+        
+        /**
+         * 重置句柄
+         * 
+         * 释放当前管理的对象，然后管理新对象。
+         * 
+         * @param p 新的外部图像指针（可以为 nullptr）
+         * 
+         * 实现步骤：
+         * 1. 如果当前对象不为空，减少其引用计数
+         * 2. 设置新指针
+         * 3. 如果新指针不为空，增加其引用计数
+         */
         void reset(ExternalImage* UTILS_NULLABLE p) noexcept;
 
     private:
@@ -96,23 +340,76 @@ public:
                 ExternalImageHandle const& handle);
     };
 
+    /**
+     * 外部图像句柄常量引用类型别名
+     * 
+     * 用于函数参数，避免不必要的拷贝。
+     */
     using ExternalImageHandleRef = ExternalImageHandle const&;
 
+    /**
+     * 合成器时序信息结构
+     * 
+     * 包含合成器（compositor）的时序信息，用于帧同步和延迟优化。
+     * 
+     * 用途：
+     * - 预测下一帧的合成时间
+     * - 优化帧提交时机
+     * - 减少延迟
+     * 
+     * 时间单位：
+     * - 所有时间使用纳秒（nanosecond）
+     * - 基于 std::steady_clock
+     */
     struct CompositorTiming {
+        /**
+         * 时间点类型
+         * 
+         * 自 std::steady_clock 纪元以来的纳秒数。
+         */
         /** duration in nanosecond since epoch of std::steady_clock */
         using time_point_ns = int64_t;
+        
+        /**
+         * 持续时间类型
+         * 
+         * 纳秒为单位的持续时间。
+         */
         /** duration in nanosecond on the std::steady_clock */
         using duration_ns = int64_t;
+        
+        /**
+         * 无效值常量
+         * 
+         * 表示该值不受支持或不可用。
+         */
         static constexpr time_point_ns INVALID = -1;    //!< value not supported
+        
         /**
          * The timestamp [ns] since epoch of the next time the compositor will begin composition.
          * This is effectively the deadline for when the compositor must receive a newly queued
          * frame.
          */
+        /**
+         * 合成截止时间
+         * 
+         * 自纪元以来，合成器下一次开始合成的时间戳（纳秒）。
+         * 这实际上是合成器必须接收新排队帧的截止时间。
+         * 
+         * 用途：
+         * - 确定帧提交的最后期限
+         * - 避免错过合成窗口
+         */
         time_point_ns compositeDeadline;
 
         /**
          * The time delta [ns] between subsequent composition events.
+         */
+        /**
+         * 合成间隔
+         * 
+         * 连续合成事件之间的时间差（纳秒）。
+         * 通常等于显示刷新率（如 16.67ms 对应 60Hz）。
          */
         duration_ns compositeInterval;
 
@@ -120,11 +417,23 @@ public:
          * The time delta [ns] between the start of composition and the expected present time of
          * that composition. This can be used to estimate the latency of the actual present time.
          */
+        /**
+         * 合成到呈现延迟
+         * 
+         * 从合成开始到预期呈现时间之间的时间差（纳秒）。
+         * 可用于估算实际呈现时间的延迟。
+         */
         duration_ns compositeToPresentLatency;
 
         /**
          * The timestamp [ns] since epoch of the system's expected presentation time.
          * INVALID if not supported.
+         */
+        /**
+         * 预期呈现时间
+         * 
+         * 自纪元以来，系统预期的呈现时间戳（纳秒）。
+         * 如果不支持，则为 INVALID。
          */
         time_point_ns expectedPresentTime;
 
@@ -132,11 +441,23 @@ public:
          * The timestamp [ns] since epoch of the current frame's start (i.e. vsync)
          * INVALID if not supported.
          */
+        /**
+         * 帧开始时间
+         * 
+         * 自纪元以来，当前帧的开始时间戳（纳秒），即垂直同步时间。
+         * 如果不支持，则为 INVALID。
+         */
         time_point_ns frameTime;
 
         /**
          * The timestamp [ns] since epoch of the current frame's deadline
          * INVALID if not supported.
+         */
+        /**
+         * 帧时间线截止时间
+         * 
+         * 自纪元以来，当前帧的截止时间戳（纳秒）。
+         * 如果不支持，则为 INVALID。
          */
         time_point_ns frameTimelineDeadline;
     };

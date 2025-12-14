@@ -26,8 +26,40 @@
 
 namespace filament::backend {
 
+/**
+ * 采样器描述符
+ * 
+ * 采样器描述符用于将纹理和采样参数组合在一起，描述如何在着色器中采样纹理。
+ * 
+ * 用途：
+ * - 绑定纹理和采样器状态
+ * - 在描述符集中使用
+ * - 传递给渲染命令
+ * 
+ * 组成：
+ * - t: 纹理句柄，指向要采样的纹理资源
+ * - s: 采样参数，包含过滤、包装、各向异性等设置
+ */
 struct UTILS_PUBLIC SamplerDescriptor {
+    /**
+     * Texture handle
+     * 
+     * 纹理句柄
+     * - 指向要采样的纹理资源
+     * - 必须是有效的纹理句柄
+     */
     Handle<HwTexture> t;
+    
+    /**
+     * Sampler parameters
+     * 
+     * 采样器参数
+     * - 包含过滤模式（min/mag filter）
+     * - 包装模式（wrap S/T/R）
+     * - 各向异性级别
+     * - 比较模式（用于深度纹理）
+     * - 默认值：所有参数使用默认设置
+     */
     SamplerParams s{};
 };
 

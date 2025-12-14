@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2015 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -216,8 +216,7 @@ VertexBuffer::Builder& VertexBuffer::Builder::attribute(VertexAttribute const at
  * @param normalized 是否归一化
  * @return 构建器引用（支持链式调用）
  */
-VertexBuffer::Builder& VertexBuffer::Builder::normalized(VertexAttribute const attribute,
-        bool const normalized) noexcept {
+VertexBuffer::Builder& VertexBuffer::Builder::normalized(VertexAttribute const attribute,bool const normalized) noexcept {
     if (size_t(attribute) < MAX_VERTEX_ATTRIBUTE_COUNT) {  // 如果属性索引有效
         auto& entry = mImpl->mAttributes[attribute];  // 获取属性条目
         if (normalized) {  // 如果归一化

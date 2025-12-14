@@ -51,8 +51,43 @@ namespace filament::backend {
  * callbacks to be processed.
  *
  */
+/**
+ * 回调处理器接口
+ * 
+ * 用于分发回调的通用接口，允许回调与平台/操作系统的消息系统互操作。
+ * 
+ * 工作原理：
+ * - 所有接受回调的 API 也接受 CallbackHandler* 参数
+ * - CallbackHandler::post() 方法从服务线程调用（永远不会是主线程）
+ * - post() 方法负责将回调调度到用户期望的线程
+ * 
+ * 设计目的：
+ * - 使回调与平台/操作系统的消息系统互操作
+ * - 允许在特定线程上执行回调
+ * - 支持自定义回调调度逻辑
+ * 
+ * 默认行为：
+ * - 如果 CallbackHandler* 为 nullptr，使用默认处理器
+ * - 默认处理器在 Filament 主线程上机会性地分发回调
+ * 
+ * 生命周期管理：
+ * - Filament 不管理 CallbackHandler* 的生命周期，也不拥有它
+ * - CallbackHandler 实例必须保持有效，直到所有挂起的回调都被分发
+ * - 关闭 Filament 时，必须确保所有可能访问 Filament 状态的挂起回调都已分发
+ * - 典型的 CallbackHandler 实现应该有机制来清空和/或等待所有回调处理完成
+ * 
+ * 线程安全：
+ * - post() 方法必须是线程安全的
+ * - 可能从多个线程并发调用
+ */
 class CallbackHandler {
 public:
+    /**
+     * 回调函数类型
+     * 
+     * 签名：void(*)(void* user)
+     * - user: 用户数据指针，在调用 post() 时提供
+     */
     using Callback = void(*)(void* user);
 
     /**
@@ -61,9 +96,37 @@ public:
      *
      * Must be thread-safe.
      */
+    /**
+     * 调度回调到适当的线程
+     * 
+     * 将回调调度到适当的线程执行。通常这将是应用程序的主线程。
+     * 
+     * @param user     用户数据指针，传递给回调函数
+     * @param callback 要执行的回调函数
+     * 
+     * 实现要求：
+     * - 必须是线程安全的
+     * - 可能从服务线程调用（永远不会是主线程）
+     * - 负责将回调调度到用户期望的线程
+     * 
+     * 典型实现：
+     * - 将回调放入消息队列
+     * - 使用平台的消息循环分发
+     * - 在目标线程上执行回调
+     * 
+     * 注意事项：
+     * - 回调可能在稍后的时间点执行
+     * - 必须确保 user 指针在回调执行时仍然有效
+     * - 如果 CallbackHandler 被销毁，必须确保所有挂起的回调都已处理
+     */
     virtual void post(void* user, Callback callback) = 0;
 
 protected:
+    /**
+     * 受保护的析构函数
+     * 
+     * 确保只能通过基类指针删除，防止直接删除派生类对象。
+     */
     virtual ~CallbackHandler() = default;
 };
 

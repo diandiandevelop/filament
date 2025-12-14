@@ -21,6 +21,26 @@ namespace filament::backend {
 
 class CommandStream;
 
+/**
+ * DriverApi 类型别名
+ * 
+ * DriverApi 是 CommandStream 的类型别名，用于表示驱动程序的 API 接口。
+ * 
+ * 设计目的：
+ * - 提供统一的 API 接口名称
+ * - 简化代码中的类型引用
+ * - 隐藏实现细节（CommandStream 是内部实现）
+ * 
+ * 使用场景：
+ * - 在命令流中记录渲染命令
+ * - 作为 Driver 的公共接口
+ * - 用于类型安全的命令传递
+ * 
+ * 注意：
+ * - DriverApi 和 CommandStream 是同一个类型
+ * - 使用 DriverApi 作为公共接口名称
+ * - CommandStream 是内部实现类
+ */
 using DriverApi = CommandStream;
 
 } // namespace filament::backend

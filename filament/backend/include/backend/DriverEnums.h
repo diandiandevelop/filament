@@ -52,10 +52,32 @@ class ostream;
  * internal redeclaration of these types.
  * For e.g. Use Texture::Sampler instead of filament::SamplerType.
  */
+/**
+ * Filament 驱动程序使用的类型和枚举
+ * 
+ * 这些类型实际上是公开的，但不应该直接使用。
+ * 应该使用公共类内部重新声明的这些类型。
+ * 例如：使用 Texture::Sampler 而不是 filament::SamplerType。
+ * 
+ * 设计目的：
+ * - 提供后端抽象层
+ * - 支持多种图形 API（OpenGL、Vulkan、Metal、WebGPU）
+ * - 类型安全的枚举和常量
+ */
 namespace filament::backend {
 
 /**
  * Requests a SwapChain with an alpha channel.
+ */
+/**
+ * 交换链配置：请求带 alpha 通道的交换链
+ * 
+ * 值：0x1
+ * 
+ * 用途：
+ * - 创建支持透明度的交换链
+ * - 用于合成透明内容（如 UI 叠加层）
+ * - 需要与窗口系统支持透明背景配合使用
  */
 static constexpr uint64_t SWAP_CHAIN_CONFIG_TRANSPARENT         = 0x1;
 
@@ -64,11 +86,38 @@ static constexpr uint64_t SWAP_CHAIN_CONFIG_TRANSPARENT         = 0x1;
  * for reading back render results.  This config flag must be set when creating
  * any SwapChain that will be used as the source for a blit operation.
  */
+/**
+ * 交换链配置：可读标志
+ * 
+ * 值：0x2
+ * 
+ * 用途：
+ * - 指示交换链可以用作读取渲染结果的源表面
+ * - 在创建任何将用作 blit 操作源的 SwapChain 时必须设置此标志
+ * - 用于屏幕截图、后处理等需要读取交换链内容的场景
+ * 
+ * 注意：
+ * - 设置此标志可能会影响性能
+ * - 某些平台可能不支持可读交换链
+ */
 static constexpr uint64_t SWAP_CHAIN_CONFIG_READABLE            = 0x2;
 
 /**
  * Indicates that the native X11 window is an XCB window rather than an XLIB window.
  * This is ignored on non-Linux platforms and in builds that support only one X11 API.
+ */
+/**
+ * 交换链配置：启用 XCB
+ * 
+ * 值：0x4
+ * 
+ * 用途：
+ * - 指示原生 X11 窗口是 XCB 窗口而不是 XLIB 窗口
+ * - XCB 是 X11 的 C 绑定，提供更好的性能和线程安全
+ * 
+ * 限制：
+ * - 仅在 Linux 平台上有效
+ * - 在仅支持一个 X11 API 的构建中被忽略
  */
 static constexpr uint64_t SWAP_CHAIN_CONFIG_ENABLE_XCB          = 0x4;
 
@@ -82,22 +131,86 @@ static constexpr uint64_t SWAP_CHAIN_CONFIG_ENABLE_XCB          = 0x4;
  * Filament. Filament will call CVPixelBufferRetain during Engine::createSwapChain, and
  * CVPixelBufferRelease when the swap chain is destroyed.
  */
+/**
+ * 交换链配置：Apple CVPixelBuffer
+ * 
+ * 值：0x8
+ * 
+ * 用途：
+ * - 指示原生窗口是 CVPixelBufferRef（Core Video 像素缓冲区）
+ * - 用于 iOS/macOS 上的视频纹理和相机预览
+ * 
+ * 限制：
+ * - 仅由 Metal 后端支持
+ * - CVPixelBuffer 必须为 kCVPixelFormatType_32BGRA 格式
+ * 
+ * 内存管理：
+ * - 不需要在传递给 Filament 之前调用额外的 retain
+ * - Filament 会在 Engine::createSwapChain 时调用 CVPixelBufferRetain
+ * - Filament 会在交换链销毁时调用 CVPixelBufferRelease
+ */
 static constexpr uint64_t SWAP_CHAIN_CONFIG_APPLE_CVPIXELBUFFER = 0x8;
 
 /**
  * Indicates that the SwapChain must automatically perform linear to srgb encoding.
+ */
+/**
+ * 交换链配置：sRGB 颜色空间
+ * 
+ * 值：0x10
+ * 
+ * 用途：
+ * - 指示交换链必须自动执行线性到 sRGB 编码
+ * - 用于在显示时正确进行颜色空间转换
+ * - 确保颜色在显示器上正确显示
+ * 
+ * 注意：
+ * - 如果交换链支持原生 sRGB，可能不需要此标志
+ * - 某些平台会自动处理颜色空间转换
  */
 static constexpr uint64_t SWAP_CHAIN_CONFIG_SRGB_COLORSPACE     = 0x10;
 
 /**
  * Indicates that the SwapChain should also contain a stencil component.
  */
+/**
+ * 交换链配置：包含模板缓冲区
+ * 
+ * 值：0x20
+ * 
+ * 用途：
+ * - 指示交换链应该包含模板组件
+ * - 用于需要模板测试的渲染（如 UI 遮罩、轮廓等）
+ * 
+ * 注意：
+ * - 会增加内存使用
+ * - 某些平台可能不支持模板缓冲区
+ */
 static constexpr uint64_t SWAP_CHAIN_CONFIG_HAS_STENCIL_BUFFER  = 0x20;
+
+/**
+ * 交换链配置：包含模板缓冲区（向后兼容别名）
+ * 
+ * 与 SWAP_CHAIN_CONFIG_HAS_STENCIL_BUFFER 相同。
+ */
 static constexpr uint64_t SWAP_CHAIN_HAS_STENCIL_BUFFER         = SWAP_CHAIN_CONFIG_HAS_STENCIL_BUFFER;
 
 /**
  * The SwapChain contains protected content. Currently only supported by OpenGLPlatform and
  * only when OpenGLPlatform::isProtectedContextSupported() is true.
+ */
+/**
+ * 交换链配置：受保护内容
+ * 
+ * 值：0x40
+ * 
+ * 用途：
+ * - 指示交换链包含受保护内容（如 DRM 保护的内容）
+ * - 用于安全视频播放等场景
+ * 
+ * 限制：
+ * - 目前仅由 OpenGLPlatform 支持
+ * - 仅当 OpenGLPlatform::isProtectedContextSupported() 返回 true 时有效
  */
 static constexpr uint64_t SWAP_CHAIN_CONFIG_PROTECTED_CONTENT   = 0x40;
 
@@ -109,24 +222,98 @@ static constexpr uint64_t SWAP_CHAIN_CONFIG_PROTECTED_CONTENT   = 0x40;
  * This is only supported by EGL(Android). Other GL platforms (GLX, WGL, etc) don't support it
  * because the swapchain MSAA settings must be configured before window creation.
  */
+/**
+ * 交换链配置：4x MSAA（多重采样抗锯齿）
+ * 
+ * 值：0x80
+ * 
+ * 用途：
+ * - 指示交换链配置为使用 4x 多重采样抗锯齿
+ * - 每个像素内使用 4 个采样点
+ * - 用于减少锯齿，提高渲染质量
+ * 
+ * 限制：
+ * - 仅当 isMSAASwapChainSupported(4) 返回 true 时支持
+ * - 仅由 EGL（Android）支持
+ * - 其他 GL 平台（GLX、WGL 等）不支持，因为交换链 MSAA 设置必须在窗口创建前配置
+ */
 static constexpr uint64_t SWAP_CHAIN_CONFIG_MSAA_4_SAMPLES      = 0x80;
 
+/**
+ * 最大顶点属性数量
+ * 
+ * OpenGL ES 保证的最小值。
+ * 所有后端必须至少支持此数量的顶点属性。
+ */
 static constexpr size_t MAX_VERTEX_ATTRIBUTE_COUNT  = 16;   // This is guaranteed by OpenGL ES.
+
+/**
+ * 最大采样器数量
+ * 
+ * 功能级别 3 所需的最大值。
+ * 用于顶点和片段着色器的总采样器数量。
+ */
 static constexpr size_t MAX_SAMPLER_COUNT           = 62;   // Maximum needed at feature level 3.
+
+/**
+ * 最大顶点缓冲区数量
+ * 
+ * 可以绑定到顶点缓冲区的缓冲区对象的最大数量。
+ * 必须 <= MAX_VERTEX_ATTRIBUTE_COUNT。
+ */
 static constexpr size_t MAX_VERTEX_BUFFER_COUNT     = 16;   // Max number of bound buffer objects.
+
+/**
+ * 最大着色器存储缓冲区（SSBO）数量
+ * 
+ * OpenGL ES 保证的最小值。
+ * 用于计算着色器中的存储缓冲区。
+ */
 static constexpr size_t MAX_SSBO_COUNT              = 4;    // This is guaranteed by OpenGL ES.
+
+/**
+ * 最大描述符集数量
+ * 
+ * Vulkan 保证的最小值。
+ * 用于资源绑定的描述符集数量。
+ */
 static constexpr size_t MAX_DESCRIPTOR_SET_COUNT    = 4;    // This is guaranteed by Vulkan.
+
+/**
+ * 每个描述符集的最大描述符数量
+ * 
+ * 单个描述符集中可以绑定的资源数量。
+ */
 static constexpr size_t MAX_DESCRIPTOR_COUNT        = 64;   // per set
 
+/**
+ * 最大推送常量数量
+ * 
+ * Vulkan 1.1 规范允许 128 字节的推送常量。
+ * 假设每个类型为 4 字节，因此最多 32 个推送常量。
+ */
 static constexpr size_t MAX_PUSH_CONSTANT_COUNT     = 32;   // Vulkan 1.1 spec allows for 128-byte
                                                             // of push constant (we assume 4-byte
                                                             // types).
 
+/**
+ * 每个功能级别的能力限制
+ * 
+ * 根据功能级别定义的最大采样器数量。
+ * 使用 (int)FeatureLevel 作为数组索引。
+ * 
+ * 数组索引：
+ * - [0]: 不使用（占位符）
+ * - [1]: FEATURE_LEVEL_0 - 顶点采样器：0，片段采样器：0
+ * - [2]: FEATURE_LEVEL_1 - 顶点采样器：16，片段采样器：16（OpenGL ES、Vulkan、Metal、WebGPU 保证）
+ * - [3]: FEATURE_LEVEL_2 - 顶点采样器：16，片段采样器：16（OpenGL ES、Vulkan、Metal、WebGPU 保证）
+ * - [4]: FEATURE_LEVEL_3 - 顶点采样器：31，片段采样器：31（Metal 保证）
+ */
 // Per feature level caps
 // Use (int)FeatureLevel to index this array
 static constexpr struct {
-    const size_t MAX_VERTEX_SAMPLER_COUNT;
-    const size_t MAX_FRAGMENT_SAMPLER_COUNT;
+    const size_t MAX_VERTEX_SAMPLER_COUNT;      // 顶点着色器最大采样器数量
+    const size_t MAX_FRAGMENT_SAMPLER_COUNT;   // 片段着色器最大采样器数量
 } FEATURE_LEVEL_CAPS[4] = {
         {  0,  0 }, // do not use
         { 16, 16 }, // guaranteed by OpenGL ES, Vulkan, Metal And WebGPU
@@ -134,13 +321,42 @@ static constexpr struct {
         { 31, 31 }, // guaranteed by Metal
 };
 
+/**
+ * 静态断言：验证顶点缓冲区数量限制
+ * 
+ * 确保可以附加到 VertexBuffer 的缓冲区对象数量
+ * 小于或等于最大顶点属性数量。
+ */
 static_assert(MAX_VERTEX_BUFFER_COUNT <= MAX_VERTEX_ATTRIBUTE_COUNT,
         "The number of buffer objects that can be attached to a VertexBuffer must be "
         "less than or equal to the maximum number of vertex attributes.");
 
+/**
+ * 配置的 Uniform 绑定数量
+ * 
+ * OpenGL ES 保证的最小值。
+ * 用于 ES2 兼容模式的 uniform 缓冲区绑定。
+ */
 static constexpr size_t CONFIG_UNIFORM_BINDING_COUNT = 9;   // This is guaranteed by OpenGL ES.
+
+/**
+ * 配置的采样器绑定数量
+ * 
+ * OpenGL ES 保证的最小值。
+ * 用于 ES2 兼容模式的采样器绑定。
+ */
 static constexpr size_t CONFIG_SAMPLER_BINDING_COUNT = 4;   // This is guaranteed by OpenGL ES.
 
+/**
+ * 外部采样器数据索引：未使用
+ * 
+ * 值：uint8_t(-1) = 255
+ * 
+ * 用途：
+ * - 表示描述符集绑定未使用任何外部采样器状态
+ * - 因此没有有效条目
+ * - 用于标记未使用的绑定槽
+ */
 static constexpr uint8_t EXTERNAL_SAMPLER_DATA_INDEX_UNUSED =
         uint8_t(-1);// Case where the descriptor set binding isnt using any external sampler state
                      // and therefore doesn't have a valid entry.
@@ -148,31 +364,182 @@ static constexpr uint8_t EXTERNAL_SAMPLER_DATA_INDEX_UNUSED =
 /**
  * Defines the backend's feature levels.
  */
+/**
+ * 后端功能级别枚举
+ * 
+ * 定义后端支持的功能级别，从低到高递增。
+ * 功能级别决定了可用的图形 API 功能和性能特性。
+ */
 enum class FeatureLevel : uint8_t {
+    /**
+     * OpenGL ES 2.0 功能级别
+     * 
+     * 最低功能级别，支持基本的渲染功能。
+     * - 基本的顶点和片段着色器
+     * - 有限的纹理支持
+     * - 基本的混合和深度测试
+     */
     FEATURE_LEVEL_0 = 0,  //!< OpenGL ES 2.0 features
+    
+    /**
+     * OpenGL ES 3.0 功能级别（默认）
+     * 
+     * 标准功能级别，大多数现代设备支持。
+     * - 完整的 OpenGL ES 3.0 功能
+     * - 更好的纹理格式支持
+     * - 改进的着色器功能
+     */
     FEATURE_LEVEL_1,      //!< OpenGL ES 3.0 features (default)
+    
+    /**
+     * OpenGL ES 3.1 功能级别 + 扩展
+     * 
+     * 高级功能级别，支持更多特性。
+     * - OpenGL ES 3.1 功能
+     * - 16 个纹理单元
+     * - 立方体贴图数组支持
+     */
     FEATURE_LEVEL_2,      //!< OpenGL ES 3.1 features + 16 textures units + cubemap arrays
+    
+    /**
+     * OpenGL ES 3.1 功能级别 + 最大扩展
+     * 
+     * 最高功能级别，支持最多特性。
+     * - OpenGL ES 3.1 功能
+     * - 31 个纹理单元（Metal 保证）
+     * - 立方体贴图数组支持
+     */
     FEATURE_LEVEL_3       //!< OpenGL ES 3.1 features + 31 textures units + cubemap arrays
 };
 
 /**
  * Selects which driver a particular Engine should use.
  */
+/**
+ * 后端驱动选择枚举
+ * 
+ * 选择特定 Engine 应该使用的驱动程序。
+ * 
+ * 用途：
+ * - 在创建 Engine 时指定后端
+ * - 控制使用哪个底层图形 API
+ * - 用于测试和调试
+ */
 enum class Backend : uint8_t {
+    /**
+     * 自动选择
+     * 
+     * 根据平台自动选择适当的驱动程序。
+     * - 这是推荐的默认值
+     * - Filament 会选择最适合平台的后端
+     */
     DEFAULT = 0,  //!< Automatically selects an appropriate driver for the platform.
+    
+    /**
+     * OpenGL/ES 驱动
+     * 
+     * 选择 OpenGL 或 OpenGL ES 驱动程序。
+     * - Android 上的默认后端
+     * - 跨平台支持最好
+     * - 兼容性最高
+     */
     OPENGL = 1,   //!< Selects the OpenGL/ES driver (default on Android)
+    
+    /**
+     * Vulkan 驱动
+     * 
+     * 选择 Vulkan 驱动程序（如果平台支持）。
+     * - Linux/Windows 上的默认后端
+     * - 性能通常最好
+     * - 需要 Vulkan 1.0+ 支持
+     */
     VULKAN = 2,   //!< Selects the Vulkan driver if the platform supports it (default on Linux/Windows)
+    
+    /**
+     * Metal 驱动
+     * 
+     * 选择 Metal 驱动程序（如果平台支持）。
+     * - macOS/iOS 上的默认后端
+     * - Apple 平台的推荐后端
+     * - 需要 macOS 10.13+ 或 iOS 11+
+     */
     METAL = 3,    //!< Selects the Metal driver if the platform supports it (default on MacOS/iOS).
+    
+    /**
+     * WebGPU 驱动
+     * 
+     * 选择 WebGPU 驱动程序（如果平台支持 WebGPU）。
+     * - 用于 Web 平台
+     * - 跨浏览器图形 API
+     * - 需要浏览器支持 WebGPU
+     */
     WEBGPU = 4,   //!< Selects the Webgpu driver if the platform supports webgpu.
+    
+    /**
+     * 空操作驱动
+     * 
+     * 选择空操作驱动程序，用于测试目的。
+     * - 不执行任何实际的渲染操作
+     * - 用于单元测试和性能分析
+     * - 不会创建实际的图形上下文
+     */
     NOOP = 5,     //!< Selects the no-op driver for testing purposes.
 };
 
+/**
+ * 计时查询结果枚举
+ * 
+ * 表示计时查询操作的结果状态。
+ * 
+ * 用途：
+ * - 用于 GPU 性能测量
+ * - 查询渲染命令的执行时间
+ * - 用于性能分析和优化
+ */
 enum class TimerQueryResult : int8_t {
+    /**
+     * 错误
+     * 
+     * 发生错误，结果不可用。
+     * - 查询可能失败
+     * - 结果数据无效
+     */
     ERROR = -1,     // an error occurred, result won't be available
+    
+    /**
+     * 未就绪
+     * 
+     * 结果尚未就绪。
+     * - 查询仍在进行中
+     * - 需要稍后再次查询
+     */
     NOT_READY = 0,  // result to ready yet
+    
+    /**
+     * 可用
+     * 
+     * 结果可用。
+     * - 查询已完成
+     * - 可以安全读取结果
+     */
     AVAILABLE = 1,  // result is available
 };
 
+/**
+ * 将 Backend 枚举转换为字符串
+ * 
+ * @param backend 后端枚举值
+ * @return 后端名称的字符串视图
+ * 
+ * 支持的枚举值：
+ * - NOOP: "Noop"
+ * - OPENGL: "OpenGL"
+ * - VULKAN: "Vulkan"
+ * - METAL: "Metal"
+ * - WEBGPU: "WebGPU"
+ * - DEFAULT: "Default"
+ * - 其他: "Unknown"
+ */
 constexpr std::string_view to_string(Backend const backend) noexcept {
     switch (backend) {
         case Backend::NOOP:
@@ -196,16 +563,98 @@ constexpr std::string_view to_string(Backend const backend) noexcept {
  * - The OpenGL backend can select between two shader languages: ESSL 1.0 and ESSL 3.0.
  * - The Metal backend can prefer precompiled Metal libraries, while falling back to MSL.
  */
+/**
+ * 着色器语言枚举
+ * 
+ * 定义着色器语言类型。与后端枚举类似，但有一些区别：
+ * - OpenGL 后端可以在两种着色器语言之间选择：ESSL 1.0 和 ESSL 3.0
+ * - Metal 后端可以优先使用预编译的 Metal 库，否则回退到 MSL
+ * 
+ * 用途：
+ * - 指定材质使用的着色器语言
+ * - 控制着色器编译流程
+ * - 支持跨后端着色器兼容性
+ */
 enum class ShaderLanguage {
+    /**
+     * 未指定
+     * 
+     * 着色器语言未指定，由后端自动选择。
+     */
     UNSPECIFIED = -1,
+    
+    /**
+     * ESSL 1.0
+     * 
+     * OpenGL ES Shading Language 1.0。
+     * - OpenGL ES 2.0 的着色器语言
+     * - 功能有限，兼容性最好
+     */
     ESSL1 = 0,
+    
+    /**
+     * ESSL 3.0
+     * 
+     * OpenGL ES Shading Language 3.0。
+     * - OpenGL ES 3.0+ 的着色器语言
+     * - 功能更丰富，推荐使用
+     */
     ESSL3 = 1,
+    
+    /**
+     * SPIR-V
+     * 
+     * Standard Portable Intermediate Representation - Vulkan。
+     * - Vulkan 的着色器中间表示
+     * - 二进制格式，跨平台
+     */
     SPIRV = 2,
+    
+    /**
+     * MSL
+     * 
+     * Metal Shading Language。
+     * - Metal 的着色器语言
+     * - 源代码格式
+     */
     MSL = 3,
+    
+    /**
+     * Metal 预编译库
+     * 
+     * Precompiled Metal Library。
+     * - 预编译的 Metal 着色器库
+     * - 二进制格式，性能更好
+     * - Metal 后端优先使用
+     */
     METAL_LIBRARY = 4,
+    
+    /**
+     * WGSL
+     * 
+     * WebGPU Shading Language。
+     * - WebGPU 的着色器语言
+     * - 用于 Web 平台
+     */
     WGSL = 5,
 };
 
+/**
+ * 将 ShaderLanguage 枚举转换为字符串
+ * 
+ * @param shaderLanguage 着色器语言枚举值
+ * @return 着色器语言名称的 C 字符串
+ * 
+ * 支持的枚举值：
+ * - ESSL1: "ESSL 1.0"
+ * - ESSL3: "ESSL 3.0"
+ * - SPIRV: "SPIR-V"
+ * - MSL: "MSL"
+ * - METAL_LIBRARY: "Metal precompiled library"
+ * - WGSL: "WGSL"
+ * - UNSPECIFIED: "Unspecified"
+ * - 其他: "UNKNOWN"
+ */
 constexpr const char* shaderLanguageToString(ShaderLanguage shaderLanguage) noexcept {
     switch (shaderLanguage) {
         case ShaderLanguage::ESSL1:
@@ -226,21 +675,55 @@ constexpr const char* shaderLanguageToString(ShaderLanguage shaderLanguage) noex
     return "UNKNOWN";
 }
 
+/**
+ * 着色器阶段枚举
+ * 
+ * 定义着色器程序的阶段类型。
+ * 
+ * 用途：
+ * - 指定着色器代码所属的阶段
+ * - 在创建着色器程序时使用
+ * - 用于资源绑定和管线状态管理
+ */
 enum class ShaderStage : uint8_t {
-    VERTEX = 0,
-    FRAGMENT = 1,
-    COMPUTE = 2
+    VERTEX = 0,    // 顶点着色器阶段
+    FRAGMENT = 1,  // 片段着色器阶段
+    COMPUTE = 2    // 计算着色器阶段
 };
 
+/**
+ * 管线阶段数量
+ * 
+ * 用于传统渲染管线的阶段数量（顶点和片段）。
+ * 注意：不包括计算着色器。
+ */
 static constexpr size_t PIPELINE_STAGE_COUNT = 2;
+
+/**
+ * 着色器阶段标志枚举
+ * 
+ * 位掩码枚举，用于组合多个着色器阶段。
+ * 支持位运算（OR、AND 等）。
+ */
 enum class ShaderStageFlags : uint8_t {
-    NONE        =    0,
-    VERTEX      =    0x1,
-    FRAGMENT    =    0x2,
-    COMPUTE     =    0x4,
-    ALL_SHADER_STAGE_FLAGS = VERTEX | FRAGMENT | COMPUTE
+    NONE        =    0,   // 无阶段
+    VERTEX      =    0x1, // 顶点着色器阶段
+    FRAGMENT    =    0x2, // 片段着色器阶段
+    COMPUTE     =    0x4, // 计算着色器阶段
+    ALL_SHADER_STAGE_FLAGS = VERTEX | FRAGMENT | COMPUTE  // 所有着色器阶段
 };
 
+/**
+ * 检查着色器阶段标志是否包含指定类型
+ * 
+ * @param flags 着色器阶段标志（位掩码）
+ * @param type  要检查的着色器阶段类型
+ * @return 如果标志包含指定类型返回 true，否则返回 false
+ * 
+     * 实现：
+ * - 使用位运算检查标志中是否设置了对应的位
+ * - 例如：hasShaderType(VERTEX | FRAGMENT, VERTEX) 返回 true
+ */
 constexpr bool hasShaderType(ShaderStageFlags flags, ShaderStage type) noexcept {
     switch (type) {
         case ShaderStage::VERTEX:
@@ -252,15 +735,26 @@ constexpr bool hasShaderType(ShaderStageFlags flags, ShaderStage type) noexcept 
     }
 }
 
+/**
+ * 纹理类型枚举
+ * 
+ * 定义纹理的数据类型，影响纹理的存储格式和用途。
+ */
 enum class TextureType : uint8_t {
-    FLOAT,
-    INT,
-    UINT,
-    DEPTH,
-    STENCIL,
-    DEPTH_STENCIL
+    FLOAT,          // 浮点纹理（用于颜色、法线等）
+    INT,            // 有符号整数纹理（用于整数数据）
+    UINT,           // 无符号整数纹理（用于整数数据）
+    DEPTH,          // 深度纹理（用于深度缓冲）
+    STENCIL,        // 模板纹理（用于模板缓冲）
+    DEPTH_STENCIL   // 深度-模板纹理（组合格式）
 };
 
+/**
+ * 将 TextureType 枚举转换为字符串
+ * 
+ * @param type 纹理类型枚举值
+ * @return 纹理类型名称的字符串视图
+ */
 constexpr std::string_view to_string(TextureType type) noexcept {
     switch (type) {
         case TextureType::FLOAT:            return "FLOAT";

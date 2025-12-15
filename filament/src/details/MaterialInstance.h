@@ -227,71 +227,232 @@ public:
      */
     bool hasScissor() const noexcept { return mHasScissor; }
 
+    /**
+     * 获取剔除模式
+     * 
+     * @return 剔除模式（用于常规渲染）
+     */
     backend::CullingMode getCullingMode() const noexcept { return mCulling; }
 
+    /**
+     * 获取阴影剔除模式
+     * 
+     * @return 剔除模式（用于阴影渲染）
+     */
     backend::CullingMode getShadowCullingMode() const noexcept { return mShadowCulling; }
 
+    /**
+     * 颜色写入是否启用
+     * 
+     * @return 如果颜色缓冲区写入启用返回 true，否则返回 false
+     */
     bool isColorWriteEnabled() const noexcept { return mColorWrite; }
 
+    /**
+     * 深度写入是否启用
+     * 
+     * @return 如果深度缓冲区写入启用返回 true，否则返回 false
+     */
     bool isDepthWriteEnabled() const noexcept { return mDepthWrite; }
 
+    /**
+     * 模板写入是否启用
+     * 
+     * @return 如果模板缓冲区写入启用返回 true，否则返回 false
+     */
     bool isStencilWriteEnabled() const noexcept { return mStencilState.stencilWrite; }
 
+    /**
+     * 获取模板状态
+     * 
+     * @return 模板状态常量引用
+     */
     backend::StencilState getStencilState() const noexcept { return mStencilState; }
 
+    /**
+     * 获取透明度模式
+     * 
+     * @return 透明度模式（默认、双面、单面等）
+     */
     TransparencyMode getTransparencyMode() const noexcept { return mTransparencyMode; }
 
+    /**
+     * 获取深度测试函数
+     * 
+     * @return 深度测试比较函数
+     */
     backend::RasterState::DepthFunc getDepthFunc() const noexcept { return mDepthFunc; }
 
+    /**
+     * 设置深度测试函数
+     * 
+     * @param depthFunc 深度测试比较函数（LE、GE、L、G、E、NE、A、N）
+     */
     void setDepthFunc(backend::RasterState::DepthFunc const depthFunc) noexcept {
         mDepthFunc = depthFunc;
     }
 
+    /**
+     * 设置多边形偏移
+     * 
+     * 用于避免 Z-fighting（深度冲突）问题。
+     * 
+     * @param scale 斜率因子（GL 中的 factor）
+     * @param constant 常量因子（GL 中的 units）
+     * 
+     * 注意：内部处理反向 Z，因此符号会被反转
+     */
     void setPolygonOffset(float const scale, float const constant) noexcept {
         // handle reversed Z
         mPolygonOffset = { -scale, -constant };
     }
 
+    /**
+     * 获取多边形偏移
+     * 
+     * @return 多边形偏移值（斜率因子和常量因子）
+     */
     backend::PolygonOffset getPolygonOffset() const noexcept { return mPolygonOffset; }
 
+    /**
+     * 设置遮罩阈值
+     * 
+     * 用于 Alpha 测试，当 alpha 值小于阈值时丢弃片段。
+     * 
+     * @param threshold 阈值（0.0-1.0）
+     */
     void setMaskThreshold(float threshold) noexcept;
 
+    /**
+     * 获取遮罩阈值
+     * 
+     * @return 遮罩阈值
+     */
     float getMaskThreshold() const noexcept;
 
+    /**
+     * 设置镜面反射抗锯齿方差
+     * 
+     * 用于几何镜面反射抗锯齿（Geometric Specular Antialiasing, GSAA）。
+     * 
+     * @param variance 方差值（通常为 0.0-1.0）
+     */
     void setSpecularAntiAliasingVariance(float variance) noexcept;
 
+    /**
+     * 获取镜面反射抗锯齿方差
+     * 
+     * @return 方差值
+     */
     float getSpecularAntiAliasingVariance() const noexcept;
 
+    /**
+     * 设置镜面反射抗锯齿阈值
+     * 
+     * 用于几何镜面反射抗锯齿（GSAA）。
+     * 
+     * @param threshold 阈值
+     */
     void setSpecularAntiAliasingThreshold(float threshold) noexcept;
 
+    /**
+     * 获取镜面反射抗锯齿阈值
+     * 
+     * @return 阈值
+     */
     float getSpecularAntiAliasingThreshold() const noexcept;
 
+    /**
+     * 设置双面渲染
+     * 
+     * @param doubleSided 如果为 true，禁用背面剔除（渲染双面）
+     */
     void setDoubleSided(bool doubleSided) noexcept;
 
+    /**
+     * 是否双面渲染
+     * 
+     * @return 如果是双面渲染返回 true，否则返回 false
+     */
     bool isDoubleSided() const noexcept;
 
+    /**
+     * 设置透明度模式
+     * 
+     * @param mode 透明度模式（DEFAULT、TWO_PASSES_ONE_SIDE、TWO_PASSES_TWO_SIDES）
+     */
     void setTransparencyMode(TransparencyMode mode) noexcept;
 
+    /**
+     * 设置剔除模式
+     * 
+     * 同时设置常规渲染和阴影渲染的剔除模式。
+     * 
+     * @param culling 剔除模式（NONE、FRONT、BACK、FRONT_AND_BACK）
+     */
     void setCullingMode(CullingMode const culling) noexcept {
         mCulling = culling;
         mShadowCulling = culling;
     }
 
+    /**
+     * 设置剔除模式（分别设置）
+     * 
+     * 分别设置常规渲染和阴影渲染的剔除模式。
+     * 
+     * @param color 常规渲染的剔除模式
+     * @param shadow 阴影渲染的剔除模式
+     */
     void setCullingMode(CullingMode const color, CullingMode const shadow) noexcept {
         mCulling = color;
         mShadowCulling = shadow;
     }
 
+    /**
+     * 设置颜色写入
+     * 
+     * @param enable 如果为 true，启用颜色缓冲区写入
+     */
     void setColorWrite(bool const enable) noexcept { mColorWrite = enable; }
 
+    /**
+     * 设置深度写入
+     * 
+     * @param enable 如果为 true，启用深度缓冲区写入
+     */
     void setDepthWrite(bool const enable) noexcept { mDepthWrite = enable; }
 
+    /**
+     * 设置模板写入
+     * 
+     * @param enable 如果为 true，启用模板缓冲区写入
+     */
     void setStencilWrite(bool const enable) noexcept { mStencilState.stencilWrite = enable; }
 
+    /**
+     * 设置深度剔除
+     * 
+     * 启用或禁用深度测试。
+     * 
+     * @param enable 如果为 true，启用深度测试
+     */
     void setDepthCulling(bool enable) noexcept;
 
+    /**
+     * 深度剔除是否启用
+     * 
+     * @return 如果深度测试启用返回 true，否则返回 false
+     */
     bool isDepthCullingEnabled() const noexcept;
 
+    /**
+     * 设置模板比较函数
+     * 
+     * 设置模板测试的比较函数（LE、GE、L、G、E、NE、A、N）。
+     * 
+     * @param func 比较函数
+     * @param face 要设置的面（FRONT、BACK 或 FRONT_AND_BACK）
+     */
     void setStencilCompareFunction(StencilCompareFunc const func, StencilFace const face) noexcept {
         if (any(face & StencilFace::FRONT)) {
             mStencilState.front.stencilFunc = func;
@@ -301,6 +462,14 @@ public:
         }
     }
 
+    /**
+     * 设置模板测试失败时的操作
+     * 
+     * 当模板测试失败时执行的模板操作。
+     * 
+     * @param op 模板操作（KEEP、ZERO、REPLACE、INCR、INCR_WRAP、DECR、DECR_WRAP、INVERT）
+     * @param face 要设置的面（FRONT、BACK 或 FRONT_AND_BACK）
+     */
     void setStencilOpStencilFail(StencilOperation const op, StencilFace const face) noexcept {
         if (any(face & StencilFace::FRONT)) {
             mStencilState.front.stencilOpStencilFail = op;
@@ -310,6 +479,14 @@ public:
         }
     }
 
+    /**
+     * 设置深度测试失败时的模板操作
+     * 
+     * 当模板测试通过但深度测试失败时执行的模板操作。
+     * 
+     * @param op 模板操作
+     * @param face 要设置的面（FRONT、BACK 或 FRONT_AND_BACK）
+     */
     void setStencilOpDepthFail(StencilOperation const op, StencilFace const face) noexcept {
         if (any(face & StencilFace::FRONT)) {
             mStencilState.front.stencilOpDepthFail = op;
@@ -319,6 +496,14 @@ public:
         }
     }
 
+    /**
+     * 设置深度和模板测试都通过时的模板操作
+     * 
+     * 当模板测试和深度测试都通过时执行的模板操作。
+     * 
+     * @param op 模板操作
+     * @param face 要设置的面（FRONT、BACK 或 FRONT_AND_BACK）
+     */
     void setStencilOpDepthStencilPass(StencilOperation const op, StencilFace const face) noexcept {
         if (any(face & StencilFace::FRONT)) {
             mStencilState.front.stencilOpDepthStencilPass = op;
@@ -328,6 +513,14 @@ public:
         }
     }
 
+    /**
+     * 设置模板参考值
+     * 
+     * 用于模板测试比较的参考值。
+     * 
+     * @param value 参考值（0-255）
+     * @param face 要设置的面（FRONT、BACK 或 FRONT_AND_BACK）
+     */
     void setStencilReferenceValue(uint8_t const value, StencilFace const face) noexcept {
         if (any(face & StencilFace::FRONT)) {
             mStencilState.front.ref = value;
@@ -337,6 +530,14 @@ public:
         }
     }
 
+    /**
+     * 设置模板读取掩码
+     * 
+     * 掩码用于模板测试比较（ref & readMask vs stencil & readMask）。
+     * 
+     * @param readMask 读取掩码（位掩码，0-255）
+     * @param face 要设置的面（FRONT、BACK 或 FRONT_AND_BACK）
+     */
     void setStencilReadMask(uint8_t const readMask, StencilFace const face) noexcept {
         if (any(face & StencilFace::FRONT)) {
             mStencilState.front.readMask = readMask;
@@ -346,6 +547,14 @@ public:
         }
     }
 
+    /**
+     * 设置模板写入掩码
+     * 
+     * 掩码用于限制模板写入的位（stencil = (stencil & ~writeMask) | (newValue & writeMask)）。
+     * 
+     * @param writeMask 写入掩码（位掩码，0-255）
+     * @param face 要设置的面（FRONT、BACK 或 FRONT_AND_BACK）
+     */
     void setStencilWriteMask(uint8_t const writeMask, StencilFace const face) noexcept {
         if (any(face & StencilFace::FRONT)) {
             mStencilState.front.writeMask = writeMask;
@@ -355,14 +564,33 @@ public:
         }
     }
 
+    /**
+     * 设置是否为默认实例
+     * 
+     * 默认实例是材质的主实例，用于默认参数值。
+     * 
+     * @param value 如果为 true，标记为默认实例
+     */
     void setDefaultInstance(bool const value) noexcept {
         mIsDefaultInstance = value;
     }
 
+    /**
+     * 是否为默认实例
+     * 
+     * @return 如果是默认实例返回 true，否则返回 false
+     */
     bool isDefaultInstance() const noexcept {
         return mIsDefaultInstance;
     }
 
+    /**
+     * 是否使用 UBO 批处理
+     * 
+     * @return 如果使用 UBO 批处理返回 true，否则返回 false
+     * 
+     * UBO 批处理将多个实例的 uniform 数据打包到单个 UBO 中，以提高性能。
+     */
     bool isUsingUboBatching() const noexcept { return mUseUboBatching; }
 
     /**
@@ -397,21 +625,77 @@ private:
     friend class FMaterial;
     friend class MaterialInstance;
 
+    /**
+     * 设置参数（无类型，单个值）
+     * 
+     * 内部实现，用于设置任意大小的 uniform 参数。
+     * 
+     * @tparam Size 参数大小（字节）
+     * @param name 参数名称
+     * @param value 参数值指针
+     */
     template<size_t Size>
     void setParameterUntypedImpl(std::string_view name, const void* value);
 
+    /**
+     * 设置参数（无类型，数组）
+     * 
+     * 内部实现，用于设置任意大小的 uniform 参数数组。
+     * 
+     * @tparam Size 单个元素大小（字节）
+     * @param name 参数名称
+     * @param value 参数值指针
+     * @param count 数组元素数量
+     */
     template<size_t Size>
     void setParameterUntypedImpl(std::string_view name, const void* value, size_t count);
 
+    /**
+     * 设置参数（类型化，单个值）
+     * 
+     * 内部实现，用于设置类型化的 uniform 参数。
+     * 
+     * @tparam T 参数类型
+     * @param name 参数名称
+     * @param value 参数值
+     */
     template<typename T>
     void setParameterImpl(std::string_view name, T const& value);
 
+    /**
+     * 设置参数（类型化，数组）
+     * 
+     * 内部实现，用于设置类型化的 uniform 参数数组。
+     * 
+     * @tparam T 参数类型
+     * @param name 参数名称
+     * @param value 参数值数组指针
+     * @param count 数组元素数量
+     */
     template<typename T>
     void setParameterImpl(std::string_view name, const T* value, size_t count);
 
+    /**
+     * 设置参数（纹理和采样器）
+     * 
+     * 内部实现，用于设置纹理采样器参数。
+     * 
+     * @param name 参数名称
+     * @param texture 纹理指针
+     * @param sampler 纹理采样器
+     */
     void setParameterImpl(std::string_view name,
             FTexture const* texture, TextureSampler const& sampler);
 
+    /**
+     * 获取参数
+     * 
+     * 内部实现，用于获取类型化的 uniform 参数。
+     * 
+     * @tparam T 参数类型
+     * @param name 参数名称
+     * @return 参数值
+     */
     template<typename T>
     T getParameterImpl(std::string_view name) const;
 
@@ -467,35 +751,151 @@ private:
      */
     UniformBuffer mUniforms;
 
+    /**
+     * 多边形偏移
+     * 
+     * 用于避免 Z-fighting 的斜率因子和常量因子。
+     */
     backend::PolygonOffset mPolygonOffset{};
+    
+    /**
+     * 模板状态
+     * 
+     * 包含前后面模板测试和操作的所有状态。
+     */
     backend::StencilState mStencilState{};
 
+    /**
+     * 遮罩阈值
+     * 
+     * 用于 Alpha 测试，当 alpha < 阈值时丢弃片段。
+     */
     float mMaskThreshold = 0.0f;
+    
+    /**
+     * 镜面反射抗锯齿方差
+     * 
+     * 用于几何镜面反射抗锯齿（GSAA）。
+     */
     float mSpecularAntiAliasingVariance = 0.0f;
+    
+    /**
+     * 镜面反射抗锯齿阈值
+     * 
+     * 用于几何镜面反射抗锯齿（GSAA）。
+     */
     float mSpecularAntiAliasingThreshold = 0.0f;
 
+    /**
+     * 剔除模式（常规渲染）
+     * 
+     * 2 位，表示 NONE、FRONT、BACK 或 FRONT_AND_BACK。
+     */
     backend::CullingMode mCulling : 2;
+    
+    /**
+     * 剔除模式（阴影渲染）
+     * 
+     * 2 位，表示 NONE、FRONT、BACK 或 FRONT_AND_BACK。
+     */
     backend::CullingMode mShadowCulling : 2;
+    
+    /**
+     * 深度测试函数
+     * 
+     * 3 位，表示深度比较函数（LE、GE、L、G、E、NE、A、N）。
+     */
     backend::RasterState::DepthFunc mDepthFunc : 3;
 
+    /**
+     * 颜色写入启用标志
+     * 
+     * 1 位布尔值。
+     */
     bool mColorWrite : 1;
+    
+    /**
+     * 深度写入启用标志
+     * 
+     * 1 位布尔值。
+     */
     bool mDepthWrite : 1;
+    
+    /**
+     * 是否有裁剪矩形
+     * 
+     * 1 位布尔值。
+     */
     bool mHasScissor : 1;
+    
+    /**
+     * 是否双面渲染
+     * 
+     * 1 位布尔值。如果为 true，禁用背面剔除。
+     */
     bool mIsDoubleSided : 1;
+    
+    /**
+     * 是否为默认实例
+     * 
+     * 1 位布尔值。
+     */
     bool mIsDefaultInstance : 1;
+    
+    /**
+     * 是否使用 UBO 批处理
+     * 
+     * 1 位布尔值，常量（在构造时确定）。
+     */
     const bool mUseUboBatching : 1;
+    
+    /**
+     * 透明度模式
+     * 
+     * 2 位，表示 DEFAULT、TWO_PASSES_ONE_SIDE 或 TWO_PASSES_TWO_SIDES。
+     */
     TransparencyMode mTransparencyMode : 2;
 
+    /**
+     * 材质排序键
+     * 
+     * 用于渲染排序，优化绘制调用（按材质、着色器等排序）。
+     */
     uint64_t mMaterialSortingKey = 0;
 
+    /**
+     * 裁剪矩形
+     * 
+     * 裁剪矩形指定为：左、底、宽、高（像素）。
+     * 默认值为全屏（0, 0, max, max）。
+     */
     // Scissor rectangle is specified as: Left Bottom Width Height.
     backend::Viewport mScissorRect = { 0, 0,
             uint32_t(std::numeric_limits<int32_t>::max()),
             uint32_t(std::numeric_limits<int32_t>::max())
     };
 
+    /**
+     * 实例名称
+     * 
+     * 用于调试和识别。
+     */
     utils::CString mName;
+    
+    /**
+     * 缺失的采样器描述符位集
+     * 
+     * 用于跟踪哪些采样器描述符需要占位符初始化。
+     * 可变，因为 fixMissingSamplers() 需要修改它。
+     */
     mutable utils::bitset64 mMissingSamplerDescriptors{};
+    
+    /**
+     * 缺失采样器修复标志
+     * 
+     * 确保 fixMissingSamplers() 只执行一次（使用 std::once_flag）。
+     * 可变，因为 fixMissingSamplers() 需要修改它。
+     */
     mutable std::once_flag mMissingSamplersFlag;
 };
 

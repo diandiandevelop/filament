@@ -767,45 +767,68 @@ constexpr std::string_view to_string(TextureType type) noexcept {
     return "UNKNOWN";
 }
 
- enum class DescriptorType : uint8_t {
-     SAMPLER_2D_FLOAT,
-     SAMPLER_2D_INT,
-     SAMPLER_2D_UINT,
-     SAMPLER_2D_DEPTH,
+/**
+ * 描述符类型枚举
+ * 
+ * 定义可在描述符集中绑定的资源类型。
+ * 描述符用于在着色器中访问纹理、采样器、缓冲区等资源。
+ * 
+ * 分类：
+ * - 采样器类型（SAMPLER_*）：纹理和采样器组合
+ * - 缓冲区类型（UNIFORM_BUFFER, SHADER_STORAGE_BUFFER）：用于存储 uniform 数据
+ * - 输入附件（INPUT_ATTACHMENT）：用于子通道输入
+ */
+enum class DescriptorType : uint8_t {
+    SAMPLER_2D_FLOAT,           // 2D 浮点采样器
+    SAMPLER_2D_INT,             // 2D 有符号整数采样器
+    SAMPLER_2D_UINT,            // 2D 无符号整数采样器
+    SAMPLER_2D_DEPTH,           // 2D 深度采样器（用于阴影贴图）
 
-     SAMPLER_2D_ARRAY_FLOAT,
-     SAMPLER_2D_ARRAY_INT,
-     SAMPLER_2D_ARRAY_UINT,
-     SAMPLER_2D_ARRAY_DEPTH,
+    SAMPLER_2D_ARRAY_FLOAT,     // 2D 数组浮点采样器
+    SAMPLER_2D_ARRAY_INT,       // 2D 数组有符号整数采样器
+    SAMPLER_2D_ARRAY_UINT,      // 2D 数组无符号整数采样器
+    SAMPLER_2D_ARRAY_DEPTH,     // 2D 数组深度采样器
 
-     SAMPLER_CUBE_FLOAT,
-     SAMPLER_CUBE_INT,
-     SAMPLER_CUBE_UINT,
-     SAMPLER_CUBE_DEPTH,
+    SAMPLER_CUBE_FLOAT,         // 立方体贴图浮点采样器
+    SAMPLER_CUBE_INT,           // 立方体贴图有符号整数采样器
+    SAMPLER_CUBE_UINT,          // 立方体贴图无符号整数采样器
+    SAMPLER_CUBE_DEPTH,         // 立方体贴图深度采样器
 
-     SAMPLER_CUBE_ARRAY_FLOAT,
-     SAMPLER_CUBE_ARRAY_INT,
-     SAMPLER_CUBE_ARRAY_UINT,
-     SAMPLER_CUBE_ARRAY_DEPTH,
+    SAMPLER_CUBE_ARRAY_FLOAT,   // 立方体贴图数组浮点采样器（功能级别 2+）
+    SAMPLER_CUBE_ARRAY_INT,     // 立方体贴图数组有符号整数采样器
+    SAMPLER_CUBE_ARRAY_UINT,    // 立方体贴图数组无符号整数采样器
+    SAMPLER_CUBE_ARRAY_DEPTH,   // 立方体贴图数组深度采样器
 
-     SAMPLER_3D_FLOAT,
-     SAMPLER_3D_INT,
-     SAMPLER_3D_UINT,
+    SAMPLER_3D_FLOAT,           // 3D 浮点采样器
+    SAMPLER_3D_INT,             // 3D 有符号整数采样器
+    SAMPLER_3D_UINT,            // 3D 无符号整数采样器
 
-     SAMPLER_2D_MS_FLOAT,
-     SAMPLER_2D_MS_INT,
-     SAMPLER_2D_MS_UINT,
+    SAMPLER_2D_MS_FLOAT,        // 2D 多重采样浮点采样器（MSAA）
+    SAMPLER_2D_MS_INT,          // 2D 多重采样有符号整数采样器
+    SAMPLER_2D_MS_UINT,         // 2D 多重采样无符号整数采样器
 
-     SAMPLER_2D_MS_ARRAY_FLOAT,
-     SAMPLER_2D_MS_ARRAY_INT,
-     SAMPLER_2D_MS_ARRAY_UINT,
+    SAMPLER_2D_MS_ARRAY_FLOAT,  // 2D 多重采样数组浮点采样器
+    SAMPLER_2D_MS_ARRAY_INT,    // 2D 多重采样数组有符号整数采样器
+    SAMPLER_2D_MS_ARRAY_UINT,   // 2D 多重采样数组无符号整数采样器
 
-     SAMPLER_EXTERNAL,
-     UNIFORM_BUFFER,
-     SHADER_STORAGE_BUFFER,
-     INPUT_ATTACHMENT,
- };
+    SAMPLER_EXTERNAL,           // 外部采样器（如相机预览、视频流）
+    UNIFORM_BUFFER,             // Uniform 缓冲区（用于常量数据）
+    SHADER_STORAGE_BUFFER,      // 着色器存储缓冲区（SSBO，用于计算着色器）
+    INPUT_ATTACHMENT,           // 输入附件（用于子通道中读取之前的渲染结果）
+};
 
+/**
+ * 检查描述符类型是否为深度采样器
+ * 
+ * @param type 描述符类型
+ * @return 如果是深度采样器类型返回 true，否则返回 false
+ * 
+ * 支持的深度采样器类型：
+ * - SAMPLER_2D_DEPTH
+ * - SAMPLER_2D_ARRAY_DEPTH
+ * - SAMPLER_CUBE_DEPTH
+ * - SAMPLER_CUBE_ARRAY_DEPTH
+ */
 constexpr bool isDepthDescriptor(DescriptorType const type) noexcept {
     switch (type) {
         case DescriptorType::SAMPLER_2D_DEPTH:
@@ -818,6 +841,15 @@ constexpr bool isDepthDescriptor(DescriptorType const type) noexcept {
     return false;
 }
 
+/**
+ * 检查描述符类型是否为浮点采样器
+ * 
+ * @param type 描述符类型
+ * @return 如果是浮点采样器类型返回 true，否则返回 false
+ * 
+ * 支持的浮点采样器类型：
+ * - 2D、2D 数组、立方体、立方体数组、3D、多重采样等浮点采样器
+ */
 constexpr bool isFloatDescriptor(DescriptorType const type) noexcept {
     switch (type) {
         case DescriptorType::SAMPLER_2D_FLOAT:
@@ -833,6 +865,14 @@ constexpr bool isFloatDescriptor(DescriptorType const type) noexcept {
     return false;
 }
 
+/**
+ * 检查描述符类型是否为有符号整数采样器
+ * 
+ * @param type 描述符类型
+ * @return 如果是有符号整数采样器类型返回 true，否则返回 false
+ * 
+ * 用途：用于存储和采样整数值的纹理（如 ID 缓冲区）
+ */
 constexpr bool isIntDescriptor(DescriptorType const type) noexcept {
     switch (type) {
         case DescriptorType::SAMPLER_2D_INT:
@@ -848,6 +888,14 @@ constexpr bool isIntDescriptor(DescriptorType const type) noexcept {
     return false;
 }
 
+/**
+ * 检查描述符类型是否为无符号整数采样器
+ * 
+ * @param type 描述符类型
+ * @return 如果是无符号整数采样器类型返回 true，否则返回 false
+ * 
+ * 用途：用于存储和采样无符号整数值的纹理（如索引缓冲区）
+ */
 constexpr bool isUnsignedIntDescriptor(DescriptorType const type) noexcept {
     switch (type) {
         case DescriptorType::SAMPLER_2D_UINT:
@@ -863,6 +911,14 @@ constexpr bool isUnsignedIntDescriptor(DescriptorType const type) noexcept {
     return false;
 }
 
+/**
+ * 检查描述符类型是否为 3D 纹理采样器
+ * 
+ * @param type 描述符类型
+ * @return 如果是 3D 纹理采样器类型返回 true，否则返回 false
+ * 
+ * 用途：用于体积纹理（如体积光照贴图、3D 噪声纹理等）
+ */
 constexpr bool is3dTypeDescriptor(DescriptorType const type) noexcept {
     switch (type) {
         case DescriptorType::SAMPLER_3D_FLOAT:
@@ -874,6 +930,14 @@ constexpr bool is3dTypeDescriptor(DescriptorType const type) noexcept {
     return false;
 }
 
+/**
+ * 检查描述符类型是否为 2D 纹理采样器（非数组）
+ * 
+ * @param type 描述符类型
+ * @return 如果是 2D 纹理采样器类型返回 true，否则返回 false
+ * 
+ * 包括普通 2D 和多重采样 2D 纹理，但不包括 2D 数组
+ */
 constexpr bool is2dTypeDescriptor(DescriptorType const type) noexcept {
     switch (type) {
         case DescriptorType::SAMPLER_2D_FLOAT:
@@ -889,6 +953,14 @@ constexpr bool is2dTypeDescriptor(DescriptorType const type) noexcept {
     return false;
 }
 
+/**
+ * 检查描述符类型是否为 2D 数组纹理采样器
+ * 
+ * @param type 描述符类型
+ * @return 如果是 2D 数组纹理采样器类型返回 true，否则返回 false
+ * 
+ * 用途：用于存储多个 2D 纹理的数组（如纹理图集、层叠渲染目标）
+ */
 constexpr bool is2dArrayTypeDescriptor(DescriptorType const type) noexcept {
     switch (type) {
         case DescriptorType::SAMPLER_2D_ARRAY_FLOAT:
@@ -904,6 +976,14 @@ constexpr bool is2dArrayTypeDescriptor(DescriptorType const type) noexcept {
     return false;
 }
 
+/**
+ * 检查描述符类型是否为立方体贴图采样器（非数组）
+ * 
+ * @param type 描述符类型
+ * @return 如果是立方体贴图采样器类型返回 true，否则返回 false
+ * 
+ * 用途：用于环境贴图、天空盒、反射贴图等
+ */
 constexpr bool isCubeTypeDescriptor(DescriptorType const type) noexcept {
     switch (type) {
         case DescriptorType::SAMPLER_CUBE_FLOAT:
@@ -916,6 +996,15 @@ constexpr bool isCubeTypeDescriptor(DescriptorType const type) noexcept {
     return false;
 }
 
+/**
+ * 检查描述符类型是否为立方体贴图数组采样器
+ * 
+ * @param type 描述符类型
+ * @return 如果是立方体贴图数组采样器类型返回 true，否则返回 false
+ * 
+ * 用途：用于存储多个立方体贴图（功能级别 2+）
+ * 例如：点光源的阴影贴图立方体数组
+ */
 constexpr bool isCubeArrayTypeDescriptor(DescriptorType const type) noexcept {
     switch (type) {
         case DescriptorType::SAMPLER_CUBE_ARRAY_FLOAT:
@@ -928,6 +1017,15 @@ constexpr bool isCubeArrayTypeDescriptor(DescriptorType const type) noexcept {
     return false;
 }
 
+/**
+ * 检查描述符类型是否为多重采样纹理采样器
+ * 
+ * @param type 描述符类型
+ * @return 如果是多重采样纹理采样器类型返回 true，否则返回 false
+ * 
+ * 用途：用于多重采样抗锯齿（MSAA）纹理
+ * 注意：多重采样纹理不能直接采样，需要先解析（resolve）为普通纹理
+ */
 constexpr bool isMultiSampledTypeDescriptor(DescriptorType const type) noexcept {
     switch (type) {
         case DescriptorType::SAMPLER_2D_MS_FLOAT:
@@ -942,6 +1040,14 @@ constexpr bool isMultiSampledTypeDescriptor(DescriptorType const type) noexcept 
     return false;
 }
 
+/**
+ * 将 DescriptorType 枚举转换为字符串
+ * 
+ * @param type 描述符类型枚举值
+ * @return 描述符类型名称的字符串视图
+ * 
+ * 用途：用于调试输出和日志记录
+ */
 constexpr std::string_view to_string(DescriptorType type) noexcept {
     #define DESCRIPTOR_TYPE_CASE(TYPE)  case DescriptorType::TYPE: return #TYPE;
     switch (type) {
@@ -979,34 +1085,100 @@ constexpr std::string_view to_string(DescriptorType type) noexcept {
     #undef DESCRIPTOR_TYPE_CASE
 }
 
+/**
+ * 描述符标志枚举
+ * 
+ * 位掩码枚举，用于描述符的额外属性。
+ * 支持位运算（OR、AND 等）。
+ */
 enum class DescriptorFlags : uint8_t {
-    NONE = 0x00,
+    NONE = 0x00,                    // 无标志
 
     // Indicate a UNIFORM_BUFFER will have dynamic offsets.
+    /**
+     * 动态偏移标志
+     * 
+     * 指示 UNIFORM_BUFFER 将使用动态偏移。
+     * 用于在同一个 uniform 缓冲区中绑定不同的偏移范围。
+     * 允许更高效地使用 uniform 缓冲区内存。
+     */
     DYNAMIC_OFFSET = 0x01,
 
     // To indicate a texture/sampler type should be unfiltered.
+    /**
+     * 不可过滤标志
+     * 
+     * 指示纹理/采样器类型应该是未过滤的（仅最近邻采样）。
+     * 用于整数纹理或需要精确像素值的场景。
+     */
     UNFILTERABLE = 0x02,
 };
 
+/**
+ * 描述符集索引类型
+ * 
+ * 用于标识描述符集的索引（0-255）。
+ * 在 Vulkan 中，描述符集是资源绑定的集合。
+ */
 using descriptor_set_t = uint8_t;
 
+/**
+ * 描述符绑定索引类型
+ * 
+ * 用于标识描述符在描述符集中的绑定位置（0-255）。
+ * 绑定索引在着色器中对应 binding 布局限定符。
+ */
 using descriptor_binding_t = uint8_t;
 
+/**
+ * 描述符集布局绑定结构体
+ * 
+ * 定义描述符集中一个绑定的配置。
+ * 用于创建描述符集布局，指定资源的类型、绑定位置和使用阶段。
+ */
 struct DescriptorSetLayoutBinding {
+    /**
+     * 检查描述符类型是否为采样器类型
+     * 
+     * @param type 描述符类型
+     * @return 如果是采样器类型返回 true，否则返回 false
+     * 
+     * 实现：所有采样器类型的枚举值都 <= SAMPLER_EXTERNAL
+     */
     static bool isSampler(DescriptorType type) noexcept {
         return int(type) <= int(DescriptorType::SAMPLER_EXTERNAL);
     }
+    
+    /**
+     * 检查描述符类型是否为缓冲区类型
+     * 
+     * @param type 描述符类型
+     * @return 如果是缓冲区类型返回 true，否则返回 false
+     */
     static bool isBuffer(DescriptorType type) noexcept {
         return type == DescriptorType::UNIFORM_BUFFER ||
                type == DescriptorType::SHADER_STORAGE_BUFFER;
     }
-    DescriptorType type;
-    ShaderStageFlags stageFlags;
-    descriptor_binding_t binding;
-    DescriptorFlags flags = DescriptorFlags::NONE;
-    uint16_t count = 0;
+    
+    DescriptorType type;              //!< 描述符类型（采样器、缓冲区等）
+    ShaderStageFlags stageFlags;      //!< 使用此绑定的着色器阶段标志（位掩码）
+    descriptor_binding_t binding;     //!< 绑定索引（对应着色器中的 binding 布局限定符）
+    DescriptorFlags flags = DescriptorFlags::NONE;  //!< 描述符标志（动态偏移、不可过滤等）
+    uint16_t count = 0;               //!< 数组元素数量（用于数组绑定，0 表示单个资源）
 
+    /**
+     * 比较两个描述符集布局绑定是否相等
+     * 
+     * @param lhs 左侧绑定
+     * @param rhs 右侧绑定
+     * @return 如果所有字段相等返回 true，否则返回 false
+     * 
+     * 比较字段：
+     * - type: 描述符类型
+     * - flags: 描述符标志
+     * - count: 数组元素数量
+     * - stageFlags: 着色器阶段标志
+     */
     friend bool operator==(DescriptorSetLayoutBinding const& lhs,
             DescriptorSetLayoutBinding const& rhs) noexcept {
         return lhs.type == rhs.type &&
@@ -1018,6 +1190,17 @@ struct DescriptorSetLayoutBinding {
 
 /**
  * Bitmask for selecting render buffers
+ */
+/**
+ * 目标缓冲区标志枚举
+ * 
+ * 位掩码枚举，用于选择渲染目标缓冲区。
+ * 可以组合多个标志来选择多个缓冲区（如 COLOR0 | DEPTH）。
+ * 
+ * 用途：
+ * - 指定哪些缓冲区需要清除
+ * - 指定哪些缓冲区可以在渲染通道开始时丢弃
+ * - 指定哪些缓冲区可以在渲染通道结束时丢弃
  */
 enum class TargetBufferFlags : uint32_t {
     NONE = 0x0u,                            //!< No buffer selected.
@@ -1038,6 +1221,17 @@ enum class TargetBufferFlags : uint32_t {
     ALL = COLOR_ALL | DEPTH | STENCIL       //!< Color, depth and stencil buffer selected.
 };
 
+/**
+ * 根据索引获取目标缓冲区标志
+ * 
+ * @param index 缓冲区索引
+ *              0-7: 颜色缓冲区（COLOR0-COLOR7）
+ *              8: 深度缓冲区
+ *              9: 模板缓冲区
+ * @return 对应的目标缓冲区标志，如果索引无效返回 NONE
+ * 
+ * 用途：用于循环处理多个渲染目标缓冲区
+ */
 constexpr TargetBufferFlags getTargetBufferFlagsAt(size_t index) noexcept {
     if (index == 0u) return TargetBufferFlags::COLOR0;
     if (index == 1u) return TargetBufferFlags::COLOR1;
@@ -1055,41 +1249,114 @@ constexpr TargetBufferFlags getTargetBufferFlagsAt(size_t index) noexcept {
 /**
  * How the buffer will be used.
  */
+/**
+ * 缓冲区使用方式枚举
+ * 
+ * 位掩码枚举，用于指定缓冲区的使用模式。
+ * 帮助驱动优化缓冲区的内存分配和访问模式。
+ * 
+ * 注意：STATIC 和 DYNAMIC 是遗留值，应使用 DYNAMIC_BIT
+ */
 enum class BufferUsage : uint8_t {
     STATIC              = 0,    //!< (legacy) content modified once, used many times
+                                //!< （遗留）内容修改一次，使用多次
     DYNAMIC             = 1,    //!< (legacy) content modified frequently, used many times
+                                //!< （遗留）内容频繁修改，使用多次
     DYNAMIC_BIT         = 0x1,  //!< buffer can be modified frequently, used many times
+                                //!< 缓冲区可以频繁修改，使用多次（用于顶点、索引缓冲区）
     SHARED_WRITE_BIT    = 0x04, //!< buffer can be memory mapped for write operations
+                                //!< 缓冲区可以内存映射用于写入操作（允许 CPU 直接写入）
 };
 
 /**
  * How the buffer will be mapped.
  */
+/**
+ * 缓冲区映射访问标志枚举
+ * 
+ * 位掩码枚举，用于指定缓冲区内存映射的访问模式。
+ * 用于 mapBuffer() 操作，控制 CPU 如何访问 GPU 缓冲区内存。
+ */
 enum class MapBufferAccessFlags : uint8_t {
     WRITE_BIT               = 0x2,  //!< buffer is mapped from writing
+                                    //!< 缓冲区映射用于写入（CPU 可以写入数据）
     INVALIDATE_RANGE_BIT    = 0x4,  //!< the mapped range content is lost
+                                    //!< 映射范围的内容将被丢弃（告诉驱动可以丢弃旧数据以优化性能）
 };
 
 /**
  * Defines a viewport, which is the origin and extent of the clip-space.
  * All drawing is clipped to the viewport.
  */
+/**
+ * 视口结构体
+ * 
+ * 定义视口，即裁剪空间的原点和范围。
+ * 所有绘制都会被裁剪到视口范围内。
+ * 
+ * 坐标系统：
+ * - 左下角为原点（left, bottom）
+ * - X 轴向右为正，Y 轴向上为正
+ * - 单位：像素
+ * 
+ * 用途：
+ * - 控制渲染输出的区域
+ * - 用于分屏渲染、画中画等场景
+ */
 struct Viewport {
     int32_t left;       //!< left coordinate in window space.
+                        //!< 窗口空间中左边界坐标
     int32_t bottom;     //!< bottom coordinate in window space.
+                        //!< 窗口空间中下边界坐标
     uint32_t width;     //!< width in pixels
+                        //!< 宽度（像素）
     uint32_t height;    //!< height in pixels
+                        //!< 高度（像素）
+    
+    /**
+     * 获取视口右边界坐标
+     * 
+     * @return 窗口空间中右边界坐标
+     * 
+     * 计算：left + width
+     */
     //! get the right coordinate in window space of the viewport
     int32_t right() const noexcept { return left + int32_t(width); }
+    
+    /**
+     * 获取视口上边界坐标
+     * 
+     * @return 窗口空间中上边界坐标
+     * 
+     * 计算：bottom + height
+     */
     //! get the top coordinate in window space of the viewport
     int32_t top() const noexcept { return bottom + int32_t(height); }
 
+    /**
+     * 比较两个视口是否相等
+     * 
+     * @param lhs 左侧视口
+     * @param rhs 右侧视口
+     * @return 如果所有字段相等返回 true，否则返回 false
+     * 
+     * 注意：clang 可以将其优化为无分支的 XOR/OR 操作
+     */
     friend bool operator==(Viewport const& lhs, Viewport const& rhs) noexcept {
         // clang can do this branchless with xor/or
         return lhs.left == rhs.left && lhs.bottom == rhs.bottom &&
                lhs.width == rhs.width && lhs.height == rhs.height;
     }
 
+    /**
+     * 比较两个视口是否不相等
+     * 
+     * @param lhs 左侧视口
+     * @param rhs 右侧视口
+     * @return 如果有任何字段不相等返回 true，否则返回 false
+     * 
+     * 实现：使用 XOR 和 OR 操作进行位运算比较
+     */
     friend bool operator!=(Viewport const& lhs, Viewport const& rhs) noexcept {
         // clang is being dumb and uses branches
         return bool(((lhs.left ^ rhs.left) | (lhs.bottom ^ rhs.bottom)) |
@@ -1100,21 +1367,55 @@ struct Viewport {
 /**
  * Specifies the mapping of the near and far clipping plane to window coordinates.
  */
+/**
+ * 深度范围结构体
+ * 
+ * 指定近裁剪平面和远裁剪平面到窗口坐标的映射。
+ * 控制深度缓冲区值的范围。
+ * 
+ * 默认值：
+ * - near = 0.0（近裁剪平面映射到深度值 0.0）
+ * - far = 1.0（远裁剪平面映射到深度值 1.0）
+ * 
+ * 注意：
+ * - 可以使用反向深度（near = 1.0, far = 0.0）以获得更好的浮点精度
+ * - OpenGL 默认使用 [0, 1]，Vulkan 默认使用 [0, 1] 但可以配置
+ */
 struct DepthRange {
     float near = 0.0f;    //!< mapping of the near plane to window coordinates.
+                          //!< 近裁剪平面到窗口坐标的映射（通常为 0.0）
     float far = 1.0f;     //!< mapping of the far plane to window coordinates.
+                          //!< 远裁剪平面到窗口坐标的映射（通常为 1.0）
 };
 
 /**
  * Error codes for Fence::wait()
  * @see Fence, Fence::wait()
  */
+/**
+ * 栅栏状态枚举
+ * 
+ * 表示 Fence::wait() 操作的返回状态。
+ * 用于同步 GPU 操作，确保操作完成后再继续。
+ * 
+ * @see Fence, Fence::wait()
+ */
 enum class FenceStatus : int8_t {
     ERROR = -1,                 //!< An error occurred. The Fence condition is not satisfied.
+                                //!< 发生错误。栅栏条件未满足。
     CONDITION_SATISFIED = 0,    //!< The Fence condition is satisfied.
+                                //!< 栅栏条件已满足（操作已完成）。
     TIMEOUT_EXPIRED = 1,        //!< wait()'s timeout expired. The Fence condition is not satisfied.
+                                //!< wait() 超时。栅栏条件未满足（操作可能仍在进行中）。
 };
 
+/**
+ * 栅栏等待超时值：永远等待
+ * 
+ * 值：uint64_t(-1) = 0xFFFFFFFFFFFFFFFF
+ * 
+ * 用途：传递给 Fence::wait() 表示无限期等待直到条件满足
+ */
 static constexpr uint64_t FENCE_WAIT_FOR_EVER = uint64_t(-1);
 
 /**
@@ -1127,12 +1428,43 @@ static constexpr uint64_t FENCE_WAIT_FOR_EVER = uint64_t(-1);
  *
  * Shader quality vs. performance is also affected by ShaderModel.
  */
+/**
+ * 着色器模型枚举
+ * 
+ * 在所有后端中使用，表示功能级别和质量级别。
+ * 
+ * 用途：
+ * - OpenGL 后端：如果支持 OpenGL ES 返回 MOBILE，如果支持桌面 OpenGL 返回 DESKTOP
+ * - 用于选择适当的着色器变体
+ * - 影响着色器的质量和性能平衡
+ * 
+ * 示例：
+ * - MOBILE：针对移动设备优化的着色器（性能优先）
+ * - DESKTOP：针对桌面设备优化的着色器（质量优先）
+ */
 enum class ShaderModel : uint8_t {
     MOBILE  = 1,    //!< Mobile level functionality
+                    //!< 移动设备级别功能（OpenGL ES）
     DESKTOP = 2,    //!< Desktop level functionality
+                    //!< 桌面设备级别功能（桌面 OpenGL）
 };
+/**
+ * 着色器模型数量
+ * 
+ * 用于数组大小和循环限制。
+ */
 static constexpr size_t SHADER_MODEL_COUNT = 2;
 
+/**
+ * 将 ShaderModel 枚举转换为字符串
+ * 
+ * @param model 着色器模型枚举值
+ * @return 着色器模型名称的字符串视图
+ * 
+ * 返回值：
+ * - MOBILE: "mobile"
+ * - DESKTOP: "desktop"
+ */
 constexpr std::string_view to_string(ShaderModel model) noexcept {
     switch (model) {
         case ShaderModel::MOBILE:
@@ -1145,15 +1477,42 @@ constexpr std::string_view to_string(ShaderModel model) noexcept {
 /**
  * Primitive types
  */
+/**
+ * 图元类型枚举
+ * 
+ * 定义几何图元的类型，用于绘制调用。
+ * 
+ * 注意：不要更改枚举值（与 OpenGL 匹配）
+ */
 enum class PrimitiveType : uint8_t {
     // don't change the enums values (made to match GL)
     POINTS         = 0,    //!< points
+                            //!< 点图元（每个顶点渲染为一个点）
     LINES          = 1,    //!< lines
+                            //!< 线段图元（每两个顶点渲染为一条线段）
     LINE_STRIP     = 3,    //!< line strip
+                            //!< 线带图元（顶点连接成连续的线段）
     TRIANGLES      = 4,    //!< triangles
+                            //!< 三角形图元（每三个顶点渲染为一个三角形）
     TRIANGLE_STRIP = 5     //!< triangle strip
+                            //!< 三角带图元（顶点连接成连续的三角形带）
 };
 
+/**
+ * 检查图元类型是否为条带类型
+ * 
+ * @param type 图元类型
+ * @return 如果是条带类型（LINE_STRIP 或 TRIANGLE_STRIP）返回 true，否则返回 false
+ * 
+ * 条带类型：
+ * - LINE_STRIP：线带
+ * - TRIANGLE_STRIP：三角带
+ * 
+ * 非条带类型：
+ * - POINTS：点
+ * - LINES：线段
+ * - TRIANGLES：三角形
+ */
 [[nodiscard]] constexpr bool isStripPrimitiveType(const PrimitiveType type) {
     switch (type) {
         case PrimitiveType::POINTS:
@@ -1169,48 +1528,80 @@ enum class PrimitiveType : uint8_t {
 /**
  * Supported uniform types
  */
+/**
+ * Uniform 类型枚举
+ * 
+ * 定义着色器中支持的 uniform 变量类型。
+ * 用于材质参数和着色器常量。
+ */
 enum class UniformType : uint8_t {
-    BOOL,
-    BOOL2,
-    BOOL3,
-    BOOL4,
-    FLOAT,
-    FLOAT2,
-    FLOAT3,
-    FLOAT4,
-    INT,
-    INT2,
-    INT3,
-    INT4,
-    UINT,
-    UINT2,
-    UINT3,
-    UINT4,
-    MAT3,   //!< a 3x3 float matrix
-    MAT4,   //!< a 4x4 float matrix
-    STRUCT
+    BOOL,       // 布尔值
+    BOOL2,      // 2 分量布尔向量
+    BOOL3,      // 3 分量布尔向量
+    BOOL4,      // 4 分量布尔向量
+    FLOAT,      // 浮点数
+    FLOAT2,     // 2 分量浮点向量（vec2）
+    FLOAT3,     // 3 分量浮点向量（vec3）
+    FLOAT4,     // 4 分量浮点向量（vec4）
+    INT,        // 有符号整数
+    INT2,       // 2 分量整数向量（ivec2）
+    INT3,       // 3 分量整数向量（ivec3）
+    INT4,       // 4 分量整数向量（ivec4）
+    UINT,       // 无符号整数
+    UINT2,      // 2 分量无符号整数向量（uvec2）
+    UINT3,      // 3 分量无符号整数向量（uvec3）
+    UINT4,      // 4 分量无符号整数向量（uvec4）
+    MAT3,       //!< a 3x3 float matrix
+                //!< 3x3 浮点矩阵
+    MAT4,       //!< a 4x4 float matrix
+                //!< 4x4 浮点矩阵
+    STRUCT      // 结构体类型（用于复杂的 uniform 数据）
 };
 
 /**
  * Supported constant parameter types
  */
+/**
+ * 常量参数类型枚举
+ * 
+ * 定义着色器常量参数的类型。
+ * 用于编译时常量，在着色器编译时确定值。
+ */
 enum class ConstantType : uint8_t {
-  INT,
-  FLOAT,
-  BOOL
+  INT,    // 整数常量
+  FLOAT,  // 浮点数常量
+  BOOL    // 布尔常量
 };
 
+/**
+ * 精度级别枚举
+ * 
+ * 定义着色器中数值类型的精度级别。
+ * 用于控制浮点数计算的精度和性能。
+ * 
+ * 用途：
+ * - LOW：低精度（移动设备，性能优先）
+ * - MEDIUM：中等精度（平衡质量和性能）
+ * - HIGH：高精度（桌面设备，质量优先）
+ * - DEFAULT：使用默认精度（由着色器语言决定）
+ */
 enum class Precision : uint8_t {
-    LOW,
-    MEDIUM,
-    HIGH,
-    DEFAULT
+    LOW,        // 低精度（适用于移动设备）
+    MEDIUM,     // 中等精度（默认选择）
+    HIGH,       // 高精度（适用于桌面设备）
+    DEFAULT     // 默认精度（使用着色器语言默认值）
 };
 
+/**
+ * 常量值联合体
+ * 
+ * 用于存储不同类型的常量值。
+ * 根据 ConstantType 使用相应的成员。
+ */
 union ConstantValue {
-    int32_t i;
-    float f;
-    bool b;
+    int32_t i;  // 整数常量值
+    float f;    // 浮点数常量值
+    bool b;     // 布尔常量值
 };
 
 /**
@@ -1219,6 +1610,18 @@ union ConstantValue {
  * On platforms which support parallel shader compilation, compilation requests will be processed in
  * order of priority, then insertion order. See Material::compile().
  */
+/**
+ * 着色器编译器优先级队列枚举
+ * 
+ * 在支持并行着色器编译的平台上，编译请求将按优先级然后按插入顺序处理。
+ * 
+ * @see Material::compile()
+ * 
+ * 用途：
+ * - 控制着色器编译的优先级
+ * - 优化编译性能和用户体验
+ * - 优先编译立即需要的着色器
+ */
 enum class CompilerPriorityQueue : uint8_t {
     /** We need this program NOW.
      *
@@ -1226,10 +1629,28 @@ enum class CompilerPriorityQueue : uint8_t {
      * compilation, but does support amortized shader compilation, the given shader program will be
      * synchronously compiled.
      */
+    /**
+     * 关键优先级
+     * 
+     * 立即需要此着色器程序。
+     * 
+     * 如果平台不支持并行编译但支持分摊着色器编译，
+     * 传递此优先级时，给定的着色器程序将同步编译。
+     */
     CRITICAL,
     /** We will need this program soon. */
+    /**
+     * 高优先级
+     * 
+     * 很快将需要此着色器程序。
+     */
     HIGH,
     /** We will need this program eventually. */
+    /**
+     * 低优先级
+     * 
+     * 最终将需要此着色器程序（可以在后台编译）。
+     */
     LOW
 };
 
@@ -1262,8 +1683,14 @@ constexpr std::string_view to_string(SamplerType const type) noexcept {
 }
 
 //! Subpass type
+/**
+ * 子通道类型枚举
+ * 
+ * 定义渲染子通道的类型。
+ * 用于 Vulkan 风格的子通道渲染，允许在单个渲染通道中进行多次渲染。
+ */
 enum class SubpassType : uint8_t {
-    SUBPASS_INPUT
+    SUBPASS_INPUT   // 子通道输入（用于在后续子通道中读取之前的渲染结果）
 };
 
 //! Texture sampler format
@@ -1291,42 +1718,72 @@ constexpr std::string_view to_string(SamplerFormat const format) noexcept {
 /**
  * Supported element types
  */
+/**
+ * 元素类型枚举
+ * 
+ * 定义顶点属性缓冲区中的数据类型。
+ * 用于指定顶点数据的格式和大小。
+ * 
+ * 命名规则：
+ * - 类型：BYTE（8位有符号）、UBYTE（8位无符号）、SHORT（16位有符号）、
+ *         USHORT（16位无符号）、INT（32位有符号）、UINT（32位无符号）、
+ *         FLOAT（32位浮点）、HALF（16位半精度浮点）
+ * - 数字后缀：表示向量分量数量（1、2、3、4）
+ */
 enum class ElementType : uint8_t {
-    BYTE,
-    BYTE2,
-    BYTE3,
-    BYTE4,
-    UBYTE,
-    UBYTE2,
-    UBYTE3,
-    UBYTE4,
-    SHORT,
-    SHORT2,
-    SHORT3,
-    SHORT4,
-    USHORT,
-    USHORT2,
-    USHORT3,
-    USHORT4,
-    INT,
-    UINT,
-    FLOAT,
-    FLOAT2,
-    FLOAT3,
-    FLOAT4,
-    HALF,
-    HALF2,
-    HALF3,
-    HALF4,
+    BYTE,       // 8 位有符号整数
+    BYTE2,      // 2 分量 8 位有符号整数向量
+    BYTE3,      // 3 分量 8 位有符号整数向量
+    BYTE4,      // 4 分量 8 位有符号整数向量
+    UBYTE,      // 8 位无符号整数
+    UBYTE2,     // 2 分量 8 位无符号整数向量
+    UBYTE3,     // 3 分量 8 位无符号整数向量
+    UBYTE4,     // 4 分量 8 位无符号整数向量
+    SHORT,      // 16 位有符号整数
+    SHORT2,     // 2 分量 16 位有符号整数向量
+    SHORT3,     // 3 分量 16 位有符号整数向量
+    SHORT4,     // 4 分量 16 位有符号整数向量
+    USHORT,     // 16 位无符号整数
+    USHORT2,    // 2 分量 16 位无符号整数向量
+    USHORT3,    // 3 分量 16 位无符号整数向量
+    USHORT4,    // 4 分量 16 位无符号整数向量
+    INT,        // 32 位有符号整数
+    UINT,       // 32 位无符号整数
+    FLOAT,      // 32 位浮点数
+    FLOAT2,     // 2 分量 32 位浮点向量
+    FLOAT3,     // 3 分量 32 位浮点向量
+    FLOAT4,     // 4 分量 32 位浮点向量
+    HALF,       // 16 位半精度浮点数
+    HALF2,      // 2 分量 16 位半精度浮点向量
+    HALF3,      // 3 分量 16 位半精度浮点向量
+    HALF4,      // 4 分量 16 位半精度浮点向量
 };
 
 //! Buffer object binding type
+/**
+ * 缓冲区对象绑定类型枚举
+ * 
+ * 定义缓冲区的绑定目标类型。
+ * 用于指定缓冲区在 GPU 中的用途。
+ */
 enum class BufferObjectBinding : uint8_t {
-    VERTEX,
-    UNIFORM,
-    SHADER_STORAGE
+    VERTEX,         // 顶点缓冲区（用于存储顶点数据）
+    UNIFORM,        // Uniform 缓冲区（用于存储常量数据）
+    SHADER_STORAGE  // 着色器存储缓冲区（SSBO，用于计算着色器的读写访问）
 };
 
+/**
+ * 将 BufferObjectBinding 枚举转换为字符串
+ * 
+ * @param type 缓冲区对象绑定类型枚举值
+ * @return 绑定类型名称的字符串视图
+ * 
+ * 返回值：
+ * - VERTEX: "VERTEX"
+ * - UNIFORM: "UNIFORM"
+ * - SHADER_STORAGE: "SHADER_STORAGE"
+ * - 其他: "UNKNOWN"
+ */
 constexpr std::string_view to_string(BufferObjectBinding type) noexcept {
     switch (type) {
         case BufferObjectBinding::VERTEX:           return "VERTEX";
@@ -1627,6 +2084,16 @@ enum class TextureSwizzle : uint8_t {
 };
 
 //! returns whether this format a depth format
+/**
+ * 检查纹理格式是否为深度格式
+ * 
+ * @param format 纹理格式
+ * @return 如果是深度格式返回 true，否则返回 false
+ * 
+ * 深度格式包括：
+ * - DEPTH16、DEPTH24、DEPTH32F
+ * - DEPTH24_STENCIL8、DEPTH32F_STENCIL8
+ */
 constexpr bool isDepthFormat(TextureFormat format) noexcept {
     switch (format) {
         case TextureFormat::DEPTH32F:
@@ -1640,6 +2107,17 @@ constexpr bool isDepthFormat(TextureFormat format) noexcept {
     }
 }
 
+/**
+ * 检查纹理格式是否为模板格式
+ * 
+ * @param format 纹理格式
+ * @return 如果是模板格式返回 true，否则返回 false
+ * 
+ * 模板格式包括：
+ * - STENCIL8
+ * - DEPTH24_STENCIL8（深度+模板组合）
+ * - DEPTH32F_STENCIL8（深度+模板组合）
+ */
 constexpr bool isStencilFormat(TextureFormat format) noexcept {
     switch (format) {
         case TextureFormat::STENCIL8:
@@ -1651,6 +2129,17 @@ constexpr bool isStencilFormat(TextureFormat format) noexcept {
     }
 }
 
+/**
+ * 检查纹理格式是否为颜色格式
+ * 
+ * @param format 纹理格式
+ * @return 如果是颜色格式返回 true，否则返回 false
+ * 
+ * 颜色格式包括：
+ * - 标准颜色格式（R、RG、RGB、RGBA）
+ * - 浮点格式（R16F、RG16F、RGBA16F、R32F、RG32F、RGBA32F）
+ * - 特殊格式（RGB10_A2、R11F_G11F_B10F、SRGB8、SRGB8_A8、RGB565、RGB5_A1、RGBA4）
+ */
 constexpr bool isColorFormat(TextureFormat format) noexcept {
     switch (format) {
         // Standard color formats
@@ -1678,6 +2167,18 @@ constexpr bool isColorFormat(TextureFormat format) noexcept {
     return false;
 }
 
+/**
+ * 检查纹理格式是否为无符号整数格式
+ * 
+ * @param format 纹理格式
+ * @return 如果是无符号整数格式返回 true，否则返回 false
+ * 
+ * 无符号整数格式：
+ * - R8UI、R16UI、R32UI
+ * - RG8UI、RG16UI、RG32UI
+ * - RGB8UI、RGB16UI、RGB32UI
+ * - RGBA8UI、RGBA16UI、RGBA32UI
+ */
 constexpr bool isUnsignedIntFormat(TextureFormat format) {
     switch (format) {
         case TextureFormat::R8UI:
@@ -1699,6 +2200,18 @@ constexpr bool isUnsignedIntFormat(TextureFormat format) {
     }
 }
 
+/**
+ * 检查纹理格式是否为有符号整数格式
+ * 
+ * @param format 纹理格式
+ * @return 如果是有符号整数格式返回 true，否则返回 false
+ * 
+ * 有符号整数格式：
+ * - R8I、R16I、R32I
+ * - RG8I、RG16I、RG32I
+ * - RGB8I、RGB16I、RGB32I
+ * - RGBA8I、RGBA16I、RGBA32I
+ */
 constexpr bool isSignedIntFormat(TextureFormat format) {
     switch (format) {
         case TextureFormat::R8I:
@@ -1721,47 +2234,149 @@ constexpr bool isSignedIntFormat(TextureFormat format) {
 }
 
 //! returns whether this format is a compressed format
+/**
+ * 检查纹理格式是否为压缩格式
+ * 
+ * @param format 纹理格式
+ * @return 如果是压缩格式返回 true，否则返回 false
+ * 
+ * 实现：所有压缩格式的枚举值都 >= EAC_R11
+ * 包括：ETC2、S3TC/DXT、ASTC、RGTC、BPTC 等
+ */
 constexpr bool isCompressedFormat(TextureFormat format) noexcept {
     return format >= TextureFormat::EAC_R11;
 }
 
 //! returns whether this format is an ETC2 compressed format
+/**
+ * 检查纹理格式是否为 ETC2 压缩格式
+ * 
+ * @param format 纹理格式
+ * @return 如果是 ETC2 压缩格式返回 true，否则返回 false
+ * 
+ * ETC2 格式包括：
+ * - EAC_R11、EAC_R11_SIGNED、EAC_RG11、EAC_RG11_SIGNED
+ * - ETC2_RGB8、ETC2_SRGB8
+ * - ETC2_RGB8_A1、ETC2_SRGB8_A1
+ * - ETC2_EAC_RGBA8、ETC2_EAC_SRGBA8
+ * 
+ * 注意：ETC2 是 OpenGL ES 3.0 和 OpenGL 4.3 的强制要求格式
+ */
 constexpr bool isETC2Compression(TextureFormat format) noexcept {
     return format >= TextureFormat::EAC_R11 && format <= TextureFormat::ETC2_EAC_SRGBA8;
 }
 
 //! returns whether this format is an S3TC compressed format
+/**
+ * 检查纹理格式是否为 S3TC/DXT 压缩格式
+ * 
+ * @param format 纹理格式
+ * @return 如果是 S3TC 压缩格式返回 true，否则返回 false
+ * 
+ * S3TC/DXT 格式包括：
+ * - DXT1_RGB、DXT1_RGBA、DXT3_RGBA、DXT5_RGBA
+ * - DXT1_SRGB、DXT1_SRGBA、DXT3_SRGBA、DXT5_SRGBA
+ * 
+ * 注意：S3TC 在 Android/iOS 上不可用，在桌面平台上可用
+ */
 constexpr bool isS3TCCompression(TextureFormat format) noexcept {
     return format >= TextureFormat::DXT1_RGB && format <= TextureFormat::DXT5_SRGBA;
 }
 
+/**
+ * 检查纹理格式是否为 S3TC/DXT sRGB 压缩格式
+ * 
+ * @param format 纹理格式
+ * @return 如果是 S3TC sRGB 压缩格式返回 true，否则返回 false
+ * 
+ * S3TC sRGB 格式包括：
+ * - DXT1_SRGB、DXT1_SRGBA、DXT3_SRGBA、DXT5_SRGBA
+ */
 constexpr bool isS3TCSRGBCompression(TextureFormat format) noexcept {
     return format >= TextureFormat::DXT1_SRGB && format <= TextureFormat::DXT5_SRGBA;
 }
 
 //! returns whether this format is an RGTC compressed format
+/**
+ * 检查纹理格式是否为 RGTC/BC4/BC5 压缩格式
+ * 
+ * @param format 纹理格式
+ * @return 如果是 RGTC 压缩格式返回 true，否则返回 false
+ * 
+ * RGTC 格式包括：
+ * - RED_RGTC1（BC4 无符号）
+ * - SIGNED_RED_RGTC1（BC4 有符号）
+ * - RED_GREEN_RGTC2（BC5 无符号）
+ * - SIGNED_RED_GREEN_RGTC2（BC5 有符号）
+ * 
+ * 注意：RGTC 需要通过 GLES 扩展提供
+ */
 constexpr bool isRGTCCompression(TextureFormat format) noexcept {
     return format >= TextureFormat::RED_RGTC1 && format <= TextureFormat::SIGNED_RED_GREEN_RGTC2;
 }
 
 //! returns whether this format is an BPTC compressed format
+/**
+ * 检查纹理格式是否为 BPTC/BC6H/BC7 压缩格式
+ * 
+ * @param format 纹理格式
+ * @return 如果是 BPTC 压缩格式返回 true，否则返回 false
+ * 
+ * BPTC 格式包括：
+ * - RGB_BPTC_SIGNED_FLOAT（BC6H 有符号浮点）
+ * - RGB_BPTC_UNSIGNED_FLOAT（BC6H 无符号浮点）
+ * - RGBA_BPTC_UNORM（BC7）
+ * - SRGB_ALPHA_BPTC_UNORM（BC7 sRGB）
+ * 
+ * 注意：BPTC 需要通过 GLES 扩展提供
+ */
 constexpr bool isBPTCCompression(TextureFormat format) noexcept {
     return format >= TextureFormat::RGB_BPTC_SIGNED_FLOAT && format <= TextureFormat::SRGB_ALPHA_BPTC_UNORM;
 }
 
+/**
+ * 检查纹理格式是否为 ASTC 压缩格式
+ * 
+ * @param format 纹理格式
+ * @return 如果是 ASTC 压缩格式返回 true，否则返回 false
+ * 
+ * ASTC 格式包括：
+ * - RGBA_ASTC_4x4 到 RGBA_ASTC_12x12（线性）
+ * - SRGB8_ALPHA8_ASTC_4x4 到 SRGB8_ALPHA8_ASTC_12x12（sRGB）
+ * 
+ * 注意：ASTC 需要通过 GLES 扩展提供，广泛用于移动设备
+ */
 constexpr bool isASTCCompression(TextureFormat format) noexcept {
     return format >= TextureFormat::RGBA_ASTC_4x4 && format <= TextureFormat::SRGB8_ALPHA8_ASTC_12x12;
 }
 
 //! Texture Cubemap Face
+/**
+ * 立方体贴图面枚举
+ * 
+ * 定义立方体贴图的六个面。
+ * 
+ * 注意：不要更改枚举值（与 OpenGL 匹配）
+ * 
+ * 立方体贴图坐标系统：
+ * - 每个面是一个 2D 纹理
+ * - 六个面构成一个完整的立方体环境贴图
+ * - 用于环境映射、天空盒、反射等
+ */
 enum class TextureCubemapFace : uint8_t {
     // don't change the enums values
     POSITIVE_X = 0, //!< +x face
+                    //!< +X 面（右面）
     NEGATIVE_X = 1, //!< -x face
+                    //!< -X 面（左面）
     POSITIVE_Y = 2, //!< +y face
+                    //!< +Y 面（上面）
     NEGATIVE_Y = 3, //!< -y face
+                    //!< -Y 面（下面）
     POSITIVE_Z = 4, //!< +z face
+                    //!< +Z 面（前面）
     NEGATIVE_Z = 5, //!< -z face
+                    //!< -Z 面（后面）
 };
 
 //! Sampler Wrap mode

@@ -138,10 +138,25 @@ FMaterialInstance::FMaterialInstance(FEngine& engine, FMaterial const* material,
     setTransparencyMode(material->getTransparencyMode());
 }
 
+/**
+ * 复制构造函数：从另一个实例创建材质实例
+ * 
+ * @param engine 引擎引用
+ * @param other 要复制的实例指针
+ * @param name 新实例名称（可选）
+ * 
+ * 功能：
+ * - 复制所有材质参数（uniform 和 sampler）
+ * - 复制渲染状态（剔除、深度、模板等）
+ * - 创建新的描述符集（复制描述符集布局）
+ * - 分配新的 UBO（独立模式）或注册到 UBO 管理器（批处理模式）
+ */
 FMaterialInstance::FMaterialInstance(FEngine& engine,
         FMaterialInstance const* other, const char* name)
         : mMaterial(other->mMaterial),
+          // 复制纹理参数映射（从绑定点到纹理和采样器参数）
           mTextureParameters(other->mTextureParameters),
+          // 复制描述符集（创建新的描述符集，但使用相同的布局）
           mDescriptorSet(other->mDescriptorSet.duplicate(
                 "MaterialInstance", mMaterial->getDescriptorSetLayout())),
           mPolygonOffset(other->mPolygonOffset),
@@ -154,28 +169,36 @@ FMaterialInstance::FMaterialInstance(FEngine& engine,
           mDepthFunc(other->mDepthFunc),
           mColorWrite(other->mColorWrite),
           mDepthWrite(other->mDepthWrite),
+          // 裁剪矩形不复制（新实例默认无裁剪）
           mHasScissor(false),
           mIsDoubleSided(other->mIsDoubleSided),
+          // 新实例不是默认实例
           mIsDefaultInstance(false),
+          // 继承 UBO 批处理模式
           mUseUboBatching(other->mUseUboBatching),
           mScissorRect(other->mScissorRect),
           mName(name ? CString(name) : other->mName) {
     FEngine::DriverApi& driver = engine.getDriverApi();
     FMaterial const* const material = other->getMaterial();
 
+    // 复制 uniform 数据
     mUniforms.setUniforms(other->getUniformBuffer());
 
+    // 根据 UBO 批处理模式选择不同的分配策略
     if (mUseUboBatching) {
+        // UBO 批处理模式：注册到 UBO 管理器，稍后分配
         mUboData = BufferAllocator::UNALLOCATED;
         engine.getUboManager()->manageMaterialInstance(this);
     } else {
+        // 独立 UBO 模式：立即创建动态 BufferObject（因为可能需要修改）
         mUboData = driver.createBufferObject(mUniforms.getSize(), BufferObjectBinding::UNIFORM,
                 BufferUsage::DYNAMIC, ImmutableCString{ material->getName().c_str_safe() });
-        // set the UBO, always descriptor 0
+        // 设置 UBO 到描述符集，总是使用 descriptor 0
         mDescriptorSet.setBuffer(material->getDescriptorSetLayout(),
                 0, std::get<Handle<HwBufferObject>>(mUboData), 0, mUniforms.getSize());
     }
 
+    // 应用材质特定的设置（这些方法会更新 uniform 参数）
     if (material->hasDoubleSidedCapability()) {
         setDoubleSided(mIsDoubleSided);
     }
@@ -191,15 +214,26 @@ FMaterialInstance::FMaterialInstance(FEngine& engine,
 
     setTransparencyMode(material->getTransparencyMode());
 
+    // 生成新的排序键（使用新的实例 ID）
     mMaterialSortingKey = RenderPass::makeMaterialSortingKey(
             material->getId(), material->generateMaterialInstanceId());
 
-    // If the original descriptor set has been commited, the copy needs to commit as well.
+    // 如果原始描述符集已经提交，副本也需要提交
+    // 这确保纹理参数等已正确设置
     if (!mUseUboBatching && other->mDescriptorSet.getHandle()) {
         mDescriptorSet.commitSlow(mMaterial->getDescriptorSetLayout(), driver);
     }
 }
 
+/**
+ * 复制材质实例（静态工厂方法）
+ * 
+ * @param other 要复制的实例指针
+ * @param name 新实例名称（可选）
+ * @return 新创建的材质实例指针
+ * 
+ * 功能：通过引擎创建材质实例的副本。
+ */
 FMaterialInstance* FMaterialInstance::duplicate(FMaterialInstance const* other,
         const char* name) noexcept {
     FMaterial const* const material = other->getMaterial();
@@ -207,21 +241,48 @@ FMaterialInstance* FMaterialInstance::duplicate(FMaterialInstance const* other,
     return engine.createMaterialInstance(material, other, name);
 }
 
+/**
+ * 析构函数
+ * 
+ * 注意：实际的资源清理在 terminate() 中完成。
+ */
 FMaterialInstance::~FMaterialInstance() noexcept = default;
 
+/**
+ * 终止材质实例
+ * 
+ * @param engine 引擎引用
+ * 
+ * 功能：
+ * - 销毁描述符集
+ * - 从 UBO 管理器中注销（如果使用批处理）
+ * - 销毁独立的 UBO（如果使用独立模式）
+ */
 void FMaterialInstance::terminate(FEngine& engine) {
     FEngine::DriverApi& driver = engine.getDriverApi();
+    // 销毁描述符集（释放所有绑定的资源）
     mDescriptorSet.terminate(driver);
     if (mUseUboBatching) {
+        // 从 UBO 管理器中注销，释放分配的槽位
         engine.getUboManager()->unmanageMaterialInstance(this);
     }
 
+    // 如果使用独立 UBO 模式，销毁 BufferObject
     auto* ubHandle = std::get_if<Handle<HwBufferObject>>(&mUboData);
     if (ubHandle){
         driver.destroyBufferObject(*ubHandle);
     }
 }
 
+/**
+ * 提交材质实例（使用引擎）
+ * 
+ * @param engine 引擎引用
+ * 
+ * 功能：
+ * - 对于非表面材质域（POST_PROCESS、COMPUTE），立即提交
+ * - 对于表面材质域，延迟提交（在渲染时提交）
+ */
 void FMaterialInstance::commit(FEngine& engine) const {
     if (UTILS_LIKELY(mMaterial->getMaterialDomain() != MaterialDomain::SURFACE)) {
         commit(engine.getDriverApi(), engine.getUboManager());
@@ -286,18 +347,42 @@ void FMaterialInstance::commit(FEngine::DriverApi& driver, UboManager* uboManage
 
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * 设置纹理参数（内部方法）
+ * 
+ * @param name 参数名称
+ * @param texture 纹理句柄（硬件句柄）
+ * @param params 采样器参数
+ * 
+ * 功能：直接设置纹理和采样器到描述符集，用于内部调用。
+ */
 void FMaterialInstance::setParameter(std::string_view const name,
         Handle<HwTexture> texture, SamplerParams const params) {
+    // 获取采样器的绑定索引
     auto const binding = mMaterial->getSamplerBinding(name);
 
+    // 设置采样器到描述符集
     mDescriptorSet.setSampler(mMaterial->getDescriptorSetLayout(),
         binding, texture, params);
 }
 
+/**
+ * 设置纹理参数（实现方法）
+ * 
+ * @param name 参数名称
+ * @param texture 纹理指针
+ * @param sampler 纹理采样器
+ * 
+ * 功能：
+ * - 验证纹理与描述符类型的兼容性
+ * - 检查深度纹理的过滤模式（深度纹理只能在比较模式下使用线性过滤）
+ * - 处理可变纹理句柄（延迟绑定）和固定纹理句柄（立即绑定）
+ */
 void FMaterialInstance::setParameterImpl(std::string_view const name,
         FTexture const* texture, TextureSampler const& sampler) {
 
 #ifndef NDEBUG
+    // 根据 GLES3.x 规范，深度纹理不能在比较模式之外使用过滤
     // Per GLES3.x specification, depth texture can't be filtered unless in compare mode.
     if (texture && isDepthFormat(texture->getFormat())) {
         if (sampler.getCompareMode() == SamplerCompareMode::NONE) {
@@ -317,14 +402,17 @@ void FMaterialInstance::setParameterImpl(std::string_view const name,
     }
 #endif
 
+    // 获取采样器的绑定索引
     auto const binding = mMaterial->getSamplerBinding(name);
 
+    // 验证纹理与描述符类型的兼容性（仅在调试模式下检查）
     if (texture) {
         auto const& descriptorSetLayout = mMaterial->getDescriptorSetLayout();
         DescriptorType const descriptorType = descriptorSetLayout.getDescriptorType(binding);
         TextureType const textureType = texture->getTextureType();
         SamplerType const samplerType = texture->getTarget();
         auto const& featureFlags = mMaterial->getEngine().features.engine.debug;
+        // 检查纹理类型、采样器类型和描述符类型是否兼容
         FILAMENT_FLAG_GUARDED_CHECK_PRECONDITION(
                 DescriptorSet::isTextureCompatibleWithDescriptor(
                         textureType, samplerType, descriptorType),
@@ -337,23 +425,35 @@ void FMaterialInstance::setParameterImpl(std::string_view const name,
                 << " of type " << to_string(descriptorType);
     }
 
+    // 根据纹理句柄是否可变选择不同的绑定策略
     if (texture && texture->textureHandleCanMutate()) {
+        // 可变纹理句柄：存储纹理指针和采样器参数，延迟绑定（在 commit() 时绑定）
+        // 这允许纹理在提交之前更新其句柄（例如外部纹理、流式纹理）
         mTextureParameters[binding] = { texture, sampler.getSamplerParams() };
     } else {
-        // Ensure to erase the binding from mTextureParameters since it will not
-        // be updated.
+        // 固定纹理句柄：立即绑定到描述符集
+        // 确保从 mTextureParameters 中删除此绑定，因为它不会在 commit() 时更新
         mTextureParameters.erase(binding);
 
         Handle<HwTexture> handle{};
         if (texture) {
+            // 获取采样句柄（可能与渲染句柄不同）
             handle = texture->getHwHandleForSampling();
             assert_invariant(handle == texture->getHwHandle());
         }
+        // 立即设置采样器到描述符集
         mDescriptorSet.setSampler(mMaterial->getDescriptorSetLayout(),
             binding, handle, sampler.getSamplerParams());
     }
 }
 
+/**
+ * 设置遮罩阈值
+ * 
+ * @param threshold 阈值（0.0-1.0），会被限制在 [0, 1] 范围内
+ * 
+ * 功能：用于 MASKED 混合模式，当片段 alpha < 阈值时丢弃片段。
+ */
 void FMaterialInstance::setMaskThreshold(float const threshold) noexcept {
     setParameter("_maskThreshold", saturate(threshold));
     mMaskThreshold = saturate(threshold);
@@ -363,6 +463,13 @@ float FMaterialInstance::getMaskThreshold() const noexcept {
     return mMaskThreshold;
 }
 
+/**
+ * 设置镜面反射抗锯齿方差
+ * 
+ * @param variance 方差值（0.0-1.0），会被限制在 [0, 1] 范围内
+ * 
+ * 功能：用于几何镜面反射抗锯齿（GSAA），控制粗糙度的变化。
+ */
 void FMaterialInstance::setSpecularAntiAliasingVariance(float const variance) noexcept {
     setParameter("_specularAntiAliasingVariance", saturate(variance));
     mSpecularAntiAliasingVariance = saturate(variance);
@@ -372,6 +479,13 @@ float FMaterialInstance::getSpecularAntiAliasingVariance() const noexcept {
     return mSpecularAntiAliasingVariance;
 }
 
+/**
+ * 设置镜面反射抗锯齿阈值
+ * 
+ * @param threshold 阈值，内部会计算平方并开方（优化计算）
+ * 
+ * 功能：用于几何镜面反射抗锯齿（GSAA），控制过滤的强度。
+ */
 void FMaterialInstance::setSpecularAntiAliasingThreshold(float const threshold) noexcept {
     setParameter("_specularAntiAliasingThreshold", saturate(threshold * threshold));
     mSpecularAntiAliasingThreshold = std::sqrt(saturate(threshold * threshold));
@@ -381,6 +495,16 @@ float FMaterialInstance::getSpecularAntiAliasingThreshold() const noexcept {
     return mSpecularAntiAliasingThreshold;
 }
 
+/**
+ * 设置双面渲染
+ * 
+ * @param doubleSided 如果为 true，启用双面渲染（禁用背面剔除）
+ * 
+ * 功能：
+ * - 检查材质是否支持双面渲染
+ * - 如果启用双面，自动禁用剔除（设置为 NONE）
+ * - 更新 uniform 参数 "_doubleSided"
+ */
 void FMaterialInstance::setDoubleSided(bool const doubleSided) noexcept {
     if (UTILS_UNLIKELY(!mMaterial->hasDoubleSidedCapability())) {
         LOG(WARNING) << "Parent material does not have double-sided capability.";
@@ -388,6 +512,7 @@ void FMaterialInstance::setDoubleSided(bool const doubleSided) noexcept {
     }
     setParameter("_doubleSided", doubleSided);
     if (doubleSided) {
+        // 双面渲染时自动禁用剔除
         setCullingMode(CullingMode::NONE);
     }
     mIsDoubleSided = doubleSided;
@@ -397,18 +522,48 @@ bool FMaterialInstance::isDoubleSided() const noexcept {
     return mIsDoubleSided;
 }
 
+/**
+ * 设置透明度模式
+ * 
+ * @param mode 透明度模式（DEFAULT、TWO_PASSES_ONE_SIDE、TWO_PASSES_TWO_SIDES）
+ * 
+ * 功能：控制透明对象的渲染方式。
+ */
 void FMaterialInstance::setTransparencyMode(TransparencyMode const mode) noexcept {
     mTransparencyMode = mode;
 }
 
+/**
+ * 设置深度剔除（深度测试）
+ * 
+ * @param enable 如果为 true，启用深度测试（使用 GE 比较）；如果为 false，禁用深度测试（使用 A 始终通过）
+ * 
+ * 功能：控制是否进行深度测试。禁用深度测试意味着所有片段都会通过深度测试。
+ */
 void FMaterialInstance::setDepthCulling(bool const enable) noexcept {
     mDepthFunc = enable ? RasterState::DepthFunc::GE : RasterState::DepthFunc::A;
 }
 
+/**
+ * 深度剔除是否启用
+ * 
+ * @return 如果深度测试启用返回 true，否则返回 false
+ * 
+ * 实现：通过检查深度函数是否为 A（始终通过）来判断。
+ */
 bool FMaterialInstance::isDepthCullingEnabled() const noexcept {
     return mDepthFunc != RasterState::DepthFunc::A;
 }
 
+/**
+ * 获取材质实例名称
+ * 
+ * @return 实例名称的 C 字符串，如果未设置则返回材质名称
+ * 
+ * 实现说明：
+ * - 为了决定是否使用父材质名称作为后备，我们检查实例 CString 的空指针
+ *   而不是调用 empty()。这允许实例用空字符串覆盖父材质的名称。
+ */
 const char* FMaterialInstance::getName() const noexcept {
     // To decide whether to use the parent material name as a fallback, we check for the nullness of
     // the instance's CString rather than calling empty(). This allows instances to override the
@@ -469,6 +624,18 @@ void FMaterialInstance::use(FEngine::DriverApi& driver, Variant variant) const {
             { { mUboOffset }, driver });
 }
 
+/**
+ * 分配 UBO 分配槽位（由 UBO 管理器调用）
+ * 
+ * @param ubHandle 共享 UBO 句柄
+ * @param id 分配 ID
+ * @param offset 在共享 UBO 中的偏移量（字节）
+ * 
+ * 功能：
+ * - 由 UboManager 调用，为材质实例分配 UBO 批处理槽位
+ * - 设置描述符集的 UBO 绑定
+ * - 偏移量存储在 mUboOffset 中，用于动态偏移绑定
+ */
 void FMaterialInstance::assignUboAllocation(
         const Handle<HwBufferObject>& ubHandle,
         BufferAllocator::AllocationId id,
@@ -478,59 +645,96 @@ void FMaterialInstance::assignUboAllocation(
     mUboData = id;
     mUboOffset = offset;
     if (BufferAllocator::isValid(id)) {
+        // 在绑定时使用动态偏移，所以这里的偏移量始终为零
         // Use dynamic offset during binding, so the offset here is always zero.
         mDescriptorSet.setBuffer(mMaterial->getDescriptorSetLayout(), 0, ubHandle, 0,
                 mUniforms.getSize());
     }
 }
 
+/**
+ * 获取分配 ID
+ * 
+ * @return 分配 ID，如果未分配返回 UNALLOCATED
+ * 
+ * 功能：用于 UBO 批处理模式，查询是否已分配槽位。
+ */
 BufferAllocator::AllocationId FMaterialInstance::getAllocationId() const noexcept {
     auto const* allocationId = std::get_if<BufferAllocator::AllocationId>(&mUboData);
     return allocationId ? *allocationId : BufferAllocator::UNALLOCATED;
 }
 
+/**
+ * 修复缺失的采样器
+ * 
+ * 功能：
+ * - 检查所有声明的采样器参数是否已设置（Vulkan 和 Metal 要求所有采样器必须设置）
+ * - 如果采样器未设置，使用占位符纹理（零纹理、虚拟立方体贴图等）填充
+ * - 记录缺失的采样器状态（用于 use() 时的警告）
+ * 
+ * 实现：
+ * - 通过位集运算找出缺失的采样器描述符
+ * - 仅为 FLOAT 格式的采样器设置占位符（INT/UINT 暂不支持）
+ * - 占位符选择：2D -> 零纹理，2D_ARRAY -> 零纹理数组，CUBEMAP -> 虚拟立方体贴图
+ */
 void FMaterialInstance::fixMissingSamplers() const {
+    // 这里我们检查所有声明的采样器参数是否已设置，这由 Vulkan 和 Metal 要求
+    // GL 更宽松。如果采样器参数未设置，我们将在系统日志中为每个 MaterialInstance 记录一次警告
+    // 并补入虚拟纹理。
     // Here we check that all declared sampler parameters are set, this is required by
     // Vulkan and Metal; GL is more permissive. If a sampler parameter is not set, we will
     // log a warning once per MaterialInstance in the system log and patch-in a dummy
     // texture.
     auto const& layout = mMaterial->getDescriptorSetLayout();
+    // 获取所有采样器描述符的位集
     auto const samplersDescriptors = layout.getSamplerDescriptors();
+    // 获取已设置的有效描述符位集
     auto const validDescriptors = mDescriptorSet.getValidDescriptors();
+    // 通过 XOR 运算找出缺失的采样器描述符
     auto const missingSamplerDescriptors =
             (validDescriptors & samplersDescriptors) ^ samplersDescriptors;
 
+    // 始终在 commit() 时记录缺失采样器的状态（用于 use() 时的警告）
     // always record the missing samplers state at commit() time
     mMissingSamplerDescriptors = missingSamplerDescriptors;
 
     if (UTILS_UNLIKELY(missingSamplerDescriptors.any())) {
+        // 需要设置缺失的采样器
         // here we need to set the samplers that are missing
         auto const& list = mMaterial->getSamplerInterfaceBlock().getSamplerInfoList();
+        // 遍历所有缺失的采样器描述符
         missingSamplerDescriptors.forEachSetBit([this, &list](descriptor_binding_t binding) {
+            // 在采样器信息列表中查找对应的绑定
             auto const pos = std::find_if(list.begin(), list.end(), [binding](const auto& item) {
                 return item.binding == binding;
             });
+            // 安全检查，应该永远不会失败
             // just safety-check, should never fail
             if (UTILS_LIKELY(pos != list.end())) {
                 FEngine const& engine = mMaterial->getEngine();
                 filament::DescriptorSetLayout const& layout = mMaterial->getDescriptorSetLayout();
 
+                // 目前只处理 FLOAT 格式的缺失采样器
                 if (pos->format == SamplerFormat::FLOAT) {
                     // TODO: we only handle missing samplers that are FLOAT
                     switch (pos->type) {
                         case SamplerType::SAMPLER_2D:
+                            // 2D 采样器使用零纹理占位符
                             mDescriptorSet.setSampler(layout,
                                     binding, engine.getZeroTexture(), {});
                             break;
                         case SamplerType::SAMPLER_2D_ARRAY:
+                            // 2D 数组采样器使用零纹理数组占位符
                             mDescriptorSet.setSampler(layout,
                                     binding, engine.getZeroTextureArray(), {});
                             break;
                         case SamplerType::SAMPLER_CUBEMAP:
+                            // 立方体贴图采样器使用虚拟立方体贴图占位符
                             mDescriptorSet.setSampler(layout,
                                     binding, engine.getDummyCubemap()->getHwHandle(), {});
                             break;
                         default:
+                            // 目前无法修复其他采样器类型
                             // we're currently not able to fix-up other sampler types
                             break;
                     }

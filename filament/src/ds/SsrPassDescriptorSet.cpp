@@ -40,24 +40,24 @@ using namespace math;
 /**
  * 默认构造函数
  * 
- * 创建一个空的 SSR 通道描述符集。
+ * 创建一个空的 SSR 通道描述符堆。
  */
 SsrPassDescriptorSet::SsrPassDescriptorSet() noexcept = default;
 
 /**
- * 初始化 SSR 通道描述符集
+ * 初始化 SSR 通道描述符堆
  * 
- * 创建描述符集和虚拟阴影统一缓冲区。
+ * 创建描述符堆和虚拟阴影统一缓冲区。
  * 
  * @param engine 引擎引用
  */
 void SsrPassDescriptorSet::init(FEngine& engine) noexcept {
     /**
-     * 从布局创建描述符集
+     * 从布局创建描述符堆
      */
     // create the descriptor-set from the layout
     mDescriptorSet = DescriptorSet{
-            "SsrPassDescriptorSet", engine.getPerViewDescriptorSetLayoutSsrVariant() };  // 创建 SSR 变体描述符集
+            "SsrPassDescriptorSet", engine.getPerViewDescriptorSetLayoutSsrVariant() };  // 创建 SSR 变体描述符堆
 
     /**
      * 创建虚拟阴影统一缓冲区（参见下面的 setFrameUniforms() 注释）
@@ -68,21 +68,21 @@ void SsrPassDescriptorSet::init(FEngine& engine) noexcept {
 }
 
 /**
- * 终止 SSR 通道描述符集
+ * 终止 SSR 通道描述符堆
  * 
- * 释放描述符集和阴影统一缓冲区的硬件资源。
+ * 释放描述符堆和阴影统一缓冲区的硬件资源。
  * 
  * @param driver 驱动 API 引用
  */
 void SsrPassDescriptorSet::terminate(DriverApi& driver) {
-    mDescriptorSet.terminate(driver);  // 终止描述符集
+    mDescriptorSet.terminate(driver);  // 终止描述符堆
     driver.destroyBufferObject(mShadowUbh);  // 销毁阴影统一缓冲区
 }
 
 /**
  * 设置帧 Uniform 数据
  * 
- * 将每视图统一缓冲区和虚拟阴影统一缓冲区绑定到描述符集。
+ * 将每视图统一缓冲区和虚拟阴影统一缓冲区绑定到描述符堆。
  * 
  * @param engine 引擎常量引用
  * @param uniforms 每视图统一缓冲区引用
@@ -90,7 +90,7 @@ void SsrPassDescriptorSet::terminate(DriverApi& driver) {
 void SsrPassDescriptorSet::setFrameUniforms(FEngine const& engine,
         TypedUniformBuffer<PerViewUib>& uniforms) noexcept {
     /**
-     * 初始化描述符集
+     * 初始化描述符堆
      * 
      * 将每视图统一缓冲区绑定到 FRAME_UNIFORMS 绑定点。
      */
@@ -100,7 +100,7 @@ void SsrPassDescriptorSet::setFrameUniforms(FEngine const& engine,
             uniforms.getUboHandle(), 0, uniforms.getSize());  // 统一缓冲区句柄、偏移量和大小
 
     /**
-     * 这实际上不用于 SSR 变体，但描述符集布局需要
+     * 这实际上不用于 SSR 变体，但描述符堆布局需要
      * 有这个统一缓冲区，因为使用的片段着色器是"通用"的。
      * Metal 和 GL 没有这个也可以，但 Vulkan 的验证层会抱怨。
      */
@@ -114,7 +114,7 @@ void SsrPassDescriptorSet::setFrameUniforms(FEngine const& engine,
 /**
  * 准备历史 SSR 纹理
  * 
- * 将历史 SSR 纹理绑定到描述符集，使用线性过滤。
+ * 将历史 SSR 纹理绑定到描述符堆，使用线性过滤。
  * 
  * @param engine 引擎常量引用
  * @param ssr SSR 纹理句柄
@@ -130,7 +130,7 @@ void SsrPassDescriptorSet::prepareHistorySSR(FEngine const& engine, Handle<HwTex
 /**
  * 准备结构纹理
  * 
- * 将结构纹理绑定到描述符集，采样器必须是 NEAREST（最近邻）。
+ * 将结构纹理绑定到描述符堆，采样器必须是 NEAREST（最近邻）。
  * 
  * @param engine 引擎常量引用
  * @param structure 结构纹理句柄
@@ -146,21 +146,21 @@ void SsrPassDescriptorSet::prepareStructure(FEngine const& engine,
 }
 
 /**
- * 提交 SSR 通道描述符集
+ * 提交 SSR 通道描述符堆
  * 
- * 将描述符集的更改提交到驱动。
+ * 将描述符堆的更改提交到驱动。
  * 
  * @param engine 引擎引用
  */
 void SsrPassDescriptorSet::commit(FEngine& engine) noexcept {
     DriverApi& driver = engine.getDriverApi();  // 获取驱动 API
-    mDescriptorSet.commit(engine.getPerViewDescriptorSetLayoutSsrVariant(), driver);  // 提交描述符集
+    mDescriptorSet.commit(engine.getPerViewDescriptorSetLayoutSsrVariant(), driver);  // 提交描述符堆
 }
 
 /**
- * 绑定 SSR 通道描述符集
+ * 绑定 SSR 通道描述符堆
  * 
- * 将描述符集绑定到 PER_VIEW 绑定点。
+ * 将描述符堆绑定到 PER_VIEW 绑定点。
  * 
  * @param driver 驱动 API 引用
  */

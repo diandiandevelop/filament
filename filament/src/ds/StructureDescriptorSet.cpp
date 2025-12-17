@@ -40,23 +40,23 @@ using namespace math;
 /**
  * 默认构造函数
  * 
- * 创建一个空的结构描述符集。
+ * 创建一个空的结构描述符堆。
  */
 StructureDescriptorSet::StructureDescriptorSet() noexcept = default;
 
 /**
  * 析构函数
  * 
- * 确保描述符集句柄已被释放。
+ * 确保描述符堆句柄已被释放。
  */
 StructureDescriptorSet::~StructureDescriptorSet() noexcept {
     assert_invariant(!mDescriptorSet.getHandle());  // 断言句柄为空
 }
 
 /**
- * 初始化结构描述符集
+ * 初始化结构描述符堆
  * 
- * 创建统一缓冲区和描述符集。
+ * 创建统一缓冲区和描述符堆。
  * 
  * @param engine 引擎引用
  */
@@ -64,17 +64,17 @@ void StructureDescriptorSet::init(FEngine& engine) noexcept {
 
     mUniforms.init(engine.getDriverApi());  // 初始化统一缓冲区
 
-    mDescriptorSetLayout = &engine.getPerViewDescriptorSetLayoutDepthVariant();  // 获取深度变体描述符集布局
+    mDescriptorSetLayout = &engine.getPerViewDescriptorSetLayoutDepthVariant();  // 获取深度变体描述符堆布局
 
     /**
-     * 从布局创建描述符集
+     * 从布局创建描述符堆
      */
     // create the descriptor-set from the layout
     mDescriptorSet = DescriptorSet{
-        "StructureDescriptorSet", *mDescriptorSetLayout };  // 创建描述符集
+        "StructureDescriptorSet", *mDescriptorSetLayout };  // 创建描述符堆
 
     /**
-     * 初始化描述符集
+     * 初始化描述符堆
      * 
      * 将统一缓冲区绑定到 FRAME_UNIFORMS 绑定点。
      */
@@ -84,21 +84,21 @@ void StructureDescriptorSet::init(FEngine& engine) noexcept {
 }
 
 /**
- * 终止结构描述符集
+ * 终止结构描述符堆
  * 
- * 释放描述符集和统一缓冲区的硬件资源。
+ * 释放描述符堆和统一缓冲区的硬件资源。
  * 
  * @param driver 驱动 API 引用
  */
 void StructureDescriptorSet::terminate(DriverApi& driver) {
-    mDescriptorSet.terminate(driver);  // 终止描述符集
+    mDescriptorSet.terminate(driver);  // 终止描述符堆
     mUniforms.terminate(driver);  // 终止统一缓冲区
 }
 
 /**
- * 绑定结构描述符集
+ * 绑定结构描述符堆
  * 
- * 如果统一缓冲区有脏数据，先更新并提交描述符集，然后绑定到 PER_VIEW 绑定点。
+ * 如果统一缓冲区有脏数据，先更新并提交描述符堆，然后绑定到 PER_VIEW 绑定点。
  * 
  * @param driver 驱动 API 引用
  */
@@ -108,7 +108,7 @@ void StructureDescriptorSet::bind(DriverApi& driver) const noexcept {
         mUniforms.clean();  // 清除脏标志
         driver.updateBufferObject(mUniforms.getUboHandle(),  // 更新缓冲区对象
                 mUniforms.toBufferDescriptor(driver), 0);  // 缓冲区描述符和偏移量
-        mDescriptorSet.commit(*mDescriptorSetLayout, driver);  // 提交描述符集
+        mDescriptorSet.commit(*mDescriptorSetLayout, driver);  // 提交描述符堆
     }
     mDescriptorSet.bind(driver, DescriptorSetBindingPoints::PER_VIEW);  // 绑定到每视图绑定点
 }

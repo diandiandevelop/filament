@@ -32,6 +32,10 @@ namespace filament::backend {
 
 namespace {
 
+// 快速路径的 Blit 实现：
+// - 负责处理同一设备上、兼容格式的图像之间的区域复制 / 缩放；
+// - 自动处理源 / 目标图像布局的转换与还原；
+// - 在开启调试宏时输出详细的调试日志。
 inline void blitFast(VulkanCommandBuffer* commands, VkImageAspectFlags aspect, VkFilter filter,
         VulkanAttachment src, VulkanAttachment dst,
         const VkOffset3D srcRect[2], const VkOffset3D dstRect[2]) {
@@ -80,6 +84,10 @@ inline void blitFast(VulkanCommandBuffer* commands, VkImageAspectFlags aspect, V
     dst.texture->transitionLayout(commands, dstRange, oldDstLayout);
 }
 
+// 快速路径的多重采样解析（resolve）实现：
+// - 当前仅支持颜色附件（不支持深度解析）；
+// - 自动处理目标图像布局的转换与还原；
+// - 在开启调试宏时输出详细的调试日志。
 inline void resolveFast(VulkanCommandBuffer* commands, VkImageAspectFlags aspect,
         VulkanAttachment src, VulkanAttachment dst) {
     VkCommandBuffer const cmdbuffer = commands->buffer();
@@ -131,6 +139,18 @@ struct BlitterUniforms {
 VulkanBlitter::VulkanBlitter(VkPhysicalDevice physicalDevice, VulkanCommands* commands) noexcept
         : mPhysicalDevice(physicalDevice), mCommands(commands) {}
 
+/**
+ * 多重采样解析（Resolve）实现
+ *
+ * 步骤：
+ * 1. 检查源 / 目标格式是否支持作为 blit / resolve 源和目标（在调试模式下）；
+ * 2. 根据目标纹理是否受保护选择对应的命令缓冲（普通 / 受保护）；
+ * 3. 获取并保留源 / 目标纹理的引用（防止在命令执行前被销毁）；
+ * 4. 调用 resolveFast 录制并执行实际的 vkCmdResolveImage 调用。
+ *
+ * @param dst 目标附件（单样本）
+ * @param src 源附件（多重采样）
+ */
 void VulkanBlitter::resolve(VulkanAttachment dst, VulkanAttachment src) {
 
     // src and dst should have the same aspect here
@@ -160,6 +180,21 @@ void VulkanBlitter::resolve(VulkanAttachment dst, VulkanAttachment src) {
     resolveFast(&commands, aspect, src, dst);
 }
 
+/**
+ * 图像 Blit 实现
+ *
+ * 步骤：
+ * 1. 在调试模式下检查源 / 目标格式是否支持 blit 操作；
+ * 2. 根据目标纹理是否受保护选择对应的命令缓冲；
+ * 3. 获取并保留源 / 目标纹理的引用；
+ * 4. 调用 blitFast 录制并执行实际的 vkCmdBlitImage 调用。
+ *
+ * @param filter       采样过滤方式（线性 / 最近邻）
+ * @param dst          目标附件
+ * @param dstRectPair  目标矩形（起点 + 终点）
+ * @param src          源附件
+ * @param srcRectPair  源矩形（起点 + 终点）
+ */
 void VulkanBlitter::blit(VkFilter filter,
         VulkanAttachment dst, const VkOffset3D* dstRectPair,
         VulkanAttachment src, const VkOffset3D* srcRectPair) {
@@ -186,6 +221,7 @@ void VulkanBlitter::blit(VkFilter filter,
     blitFast(&commands, aspect, filter, src, dst, srcRectPair, dstRectPair);
 }
 
+// 当前 Blitter 无需显式持有额外 GPU 资源，因此 terminate 为空实现。
 void VulkanBlitter::terminate() noexcept {
 }
 

@@ -499,10 +499,10 @@ public:
     inline uint8_t getChannels(Instance instance) const noexcept;
     
     /**
-     * 获取描述符集
+     * 获取描述符堆
      * 
      * @param instance 组件实例
-     * @return 描述符集引用
+     * @return 描述符堆引用
      */
     inline DescriptorSet& getDescriptorSet(Instance instance) noexcept;
 
@@ -777,7 +777,7 @@ private:
         PRIMITIVES,             // 用户数据：图元列表
         BONES,                  // Filament 数据：UBO 存储指向骨骼信息的指针
         MORPHTARGET_BUFFER,     // 组件的变形目标缓冲区
-        DESCRIPTOR_SET          // 每个可渲染对象的描述符集
+        DESCRIPTOR_SET          // 每个可渲染对象的描述符堆
     };
 
     /**
@@ -795,7 +795,7 @@ private:
             utils::Slice<FRenderPrimitive>,  // PRIMITIVES（图元列表）
             Bones,                           // BONES（骨骼数据）
             FMorphTargetBuffer*,            // MORPHTARGET_BUFFER（变形目标缓冲区）
-            DescriptorSet                    // DESCRIPTOR_SET（描述符集）
+            DescriptorSet                    // DESCRIPTOR_SET（描述符堆）
     >;
 
     /**
@@ -838,7 +838,7 @@ private:
                 Field<PRIMITIVES>           primitives;  // 图元列表字段
                 Field<BONES>                bones;  // 骨骼数据字段
                 Field<MORPHTARGET_BUFFER>   morphTargetBuffer;  // 变形目标缓冲区字段
-                Field<DESCRIPTOR_SET>       descriptorSet;  // 描述符集字段
+                Field<DESCRIPTOR_SET>       descriptorSet;  // 描述符堆字段
             };
         };
 
@@ -1228,13 +1228,13 @@ utils::Slice<FRenderPrimitive> FRenderableManager::getRenderPrimitives(
 }
 
 /**
- * 获取描述符集
+ * 获取描述符堆
  * 
  * @param instance 组件实例
- * @return 描述符集引用
+ * @return 描述符堆引用
  */
 DescriptorSet& FRenderableManager::getDescriptorSet(Instance const instance) noexcept {
-    return mManager[instance].descriptorSet;  // 返回描述符集引用
+    return mManager[instance].descriptorSet;  // 返回描述符堆引用
 }
 
 } // namespace filament

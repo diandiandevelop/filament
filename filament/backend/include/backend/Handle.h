@@ -49,8 +49,8 @@ struct HwTexture;               // 纹理（图像数据）
 struct HwTimerQuery;            // 计时查询（用于性能测量）
 struct HwVertexBufferInfo;      // 顶点缓冲区信息（布局信息）
 struct HwVertexBuffer;          // 顶点缓冲区（用于存储顶点数据）
-struct HwDescriptorSetLayout;   // 描述符集布局（资源绑定布局）
-struct HwDescriptorSet;         // 描述符集（资源绑定集合）
+struct HwDescriptorSetLayout;   // 描述符堆布局（资源绑定布局）
+struct HwDescriptorSet;         // 描述符堆（资源绑定集合）
 struct HwMemoryMappedBuffer;    // 内存映射缓冲区（可映射的缓冲区）
 
 /**

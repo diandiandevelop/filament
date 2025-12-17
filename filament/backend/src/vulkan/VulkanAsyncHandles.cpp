@@ -29,6 +29,26 @@ using namespace bluevk;
 
 namespace filament::backend {
 
+/**
+ * 等待 VulkanCmdFence 完成的实现
+ *
+ * 执行逻辑：
+ * 1. 先以共享读锁持有 mLock，保证在调用 vkWaitForFences 时不会与 resetFence 并发修改状态；
+ * 2. 如果当前状态是 VK_INCOMPLETE，说明 fence 还未提交：
+ *    - 通过条件变量等待状态变为 VK_NOT_READY（已提交）或被取消；
+ *    - 如果超时则返回 TIMEOUT_EXPIRED，被取消则返回 ERROR；
+ * 3. 如果状态已经是 VK_SUCCESS，表示 GPU 侧已经完成，直接返回 CONDITION_SATISFIED；
+ * 4. 如果已被取消（mCanceled 为 true），返回 ERROR；
+ * 5. 否则调用 vkWaitForFences 真正等待 GPU 完成：
+ *    - 超时返回 TIMEOUT_EXPIRED；
+ *    - 成功则升级为独占写锁更新 mStatus = VK_SUCCESS，并返回 CONDITION_SATISFIED；
+ *    - 其他错误返回 ERROR。
+ *
+ * @param device   Vulkan 逻辑设备
+ * @param timeout  vkWaitForFences 的超时时间（纳秒）
+ * @param until    等待截止的时间点（用于配合条件变量的超时）
+ * @return FenceStatus：表示超时、完成或错误等状态
+ */
 FenceStatus VulkanCmdFence::wait(VkDevice device, uint64_t const timeout,
     std::chrono::steady_clock::time_point const until) {
 
@@ -81,6 +101,16 @@ FenceStatus VulkanCmdFence::wait(VkDevice device, uint64_t const timeout,
     return FenceStatus::ERROR; // not supported
 }
 
+/**
+ * 重置 VulkanCmdFence 对应的底层 VkFence
+ *
+ * 设计要点：
+ * - 通过独占锁防止与 vkWaitForFences 并发调用；
+ * - 按约定，仅当 mStatus 为 VK_SUCCESS（即 GPU 已完成）时才允许重置；
+ * - 调用 vkResetFences 之后，Fence 可以再次用于后续提交。
+ *
+ * @param device Vulkan 逻辑设备
+ */
 void VulkanCmdFence::resetFence(VkDevice device) {
     // This lock prevents vkResetFences() from being called simultaneously with vkWaitForFences(),
     // but by construction, when we're here, we know that the fence has signaled and

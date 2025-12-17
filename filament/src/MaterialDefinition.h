@@ -241,9 +241,9 @@ private:
     void processPushConstants();
     
     /**
-     * 处理描述符集
+     * 处理描述符堆
      * 
-     * 从材质解析器中提取描述符集布局信息。
+     * 从材质解析器中提取描述符堆布局信息。
      * 
      * @param engine 引擎引用
      */

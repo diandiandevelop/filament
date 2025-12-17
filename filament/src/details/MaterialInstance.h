@@ -62,7 +62,7 @@ class FTexture;
  * 
  * 实现细节：
  * - 支持 UBO 批处理（将多个实例的 uniform 数据打包到单个 UBO 中）
- * - 管理描述符集（用于绑定 uniform 和 sampler）
+ * - 管理描述符堆（用于绑定 uniform 和 sampler）
  * - 支持裁剪矩形、模板状态、深度状态等渲染状态
  */
 class FMaterialInstance : public MaterialInstance {
@@ -135,7 +135,7 @@ public:
     /**
      * 使用
      * 
-     * 绑定描述符集到渲染管线。
+     * 绑定描述符堆到渲染管线。
      * 
      * @param driver 驱动 API 引用
      * @param variant 着色器变体（默认为空，使用默认变体）
@@ -738,9 +738,9 @@ private:
     tsl::robin_map<backend::descriptor_binding_t, TextureParameter> mTextureParameters;
     
     /**
-     * 描述符集
+     * 描述符堆
      * 
-     * 用于绑定 uniform 和 sampler 的描述符集。
+     * 用于绑定 uniform 和 sampler 的描述符堆。
      */
     mutable DescriptorSet mDescriptorSet;
     

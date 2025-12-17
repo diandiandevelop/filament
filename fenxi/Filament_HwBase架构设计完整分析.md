@@ -263,14 +263,14 @@ struct HwTimerQuery : public HwBase {
 };
 ```
 
-**HwDescriptorSetLayout** - 描述符集布局：
+**HwDescriptorSetLayout** - 描述符堆布局：
 ```cpp
 struct HwDescriptorSetLayout : public HwBase {
     // 空结构体，具体实现由后端决定
 };
 ```
 
-**HwDescriptorSet** - 描述符集：
+**HwDescriptorSet** - 描述符堆：
 ```cpp
 struct HwDescriptorSet : public HwBase {
     // 空结构体，具体实现由后端决定

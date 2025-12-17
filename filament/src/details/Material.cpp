@@ -405,19 +405,19 @@ void FMaterial::terminate(FEngine& engine) {
 }
 
 /**
- * 获取每视图描述符集布局
+ * 获取每视图描述符堆布局
  * 
- * 根据变体和 VSM 标志返回相应的描述符集布局。
+ * 根据变体和 VSM 标志返回相应的描述符堆布局。
  * 
  * @param variant 着色器变体（仅对 SURFACE 材质域有意义）
- * @param useVsmDescriptorSetLayout 是否使用 VSM 描述符集布局
- * @return 描述符集布局常量引用
+ * @param useVsmDescriptorSetLayout 是否使用 VSM 描述符堆布局
+ * @return 描述符堆布局常量引用
  * 
  * 选择逻辑：
  * - SURFACE 材质域：
- *   - 如果是有效的深度变体，返回深度变体描述符集布局
- *   - 如果是 SSR 变体，返回 SSR 变体描述符集布局
- *   - 否则根据 useVsmDescriptorSetLayout 返回 VSM 或普通描述符集布局
+ *   - 如果是有效的深度变体，返回深度变体描述符堆布局
+ *   - 如果是 SSR 变体，返回 SSR 变体描述符堆布局
+ *   - 否则根据 useVsmDescriptorSetLayout 返回 VSM 或普通描述符堆布局
  * - 其他材质域：直接根据 useVsmDescriptorSetLayout 返回
  */
 filament::DescriptorSetLayout const& FMaterial::getPerViewDescriptorSetLayout(

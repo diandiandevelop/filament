@@ -35,24 +35,24 @@ namespace filament::backend {
 /**
  * 管线布局结构
  * 
- * 定义渲染管线的描述符集布局，用于指定着色器如何访问资源。
+ * 定义渲染管线的描述符堆布局，用于指定着色器如何访问资源。
  * 
  * 用途：
- * - 描述着色器程序使用的描述符集布局
+ * - 描述着色器程序使用的描述符堆布局
  * - 在 Vulkan 后端中对应 VkPipelineLayout
  * - 在 OpenGL 后端中用于验证资源绑定
  * 
  * 组成：
- * - setLayout: 描述符集布局数组，最多支持 MAX_DESCRIPTOR_SET_COUNT 个描述符集
+ * - setLayout: 描述符堆布局数组，最多支持 MAX_DESCRIPTOR_SET_COUNT 个描述符堆
  */
 struct PipelineLayout {
     /**
      * Descriptor set layout array
      * 
-     * 描述符集布局数组
-     * - 每个元素对应一个描述符集的布局
+     * 描述符堆布局数组
+     * - 每个元素对应一个描述符堆的布局
      * - 数组大小为 MAX_DESCRIPTOR_SET_COUNT（通常为 4）
-     * - 空句柄表示该描述符集未使用
+     * - 空句柄表示该描述符堆未使用
      */
     using SetLayout = std::array<Handle<HwDescriptorSetLayout>, MAX_DESCRIPTOR_SET_COUNT>;
     SetLayout setLayout;      // 16 bytes
@@ -71,7 +71,7 @@ struct PipelineLayout {
  * 组成：
  * - program: 着色器程序句柄
  * - vertexBufferInfo: 顶点缓冲区信息句柄
- * - pipelineLayout: 管线布局（描述符集布局）
+ * - pipelineLayout: 管线布局（描述符堆布局）
  * - rasterState: 光栅化状态（混合、深度测试等）
  * - stencilState: 模板测试状态
  * - polygonOffset: 多边形偏移（用于深度偏移）
@@ -104,7 +104,7 @@ struct PipelineState {
      * Pipeline layout
      * 
      * 管线布局
-     * - 定义描述符集的布局
+     * - 定义描述符堆的布局
      * - 用于资源绑定验证
      */
     PipelineLayout pipelineLayout;                                          // 16 bytes

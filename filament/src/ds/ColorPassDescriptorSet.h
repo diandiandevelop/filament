@@ -63,13 +63,13 @@ class Froxelizer;
 class LightManager;
 
 /**
- * 颜色通道描述符集类
+ * 颜色通道描述符堆类
  * 
- * 管理颜色渲染通道的描述符集，包括统一缓冲区和采样器。
- * 支持多种配置组合（光照、SSR、雾等），每种组合使用不同的描述符集布局。
+ * 管理颜色渲染通道的描述符堆，包括统一缓冲区和采样器。
+ * 支持多种配置组合（光照、SSR、雾等），每种组合使用不同的描述符堆布局。
  * 
  * 实现细节：
- * - 支持 8 种不同的描述符集布局（2^3 种组合）
+ * - 支持 8 种不同的描述符堆布局（2^3 种组合）
  * - 使用 TypedUniformBuffer 管理统一缓冲区数据
  * - 支持 VSM（方差阴影贴图）和传统阴影贴图
  */
@@ -81,21 +81,21 @@ class ColorPassDescriptorSet {
 public:
 
     /**
-     * 获取描述符集索引
+     * 获取描述符堆索引
      * 
-     * 根据光照、屏幕空间反射和雾的状态计算描述符集布局索引。
+     * 根据光照、屏幕空间反射和雾的状态计算描述符堆布局索引。
      * 
      * @param lit 是否启用光照
      * @param ssr 是否启用屏幕空间反射
      * @param fog 是否启用雾
-     * @return 描述符集布局索引（0-7）
+     * @return 描述符堆布局索引（0-7）
      */
     static uint8_t getIndex(bool lit, bool ssr, bool fog)  noexcept;
 
     /**
      * 构造函数
      * 
-     * 为所有可能的配置组合创建描述符集布局。
+     * 为所有可能的配置组合创建描述符堆布局。
      * 
      * @param engine 引擎引用
      * @param vsm 是否使用 VSM（方差阴影贴图）
@@ -105,9 +105,9 @@ public:
             TypedUniformBuffer<PerViewUib>& uniforms) noexcept;
 
     /**
-     * 初始化描述符集
+     * 初始化描述符堆
      * 
-     * 为所有描述符集布局设置光源、记录缓冲区和 Froxel 缓冲区。
+     * 为所有描述符堆布局设置光源、记录缓冲区和 Froxel 缓冲区。
      * 
      * @param engine 引擎引用
      * @param lights 光源缓冲区句柄
@@ -121,11 +121,11 @@ public:
             backend::BufferObjectHandle froxelBuffer) noexcept;
 
     /**
-     * 终止描述符集
+     * 终止描述符堆
      * 
-     * 释放所有描述符集和布局资源。
+     * 释放所有描述符堆和布局资源。
      * 
-     * @param factory 描述符集布局工厂引用
+     * @param factory 描述符堆布局工厂引用
      * @param driver 驱动 API 引用
      */
     void terminate(HwDescriptorSetLayoutFactory& factory, backend::DriverApi& driver);
@@ -367,10 +367,10 @@ public:
     /**
      * 绑定
      * 
-     * 将描述符集绑定到指定绑定点。
+     * 将描述符堆绑定到指定绑定点。
      * 
      * @param driver 驱动 API 引用
-     * @param index 描述符集索引
+     * @param index 描述符堆索引
      */
     // bind this UBO
     void bind(backend::DriverApi& driver, uint8_t const index) const noexcept {
@@ -395,7 +395,7 @@ private:
     /**
      * 设置采样器
      * 
-     * 为所有描述符集设置采样器。
+     * 为所有描述符堆设置采样器。
      * 
      * @param binding 绑定点
      * @param th 纹理句柄
@@ -407,7 +407,7 @@ private:
     /**
      * 设置缓冲区
      * 
-     * 为所有描述符集设置缓冲区。
+     * 为所有描述符堆设置缓冲区。
      * 
      * @param binding 绑定点
      * @param boh 缓冲区对象句柄
@@ -418,8 +418,8 @@ private:
             backend::BufferObjectHandle boh, uint32_t offset, uint32_t size) noexcept;
 
     TypedUniformBuffer<PerViewUib>& mUniforms;  // 每视图统一缓冲区引用
-    std::array<DescriptorSetLayout, DESCRIPTOR_LAYOUT_COUNT> mDescriptorSetLayout;  // 描述符集布局数组
-    std::array<DescriptorSet, DESCRIPTOR_LAYOUT_COUNT> mDescriptorSet;  // 描述符集数组
+    std::array<DescriptorSetLayout, DESCRIPTOR_LAYOUT_COUNT> mDescriptorSetLayout;  // 描述符堆布局数组
+    std::array<DescriptorSet, DESCRIPTOR_LAYOUT_COUNT> mDescriptorSet;  // 描述符堆数组
     bool const mIsVsm;  // 是否使用 VSM（常量）
 };
 

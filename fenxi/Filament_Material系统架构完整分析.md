@@ -61,7 +61,7 @@ graph TB
         FMI[FMaterialInstance<br/>实现]
         UB[UniformBuffer<br/>Uniform数据]
         TP[TextureParameters<br/>纹理参数]
-        DS[DescriptorSet<br/>描述符集]
+        DS[DescriptorSet<br/>描述符堆]
     end
     
     subgraph "渲染层"
@@ -738,7 +738,7 @@ void FMaterialInstance::setParameter(const char* name,
         // 可变纹理句柄：存储纹理指针和采样器参数，延迟绑定
         mTextureParameters[binding] = { texture, sampler.getSamplerParams() };
     } else {
-        // 固定纹理句柄：立即绑定到描述符集
+        // 固定纹理句柄：立即绑定到描述符堆
         mTextureParameters.erase(binding);
         
         Handle<HwTexture> handle{};
@@ -746,7 +746,7 @@ void FMaterialInstance::setParameter(const char* name,
             handle = texture->getHwHandleForSampling();
         }
         
-        // 立即设置采样器到描述符集
+        // 立即设置采样器到描述符堆
         mDescriptorSet.setSampler(mMaterial->getDescriptorSetLayout(),
                                   binding,
                                   handle,

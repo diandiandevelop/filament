@@ -443,21 +443,21 @@ PostProcessManager::~PostProcessManager() noexcept = default;
 /**
  * 设置帧统一缓冲区
  * 
- * 更新后处理描述符集和 SSR 通道描述符集的帧统一缓冲区。
+ * 更新后处理描述符堆和 SSR 通道描述符堆的帧统一缓冲区。
  * 
  * @param driver 驱动 API 引用
  * @param uniforms 每视图统一缓冲区引用
  */
 void PostProcessManager::setFrameUniforms(DriverApi& driver,
         TypedUniformBuffer<PerViewUib>& uniforms) noexcept {
-    mPostProcessDescriptorSet.setFrameUniforms(driver, uniforms);      // 设置后处理描述符集的帧统一缓冲区
-    mSsrPassDescriptorSet.setFrameUniforms(mEngine, uniforms);         // 设置 SSR 通道描述符集的帧统一缓冲区
+    mPostProcessDescriptorSet.setFrameUniforms(driver, uniforms);      // 设置后处理描述符堆的帧统一缓冲区
+    mSsrPassDescriptorSet.setFrameUniforms(mEngine, uniforms);         // 设置 SSR 通道描述符堆的帧统一缓冲区
 }
 
 /**
- * 绑定后处理描述符集
+ * 绑定后处理描述符堆
  * 
- * 将后处理描述符集绑定到当前渲染状态。
+ * 将后处理描述符堆绑定到当前渲染状态。
  * 
  * @param driver 驱动 API 引用
  */
@@ -466,9 +466,9 @@ void PostProcessManager::bindPostProcessDescriptorSet(DriverApi& driver) const n
 }
 
 /**
- * 绑定每渲染对象描述符集
+ * 绑定每渲染对象描述符堆
  * 
- * 绑定虚拟的每渲染对象描述符集。这用于后处理通道，
+ * 绑定虚拟的每渲染对象描述符堆。这用于后处理通道，
  * 因为后处理通常不需要实际的每渲染对象数据。
  * 
  * @param driver 驱动 API 引用
@@ -619,8 +619,8 @@ static const PostProcessManager::StaticMaterialInfo sMaterialList[] = {
  * 
  * 初始化后处理管理器，包括：
  * 1. 获取全屏四边形资源
- * 2. 创建虚拟每渲染对象描述符集
- * 3. 初始化描述符集
+ * 2. 创建虚拟每渲染对象描述符堆
+ * 3. 初始化描述符堆
  * 4. 检测驱动工作区
  * 5. 注册所有后处理材质
  * 6. 创建星爆纹理（特性级别 1+）
@@ -645,17 +645,17 @@ void PostProcessManager::init() noexcept {
      */
     mFullScreenQuadRph = engine.getFullScreenRenderPrimitive();              // 全屏四边形渲染图元句柄
     mFullScreenQuadVbih = engine.getFullScreenVertexBuffer()->getVertexBufferInfoHandle();  // 全屏四边形顶点缓冲区信息句柄
-    mPerRenderableDslh = engine.getPerRenderableDescriptorSetLayout().getHandle();  // 每渲染对象描述符集布局句柄
+    mPerRenderableDslh = engine.getPerRenderableDescriptorSetLayout().getHandle();  // 每渲染对象描述符堆布局句柄
 
     /**
-     * 创建虚拟每渲染对象描述符集
+     * 创建虚拟每渲染对象描述符堆
      * 
-     * 后处理通道不需要实际的每渲染对象数据，使用虚拟描述符集。
+     * 后处理通道不需要实际的每渲染对象数据，使用虚拟描述符堆。
      */
     mDummyPerRenderableDsh = driver.createDescriptorSet(mPerRenderableDslh);
 
     /**
-     * 初始化虚拟描述符集的绑定
+     * 初始化虚拟描述符堆的绑定
      * 
      * 使用虚拟统一缓冲区和纹理填充所有必需的绑定点。
      */
@@ -684,13 +684,13 @@ void PostProcessManager::init() noexcept {
             {});  // 骨骼索引和权重纹理（虚拟，使用零纹理）
 
     /**
-     * 初始化描述符集
+     * 初始化描述符堆
      * 
-     * 初始化后处理、SSR 通道和结构描述符集。
+     * 初始化后处理、SSR 通道和结构描述符堆。
      */
-    mSsrPassDescriptorSet.init(engine);           // 初始化 SSR 通道描述符集
-    mPostProcessDescriptorSet.init(engine);       // 初始化后处理描述符集
-    mStructureDescriptorSet.init(engine);         // 初始化结构描述符集
+    mSsrPassDescriptorSet.init(engine);           // 初始化 SSR 通道描述符堆
+    mPostProcessDescriptorSet.init(engine);       // 初始化后处理描述符堆
+    mStructureDescriptorSet.init(engine);         // 初始化结构描述符堆
 
     /**
      * 检测驱动工作区
@@ -805,10 +805,10 @@ void PostProcessManager::init() noexcept {
  * 
  * 清理顺序：
  * 1. 销毁星爆纹理
- * 2. 销毁虚拟每渲染对象描述符集
+ * 2. 销毁虚拟每渲染对象描述符堆
  * 3. 终止材质实例管理器（必须在材质之前）
  * 4. 终止所有注册的材质
- * 5. 终止描述符集
+ * 5. 终止描述符堆
  */
 void PostProcessManager::terminate(DriverApi& driver) noexcept {
     FEngine& engine = mEngine;
@@ -819,7 +819,7 @@ void PostProcessManager::terminate(DriverApi& driver) noexcept {
     driver.destroyTexture(mStarburstTexture);
 
     /**
-     * 销毁虚拟每渲染对象描述符集
+     * 销毁虚拟每渲染对象描述符堆
      */
     driver.destroyDescriptorSet(mDummyPerRenderableDsh);
 
@@ -843,11 +843,11 @@ void PostProcessManager::terminate(DriverApi& driver) noexcept {
     }
 
     /**
-     * 终止描述符集
+     * 终止描述符堆
      */
-    mPostProcessDescriptorSet.terminate(engine.getDescriptorSetLayoutFactory(), driver);  // 终止后处理描述符集
-    mSsrPassDescriptorSet.terminate(driver);        // 终止 SSR 通道描述符集
-    mStructureDescriptorSet.terminate(driver);      // 终止结构描述符集
+    mPostProcessDescriptorSet.terminate(engine.getDescriptorSetLayoutFactory(), driver);  // 终止后处理描述符堆
+    mSsrPassDescriptorSet.terminate(driver);        // 终止 SSR 通道描述符堆
+    mStructureDescriptorSet.terminate(driver);      // 终止结构描述符堆
 }
 
 /**
@@ -898,16 +898,16 @@ void PostProcessManager::resetForRender() {
 }
 
 /**
- * 解绑所有描述符集
+ * 解绑所有描述符堆
  * 
- * 解绑所有绑定的描述符集，清理渲染状态。
+ * 解绑所有绑定的描述符堆，清理渲染状态。
  * 
  * @param driver 驱动 API 引用
  */
 void PostProcessManager::unbindAllDescriptorSets(DriverApi& driver) noexcept {
-    DescriptorSet::unbind(driver, DescriptorSetBindingPoints::PER_VIEW);        // 解绑每视图描述符集
-    DescriptorSet::unbind(driver, DescriptorSetBindingPoints::PER_RENDERABLE);  // 解绑每渲染对象描述符集
-    DescriptorSet::unbind(driver, DescriptorSetBindingPoints::PER_MATERIAL);    // 解绑每材质描述符集
+    DescriptorSet::unbind(driver, DescriptorSetBindingPoints::PER_VIEW);        // 解绑每视图描述符堆
+    DescriptorSet::unbind(driver, DescriptorSetBindingPoints::PER_RENDERABLE);  // 解绑每渲染对象描述符堆
+    DescriptorSet::unbind(driver, DescriptorSetBindingPoints::PER_MATERIAL);    // 解绑每材质描述符堆
 }
 
 /**
@@ -922,7 +922,7 @@ void PostProcessManager::unbindAllDescriptorSets(DriverApi& driver) noexcept {
  * 管道状态包含：
  * - 着色器程序
  * - 顶点缓冲区信息（全屏四边形）
- * - 描述符集布局（每视图、每渲染对象、每材质）
+ * - 描述符堆布局（每视图、每渲染对象、每材质）
  * - 光栅化状态
  */
 UTILS_NOINLINE
@@ -933,9 +933,9 @@ PipelineState PostProcessManager::getPipelineState(
             .vertexBufferInfo = mFullScreenQuadVbih,                         // 全屏四边形顶点缓冲区信息
             .pipelineLayout = {
                     .setLayout = {
-                            ma->getPerViewDescriptorSetLayout().getHandle(),  // 每视图描述符集布局
-                            mPerRenderableDslh,                               // 每渲染对象描述符集布局
-                            ma->getDescriptorSetLayout().getHandle()          // 每材质描述符集布局
+                            ma->getPerViewDescriptorSetLayout().getHandle(),  // 每视图描述符堆布局
+                            mPerRenderableDslh,                               // 每渲染对象描述符堆布局
+                            ma->getDescriptorSetLayout().getHandle()          // 每材质描述符堆布局
                     }},
             .rasterState = ma->getRasterState()  // 光栅化状态
     };
@@ -1042,7 +1042,7 @@ void PostProcessManager::renderFullScreenQuadWithScissor(
  * 4. 开始渲染通道
  * 5. 绘制全屏四边形
  * 6. 结束渲染通道
- * 7. 解绑每材质描述符集
+ * 7. 解绑每材质描述符堆
  */
 UTILS_NOINLINE
 void PostProcessManager::commitAndRenderFullScreenQuad(DriverApi& driver,
@@ -1084,7 +1084,7 @@ void PostProcessManager::commitAndRenderFullScreenQuad(DriverApi& driver,
      */
     driver.endRenderPass();
     /**
-     * 解绑每材质描述符集
+     * 解绑每材质描述符堆
      */
     DescriptorSet::unbind(driver, DescriptorSetBindingPoints::PER_MATERIAL);
 }
@@ -1191,12 +1191,12 @@ PostProcessManager::StructurePassOutput PostProcessManager::structure(FrameGraph
                 structureVariant.setPicking(config.picking);
 
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  * 
-                 * 绑定结构通道使用的每视图和每渲染对象描述符集。
+                 * 绑定结构通道使用的每视图和每渲染对象描述符堆。
                  */
-                getStructureDescriptorSet().bind(driver);        // 绑定结构描述符集
-                bindPerRenderableDescriptorSet(driver);          // 绑定每渲染对象描述符集
+                getStructureDescriptorSet().bind(driver);        // 绑定结构描述符堆
+                bindPerRenderableDescriptorSet(driver);          // 绑定每渲染对象描述符堆
 
                 /**
                  * 配置渲染通道构建器
@@ -1215,7 +1215,7 @@ PostProcessManager::StructurePassOutput PostProcessManager::structure(FrameGraph
                 driver.endRenderPass();
                 
                 /**
-                 * 解绑所有描述符集
+                 * 解绑所有描述符堆
                  */
                 unbindAllDescriptorSets(driver);
             });
@@ -1269,10 +1269,10 @@ PostProcessManager::StructurePassOutput PostProcessManager::structure(FrameGraph
             },
             [=, this](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
-                getStructureDescriptorSet().bind(driver);        // 绑定结构描述符集
-                bindPerRenderableDescriptorSet(driver);          // 绑定每渲染对象描述符集
+                getStructureDescriptorSet().bind(driver);        // 绑定结构描述符堆
+                bindPerRenderableDescriptorSet(driver);          // 绑定每渲染对象描述符堆
 
                 /**
                  * 获取深度纹理和材质
@@ -1325,7 +1325,7 @@ PostProcessManager::StructurePassOutput PostProcessManager::structure(FrameGraph
                     renderFullScreenQuad(out, pipeline, driver);
                     
                     /**
-                     * 解绑每材质描述符集
+                     * 解绑每材质描述符堆
                      */
                     DescriptorSet::unbind(driver, DescriptorSetBindingPoints::PER_MATERIAL);
                     
@@ -1336,7 +1336,7 @@ PostProcessManager::StructurePassOutput PostProcessManager::structure(FrameGraph
                 }
                 
                 /**
-                 * 解绑所有描述符集
+                 * 解绑所有描述符堆
                  */
                 unbindAllDescriptorSets(driver);
             });
@@ -1446,12 +1446,12 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::transparentPicking(FrameGrap
                         pickingVariant.setPicking(true);
 
                         /**
-                         * 绑定描述符集
+                         * 绑定描述符堆
                          * 
-                         * 绑定结构通道使用的每视图和每渲染对象描述符集。
+                         * 绑定结构通道使用的每视图和每渲染对象描述符堆。
                          */
-                        getStructureDescriptorSet().bind(driver);        // 绑定结构描述符集
-                        bindPerRenderableDescriptorSet(driver);          // 绑定每渲染对象描述符集
+                        getStructureDescriptorSet().bind(driver);        // 绑定结构描述符堆
+                        bindPerRenderableDescriptorSet(driver);          // 绑定每渲染对象描述符堆
 
                         /**
                          * 获取渲染通道信息
@@ -1474,7 +1474,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::transparentPicking(FrameGrap
                         driver.endRenderPass();
                         
                         /**
-                         * 解绑所有描述符集
+                         * 解绑所有描述符堆
                          */
                         unbindAllDescriptorSets(driver);
                 });
@@ -1648,7 +1648,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::ssr(FrameGraph& fg,
                 mSsrPassDescriptorSet.prepareHistorySSR(mEngine, history);
 
                 /**
-                 * 提交并绑定描述符集
+                 * 提交并绑定描述符堆
                  */
                 mSsrPassDescriptorSet.commit(mEngine);
                 mSsrPassDescriptorSet.bind(driver);
@@ -1966,7 +1966,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::screenSpaceAmbientOcclusion(
             },
             [=, this](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定每视图描述符集（用于结构通道）
+                 * 绑定每视图描述符堆（用于结构通道）
                  * 
                  * bind the per-view descriptorSet that is used for the structure pass
                  */
@@ -2324,9 +2324,9 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::bilateralBlurPass(FrameGraph
             [=, this](FrameGraphResources const& resources,
                     auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  * 
-                 * TODO: 结构描述符集可能不是最佳选择。
+                 * TODO: 结构描述符堆可能不是最佳选择。
                  * 
                  * TODO: the structure descriptor set might not be the best fit.
                  */
@@ -2735,7 +2735,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::gaussianBlurPass(FrameGraph&
             [=, this](FrameGraphResources const& resources,
                     auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -3706,7 +3706,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
             },
             [=, this](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -3817,7 +3817,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
             [=, this](FrameGraphResources const& resources,
                     auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -3883,7 +3883,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
                      */
                     renderFullScreenQuad(out, pipeline, driver);
                     /**
-                     * 解绑材质描述符集
+                     * 解绑材质描述符堆
                      */
                     DescriptorSet::unbind(driver, DescriptorSetBindingPoints::PER_MATERIAL);
 
@@ -3976,7 +3976,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
                 [=, this](FrameGraphResources const& resources,
                         auto const& data, DriverApi& driver) {
                     /**
-                     * 绑定描述符集
+                     * 绑定描述符堆
                      */
                     bindPostProcessDescriptorSet(driver);
                     bindPerRenderableDescriptorSet(driver);
@@ -4048,7 +4048,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
                 [=, this](FrameGraphResources const& resources,
                         auto const& data, DriverApi& driver) {
                     /**
-                     * 绑定描述符集
+                     * 绑定描述符堆
                      */
                     bindPostProcessDescriptorSet(driver);
                     bindPerRenderableDescriptorSet(driver);
@@ -4144,7 +4144,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
             },
             [=, this](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -4260,7 +4260,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
             },
             [=, this](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -4352,7 +4352,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
             [=, this](FrameGraphResources const& resources,
                     auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -4448,7 +4448,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::downscalePass(FrameGraph& fg
             [=, this](FrameGraphResources const& resources,
                     auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -4721,7 +4721,7 @@ PostProcessManager::BloomPassOutput PostProcessManager::bloom(FrameGraph& fg,
             [=, this](FrameGraphResources const& resources,
                     auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -4838,7 +4838,7 @@ PostProcessManager::BloomPassOutput PostProcessManager::bloom(FrameGraph& fg,
             },
             [=, this](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -4915,7 +4915,7 @@ PostProcessManager::BloomPassOutput PostProcessManager::bloom(FrameGraph& fg,
                      */
                     renderFullScreenQuad(hwDstRT, pipeline, driver);
                     /**
-                     * 解绑材质描述符集
+                     * 解绑材质描述符堆
                      */
                     DescriptorSet::unbind(driver, DescriptorSetBindingPoints::PER_MATERIAL);
                     /**
@@ -4985,7 +4985,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::flarePass(FrameGraph& fg,
             [=, this](FrameGraphResources const& resources,
                     auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -5181,7 +5181,7 @@ void PostProcessManager::colorGradingPrepareSubpass(DriverApi& driver,
  * @param colorGradingConfig 颜色分级配置（用于确定变体）
  * 
  * 处理流程：
- * 1. 绑定描述符集
+ * 1. 绑定描述符堆
  * 2. 根据配置选择变体（透明或不透明）
  * 3. 使用已准备的材质实例
  * 4. 进入下一个子通道并绘制全屏四边形
@@ -5194,7 +5194,7 @@ void PostProcessManager::colorGradingSubpass(DriverApi& driver,
         ColorGradingConfig const& colorGradingConfig) noexcept {
 
     /**
-     * 绑定描述符集
+     * 绑定描述符堆
      */
     bindPostProcessDescriptorSet(driver);
     bindPerRenderableDescriptorSet(driver);
@@ -5285,7 +5285,7 @@ void PostProcessManager::customResolvePrepareSubpass(DriverApi& driver, CustomRe
  * @param driver 驱动 API 引用
  * 
  * 处理流程：
- * 1. 绑定描述符集
+ * 1. 绑定描述符堆
  * 2. 获取已准备的材质实例
  * 3. 进入下一个子通道
  * 4. 绘制全屏四边形执行解析
@@ -5296,7 +5296,7 @@ void PostProcessManager::customResolvePrepareSubpass(DriverApi& driver, CustomRe
  */
 void PostProcessManager::customResolveSubpass(DriverApi& driver) noexcept {
     /**
-     * 绑定描述符集
+     * 绑定描述符堆
      */
     bindPostProcessDescriptorSet(driver);
     bindPerRenderableDescriptorSet(driver);
@@ -5380,7 +5380,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::customResolveUncompressPass(
                 auto out = resources.getRenderPassInfo();
                 out.params.subpassMask = 1;
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -5448,7 +5448,7 @@ void PostProcessManager::clearAncillaryBuffersPrepare(DriverApi& driver) noexcep
  * 
  * 处理流程：
  * 1. 检查是否需要清除深度缓冲区
- * 2. 绑定描述符集
+ * 2. 绑定描述符堆
  * 3. 获取已准备的材质实例
  * 4. 设置深度函数为 ALWAYS（始终通过）
  * 5. 绘制全屏四边形清除缓冲区
@@ -5473,7 +5473,7 @@ void PostProcessManager::clearAncillaryBuffers(DriverApi& driver,
     }
 
     /**
-     * 绑定描述符集
+     * 绑定描述符堆
      */
     bindPostProcessDescriptorSet(driver);
     bindPerRenderableDescriptorSet(driver);
@@ -5647,7 +5647,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::colorGrading(FrameGraph& fg,
             },
             [=, this](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -5831,7 +5831,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::fxaa(FrameGraph& fg,
             },
             [=, this](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -6322,7 +6322,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::taa(FrameGraph& fg,
             },
             [=, this, &current](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -6610,7 +6610,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::rcas(
             [=, this](FrameGraphResources const& resources,
                     auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -6814,7 +6814,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::upscaleBilinear(FrameGraph& 
             [this, blended, vp, filter](FrameGraphResources const& resources,
                     auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -6962,7 +6962,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::upscaleSGSR1(FrameGraph& fg,
             [this, vp, sourceHasLuminance](FrameGraphResources const& resources,
                     auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -7136,7 +7136,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::upscaleFSR1(FrameGraph& fg,
             [this, twoPassesEASU, dsrOptions, vp](FrameGraphResources const& resources,
                     auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -7398,7 +7398,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::blit(FrameGraph& fg, bool co
             [=, this](FrameGraphResources const& resources,
                     auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -7604,7 +7604,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::blitDepth(FrameGraph& fg,
             },
             [=, this](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定结构描述符集（用于深度采样）
+                 * 绑定结构描述符堆（用于深度采样）
                  */
                 getStructureDescriptorSet().bind(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -7854,7 +7854,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::resolveDepth(FrameGraph& fg,
             },
             [=, this](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -7947,7 +7947,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::vsmMipmapPass(FrameGraph& fg
             [=, this](FrameGraphResources const& resources,
                     auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -8091,7 +8091,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::debugShadowCascades(FrameGra
             },
             [=, this](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -8207,7 +8207,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::debugCombineArrayTexture(Fra
         },
         [=, this](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
                 /**
-                 * 绑定描述符集
+                 * 绑定描述符堆
                  */
                 bindPostProcessDescriptorSet(driver);
                 bindPerRenderableDescriptorSet(driver);
@@ -8292,7 +8292,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::debugCombineArrayTexture(Fra
                      */
                     renderFullScreenQuad(out, pipeline, driver);
                     /**
-                     * 解绑材质描述符集
+                     * 解绑材质描述符堆
                      */
                     DescriptorSet::unbind(driver, DescriptorSetBindingPoints::PER_MATERIAL);
                     // From the second draw, don't clear the targetbuffer.
@@ -8394,7 +8394,7 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::debugDisplayShadowTexture(
                 },
                 [=, this](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
                     /**
-                     * 绑定描述符集
+                     * 绑定描述符堆
                      */
                     bindPostProcessDescriptorSet(driver);
                     bindPerRenderableDescriptorSet(driver);

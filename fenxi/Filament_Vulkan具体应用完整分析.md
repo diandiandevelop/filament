@@ -23,7 +23,7 @@ Filament 的 Vulkan 后端实现了完整的 Vulkan 驱动，提供了高性能�
 - **信号量管理**：使用信号量实现命令缓冲区之间的依赖
 - **栅栏同步**：使用栅栏实现 CPU-GPU 同步
 - **资源引用计数**：自动管理 GPU 资源的生命周期
-- **描述符缓存**：缓存描述符集和布局，减少创建开销
+- **描述符缓存**：缓存描述符堆和布局，减少创建开销
 - **管线缓存**：缓存 Vulkan 管线对象，提高性能
 
 ---
@@ -477,7 +477,7 @@ void VulkanDriver::bindPipeline(PipelineState const& state) {
         &mResourceManager, state.program
     );
     
-    // 获取描述符集布局
+    // 获取描述符堆布局
     DescriptorSetLayoutHandleList dsLayoutHandles = 
         getDescriptorSetLayouts(program, state);
     
@@ -499,7 +499,7 @@ void VulkanDriver::draw(PipelineState state,
         uint32_t instanceCount) {
     VkCommandBuffer cmdbuffer = mCurrentRenderPass.commandBuffer->buffer();
     
-    // 绑定描述符集
+    // 绑定描述符堆
     mDescriptorSetCache.commit(
         mCurrentRenderPass.commandBuffer,
         mPipelineState.pipelineLayout,
@@ -525,22 +525,22 @@ void VulkanDriver::draw(PipelineState state,
 
 ### DescriptorSetCache
 
-描述符集缓存管理描述符集的分配和更新。
+描述符堆缓存管理描述符堆的分配和更新。
 
 ```cpp
 class VulkanDescriptorSetCache {
     VkDevice mDevice;
     ResourceManager* mResourceManager;
     
-    // 描述符集池
+    // 描述符堆池
     std::vector<VkDescriptorPool> mPools;
     
-    // 描述符集缓存
+    // 描述符堆缓存
     std::unordered_map<DescriptorSetKey, VkDescriptorSet> mCache;
     
     void updateSampler(uint8_t set, uint8_t binding,
             VulkanTexture* texture, VkSampler sampler) {
-        // 获取或创建描述符集
+        // 获取或创建描述符堆
         VkDescriptorSet descriptorSet = getOrCreateDescriptorSet(set);
         
         // 更新描述符
@@ -566,7 +566,7 @@ class VulkanDescriptorSetCache {
 
 ### DescriptorSetLayoutCache
 
-描述符集布局缓存管理描述符集布局的创建。
+描述符堆布局缓存管理描述符堆布局的创建。
 
 ```cpp
 class VulkanDescriptorSetLayoutCache {
@@ -654,8 +654,8 @@ void VulkanDriver::createBufferObjectR(Handle<HwBufferObject> boh,
 - **批量提交**：合并多个命令缓冲区提交
 
 ### 2. 描述符缓存
-- **缓存描述符集**：避免重复创建
-- **缓存描述符集布局**：减少布局创建开销
+- **缓存描述符堆**：避免重复创建
+- **缓存描述符堆布局**：减少布局创建开销
 
 ### 3. 管线缓存
 - **缓存 Vulkan 管线**：避免重复编译
@@ -730,7 +730,7 @@ Filament 的 Vulkan 驱动通过以下机制实现了高性能渲染：
 2. **信号量管理**：使用信号量实现命令缓冲区依赖链
 3. **栅栏同步**：实现 CPU-GPU 同步
 4. **资源引用计数**：自动管理 GPU 资源生命周期
-5. **描述符缓存**：缓存描述符集和布局，减少创建开销
+5. **描述符缓存**：缓存描述符堆和布局，减少创建开销
 6. **管线缓存**：缓存 Vulkan 管线对象，提高性能
 7. **VMA 分配器**：高效的内存管理
 

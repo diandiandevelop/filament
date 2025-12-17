@@ -504,7 +504,7 @@ Vulkan Driver 实现 Vulkan 后端。
 
 **关键特性**：
 - **命令缓冲区**：使用 VkCommandBuffer 记录命令
-- **描述符集**：管理 VkDescriptorSet
+- **描述符堆**：管理 VkDescriptorSet
 - **同步**：使用 VkSemaphore 和 VkFence 同步
 
 **实现示例**：

@@ -21,6 +21,17 @@
 
 namespace filament::filamentapp {
 
+/**
+ * 解析GPU偏好提示字符串
+ * 
+ * 将GPU偏好提示字符串解析为Vulkan平台自定义配置。
+ * 支持两种格式：
+ * - 纯数字：作为GPU索引
+ * - 字符串：作为GPU设备名称
+ * 
+ * @param gpuHintCstr GPU偏好提示字符串（可以是索引号或GPU名称）
+ * @return Vulkan平台自定义配置
+ */
 filament::backend::VulkanPlatform::Customization parseGpuHint(char const* gpuHintCstr);
 
 } // namespace filament::filamentapp

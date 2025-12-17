@@ -102,7 +102,7 @@ class FScene;
  * 每个 View 可以独立配置渲染参数（抗锯齿、动态分辨率、阴影等）。
  * 
  * 实现细节：
- * - 管理描述符集（per-view uniforms、per-renderable uniforms）
+ * - 管理描述符堆（per-view uniforms、per-renderable uniforms）
  * - 管理 Froxelizer（用于动态光照）
  * - 管理阴影贴图管理器
  * - 支持动态分辨率（使用 PID 控制器）
@@ -357,9 +357,9 @@ public:
     void commitUniforms(backend::DriverApi& driver) const noexcept;
     
     /**
-     * 提交描述符集
+     * 提交描述符堆
      * 
-     * 将描述符集提交到 GPU。
+     * 将描述符堆提交到 GPU。
      * 
      * @param driver 驱动 API 引用
      */
@@ -767,11 +767,11 @@ public:
             Frustum const& frustum, size_t bit) noexcept;
 
     /**
-     * 获取颜色通道描述符集
+     * 获取颜色通道描述符堆
      * 
-     * 根据阴影类型返回相应的描述符集（PCF 使用索引 0，其他使用索引 1）。
+     * 根据阴影类型返回相应的描述符堆（PCF 使用索引 0，其他使用索引 1）。
      * 
-     * @return 颜色通道描述符集引用
+     * @return 颜色通道描述符堆引用
      */
     ColorPassDescriptorSet& getColorPassDescriptorSet() const noexcept {
             return mColorPassDescriptorSet[mShadowType == ShadowType::PCF ? 0 : 1];
@@ -1059,7 +1059,7 @@ private:
      */
     backend::Handle<backend::HwBufferObject> mLightUbh;  // 光源统一缓冲区句柄
     backend::Handle<backend::HwBufferObject> mRenderableUbh;  // 可渲染对象统一缓冲区句柄
-    DescriptorSet mCommonRenderableDescriptorSet;  // 通用可渲染对象描述符集
+    DescriptorSet mCommonRenderableDescriptorSet;  // 通用可渲染对象描述符堆
 
     /**
      * 场景指针

@@ -37,36 +37,87 @@ using namespace utils;
 namespace filament {
 namespace ibl {
 
+/**
+ * 计算x的5次方（优化版本）
+ * 
+ * 使用 x^5 = (x^2)^2 * x 来减少乘法次数。
+ * 
+ * @param x 输入值
+ * @return x的5次方
+ */
 static float pow5(float x) {
     const float x2 = x * x;
     return x2 * x2 * x;
 }
 
+/**
+ * 计算x的6次方（优化版本）
+ * 
+ * 使用 x^6 = (x^2)^3 来减少乘法次数。
+ * 
+ * @param x 输入值
+ * @return x的6次方
+ */
 static float pow6(float x) {
     const float x2 = x * x;
     return x2 * x2 * x2;
 }
 
+/**
+ * 使用GGX分布进行半球重要性采样实现
+ * 
+ * 根据GGX（Trowbridge-Reitz）分布函数进行重要性采样，
+ * 用于镜面反射的预过滤。
+ * 
+ * pdf = D(a) * cosTheta，其中D是GGX分布函数，a是粗糙度参数。
+ * 
+ * @param u 均匀随机数 [0, 1]^2
+ * @param a 粗糙度参数（线性空间）
+ * @return 采样方向向量（半球坐标系）
+ */
 static float3 hemisphereImportanceSampleDggx(float2 u, float a) { // pdf = D(a) * cosTheta
-    const float phi = 2.0f * (float) F_PI * u.x;
+    const float phi = 2.0f * (float) F_PI * u.x;  // 方位角 [0, 2π]
     // NOTE: (aa-1) == (a-1)(a+1) produces better fp accuracy
+    // 注意：(aa-1) == (a-1)(a+1) 产生更好的浮点精度
+    // 计算cos(theta)^2，使用GGX分布的逆CDF
     const float cosTheta2 = (1 - u.y) / (1 + (a + 1) * ((a - 1) * u.y));
     const float cosTheta = std::sqrt(cosTheta2);
     const float sinTheta = std::sqrt(1 - cosTheta2);
+    // 转换为笛卡尔坐标
     return { sinTheta * std::cos(phi), sinTheta * std::sin(phi), cosTheta };
 }
 
+/**
+ * 使用余弦加权进行半球采样实现（未使用）
+ * 
+ * pdf = cosTheta / π
+ * 
+ * 用于漫反射光照的采样。
+ * 
+ * @param u 均匀随机数 [0, 1]^2
+ * @return 采样方向向量（半球坐标系）
+ */
 static float3 UTILS_UNUSED hemisphereCosSample(float2 u) {  // pdf = cosTheta / F_PI;
-    const float phi = 2.0f * (float) F_PI * u.x;
-    const float cosTheta2 = 1 - u.y;
+    const float phi = 2.0f * (float) F_PI * u.x;  // 方位角 [0, 2π]
+    const float cosTheta2 = 1 - u.y;  // 余弦平方（均匀分布）
     const float cosTheta = std::sqrt(cosTheta2);
     const float sinTheta = std::sqrt(1 - cosTheta2);
     return { sinTheta * std::cos(phi), sinTheta * std::sin(phi), cosTheta };
 }
 
+/**
+ * 均匀半球采样实现（未使用）
+ * 
+ * pdf = 1.0 / (2.0 * π)
+ * 
+ * 最简单的半球采样方法，但收敛速度较慢。
+ * 
+ * @param u 均匀随机数 [0, 1]^2
+ * @return 采样方向向量（半球坐标系）
+ */
 static float3 UTILS_UNUSED hemisphereUniformSample(float2 u) { // pdf = 1.0 / (2.0 * F_PI);
-    const float phi = 2.0f * (float) F_PI * u.x;
-    const float cosTheta = 1 - u.y;
+    const float phi = 2.0f * (float) F_PI * u.x;  // 方位角 [0, 2π]
+    const float cosTheta = 1 - u.y;  // 余弦（均匀分布）
     const float sinTheta = std::sqrt(1 - cosTheta * cosTheta);
     return { sinTheta * std::cos(phi), sinTheta * std::sin(phi), cosTheta };
 }
@@ -137,13 +188,32 @@ static float3 UTILS_UNUSED hemisphereImportanceSampleDCharlie(float2 u, float a)
     return { sinTheta * std::cos(phi), sinTheta * std::sin(phi), cosTheta };
 }
 
+/**
+ * GGX（Trowbridge-Reitz）分布函数实现
+ * 
+ * 计算微表面法线分布函数D(h)，用于PBR渲染中的镜面反射。
+ * 
+ * @param NoH 法线n和半向量h的点积
+ * @param linearRoughness 线性粗糙度参数
+ * @return 分布函数值
+ */
 static float DistributionGGX(float NoH, float linearRoughness) {
     // NOTE: (aa-1) == (a-1)(a+1) produces better fp accuracy
+    // 注意：(aa-1) == (a-1)(a+1) 产生更好的浮点精度
     float a = linearRoughness;
     float f = (a - 1) * ((a + 1) * (NoH * NoH)) + 1;
     return (a * a) / ((float) F_PI * f * f);
 }
 
+/**
+ * Ashikhmin分布函数实现（未使用）
+ * 
+ * 另一种微表面分布函数，用于某些特殊材质。
+ * 
+ * @param NoH 法线n和半向量h的点积
+ * @param linearRoughness 线性粗糙度参数
+ * @return 分布函数值
+ */
 static float UTILS_UNUSED DistributionAshikhmin(float NoH, float linearRoughness) {
     float a = linearRoughness;
     float a2 = a * a;
@@ -153,6 +223,16 @@ static float UTILS_UNUSED DistributionAshikhmin(float NoH, float linearRoughness
     return 1.0f / ((float) F_PI * (1 + 4 * a2)) * (sin4h + 4 * std::exp(-cos2h / (a2 * sin2h)));
 }
 
+/**
+ * Charlie分布函数实现（未使用）
+ * 
+ * 用于布料材质的微表面分布函数。
+ * 参考：Estevez and Kulla 2017, "Production Friendly Microfacet Sheen BRDF"
+ * 
+ * @param NoH 法线n和半向量h的点积
+ * @param linearRoughness 线性粗糙度参数
+ * @return 分布函数值
+ */
 static float UTILS_UNUSED DistributionCharlie(float NoH, float linearRoughness) {
     // Estevez and Kulla 2017, "Production Friendly Microfacet Sheen BRDF"
     float a = linearRoughness;
@@ -162,20 +242,53 @@ static float UTILS_UNUSED DistributionCharlie(float NoH, float linearRoughness) 
     return (2.0f + invAlpha) * std::pow(sin2h, invAlpha * 0.5f) / (2.0f * (float) F_PI);
 }
 
+/**
+ * Fresnel项实现
+ * 
+ * 计算菲涅尔反射系数，用于模拟视角相关的反射强度。
+ * 
+ * @param f0 垂直入射时的反射率
+ * @param f90 掠射角时的反射率
+ * @param LoH 光线方向l和半向量h的点积
+ * @return 菲涅尔系数
+ */
 static float Fresnel(float f0, float f90, float LoH) {
-    const float Fc = pow5(1 - LoH);
+    const float Fc = pow5(1 - LoH);  // 使用5次方近似菲涅尔项
     return f0 * (1 - Fc) + f90 * Fc;
 }
 
+/**
+ * 可见性函数（几何项）实现
+ * 
+ * 计算微表面的遮挡和阴影效应，使用高度相关的GGX模型。
+ * 参考：Heitz 2014, "Understanding the Masking-Shadowing Function in Microfacet-Based BRDFs"
+ * 
+ * @param NoV 法线n和视线方向v的点积
+ * @param NoL 法线n和光线方向l的点积
+ * @param a 粗糙度参数
+ * @return 可见性系数
+ */
 static float Visibility(float NoV, float NoL, float a) {
     // Heitz 2014, "Understanding the Masking-Shadowing Function in Microfacet-Based BRDFs"
     // Height-correlated GGX
+    // 高度相关的GGX
     const float a2 = a * a;
     const float GGXL = NoV * std::sqrt((NoL - NoL * a2) * NoL + a2);
     const float GGXV = NoL * std::sqrt((NoV - NoV * a2) * NoV + a2);
     return 0.5f / (GGXV + GGXL);
 }
 
+///**
+// * Ashikhmin可见性函数实现（未使用）
+// * 
+// * 另一种可见性函数，用于某些特殊材质。
+// * 参考：Neubelt and Pettineo 2013, "Crafting a Next-gen Material Pipeline for The Order: 1886"
+// * 
+// * @param NoV 法线n和视线方向v的点积
+// * @param NoL 法线n和光线方向l的点积
+// * @param /*a*/ 粗糙度参数（未使用）
+// * @return 可见性系数
+// */
 static float UTILS_UNUSED VisibilityAshikhmin(float NoV, float NoL, float /*a*/) {
     // Neubelt and Pettineo 2013, "Crafting a Next-gen Material Pipeline for The Order: 1886"
     return 1 / (4 * (NoL + NoV - NoL * NoV));
@@ -292,6 +405,21 @@ static float UTILS_UNUSED VisibilityAshikhmin(float NoV, float NoL, float /*a*/)
  *
  */
 
+/**
+ * 粗糙度过滤实现（使用vector版本）
+ * 
+ * 这是使用std::vector的便捷版本，内部转换为Slice并调用完整版本。
+ * 
+ * @param js 作业系统
+ * @param dst 目标立方体贴图
+ * @param levels 源立方体贴图Mipmap级别数组
+ * @param linearRoughness 线性粗糙度
+ * @param maxNumSamples 最大采样数
+ * @param mirror 镜像向量（用于翻转方向）
+ * @param prefilter 是否使用预过滤（Mipmap）
+ * @param updater 进度更新回调
+ * @param userdata 用户数据指针
+ */
 UTILS_ALWAYS_INLINE
 void CubemapIBL::roughnessFilter(
         utils::JobSystem& js, Cubemap& dst, const std::vector<Cubemap>& levels,
@@ -301,6 +429,38 @@ void CubemapIBL::roughnessFilter(
             linearRoughness, maxNumSamples, mirror, prefilter, updater, userdata);
 }
 
+/**
+ * 粗糙度过滤实现（完整版本）
+ * 
+ * 使用重要性采样和GGX分布函数对立方体贴图进行粗糙度过滤。
+ * 这是镜面反射预过滤的核心算法。
+ * 
+ * 执行步骤：
+ * 1. 如果粗糙度为0，直接复制源立方体贴图（完美镜面反射）
+ * 2. 否则：
+ *    - 预计算重要性采样方向（使用GGX分布）
+ *    - 计算每个采样的LOD级别（预过滤重要性采样）
+ *    - 对每个像素：
+ *      * 构建围绕法线的旋转矩阵
+ *      * 使用重要性采样方向在源立方体贴图中采样
+ *      * 使用三线性过滤在Mipmap级别之间插值
+ *      * 累加加权结果
+ *    - 归一化结果
+ * 
+ * 参考：
+ * - "Real-time Shading with Filtered Importance Sampling", Jaroslav Krivanek
+ * - "GPU-Based Importance Sampling, GPU Gems 3", Mark Colbert
+ * 
+ * @param js 作业系统
+ * @param dst 目标立方体贴图
+ * @param levels 源立方体贴图Mipmap级别数组（Slice）
+ * @param linearRoughness 线性粗糙度
+ * @param maxNumSamples 最大采样数
+ * @param mirror 镜像向量（用于翻转方向）
+ * @param prefilter 是否使用预过滤（Mipmap）
+ * @param updater 进度更新回调
+ * @param userdata 用户数据指针
+ */
 void CubemapIBL::roughnessFilter(
         utils::JobSystem& js, Cubemap& dst, utils::Slice<const Cubemap> levels,
         float linearRoughness, size_t maxNumSamples, math::float3 mirror, bool prefilter,
@@ -551,6 +711,36 @@ void CubemapIBL::roughnessFilter(
  *
  */
 
+/**
+ * 漫反射辐照度计算实现
+ * 
+ * 使用重要性采样计算立方体贴图的漫反射辐照度。
+ * 这是用于Lambertian漫反射的预过滤环境贴图。
+ * 
+ * 执行步骤：
+ * 1. 预计算重要性采样方向（使用余弦加权采样）
+ * 2. 计算每个采样的LOD级别（预过滤重要性采样）
+ * 3. 对每个像素：
+ *    - 构建围绕法线的旋转矩阵
+ *    - 使用重要性采样方向在源立方体贴图中采样
+ *    - 使用三线性过滤在Mipmap级别之间插值
+ *    - 累加采样结果
+ * 4. 平均采样结果（除以采样数）
+ * 
+ * 积分公式：
+ * Ed() = (1/N) * Σ L(l)
+ * 
+ * 参考：
+ * - "Real-time Shading with Filtered Importance Sampling", Jaroslav Krivanek
+ * - "GPU-Based Importance Sampling, GPU Gems 3", Mark Colbert
+ * 
+ * @param js 作业系统
+ * @param dst 目标立方体贴图
+ * @param levels 源立方体贴图Mipmap级别数组
+ * @param maxNumSamples 最大采样数
+ * @param updater 进度更新回调
+ * @param userdata 用户数据指针
+ */
 void CubemapIBL::diffuseIrradiance(JobSystem& js, Cubemap& dst, const std::vector<Cubemap>& levels,
         size_t maxNumSamples, CubemapIBL::Progress updater, void* userdata)
 {
@@ -633,7 +823,19 @@ void CubemapIBL::diffuseIrradiance(JobSystem& js, Cubemap& dst, const std::vecto
     });
 }
 
+/**
+ * DFV项计算实现（不使用重要性采样，仅用于调试）
+ * 
+ * 计算DFG（Diffuse-Fresnel-Glossy）项，不使用重要性采样。
+ * 用于验证重要性采样实现的正确性。
+ * 
+ * @param NoV 法线n和视线方向v的点积
+ * @param roughness 粗糙度
+ * @param numSamples 采样数
+ * @return DFV项（x=scale, y=bias）
+ */
 // Not importance-sampled
+// 不使用重要性采样
 static float2 UTILS_UNUSED DFV_NoIS(float NoV, float roughness, size_t numSamples) {
     float2 r = 0;
     const float linearRoughness = roughness * roughness;
@@ -745,6 +947,31 @@ static float2 UTILS_UNUSED DFV_NoIS(float NoV, float roughness, size_t numSample
  *
  */
 
+/**
+ * DFV项计算实现（使用重要性采样）
+ * 
+ * 计算DFG（Diffuse-Fresnel-Glossy）项，使用GGX分布的重要性采样。
+ * 这是split-sum近似中的关键项，用于预计算BRDF的积分。
+ * 
+ * 执行步骤：
+ * 1. 对每个采样：
+ *    - 使用Hammersley序列生成均匀随机数
+ *    - 使用GGX分布进行重要性采样得到半向量H
+ *    - 计算光线方向L（反射）
+ *    - 计算Fresnel项和可见性项
+ *    - 分离f0和f90项（允许运行时重建）
+ * 2. 平均所有采样结果
+ * 
+ * 结果：
+ * - DFV.x = f0项的系数
+ * - DFV.y = f90项的系数
+ * - Er() = f0 * DFV.x + f90 * DFV.y
+ * 
+ * @param NoV 法线n和视线方向v的点积
+ * @param linearRoughness 线性粗糙度
+ * @param numSamples 采样数
+ * @return DFV项（x=f0系数, y=f90系数）
+ */
 static float2 DFV(float NoV, float linearRoughness, size_t numSamples) {
     float2 r = 0;
     const float3 V(std::sqrt(1 - NoV * NoV), 0, NoV);
@@ -787,6 +1014,24 @@ static float2 DFV(float NoV, float linearRoughness, size_t numSamples) {
     return r * (4.0f / numSamples);
 }
 
+/**
+ * DFV项计算实现（多重散射版本）
+ * 
+ * 计算考虑多重散射的DFG项。
+ * 多重散射模型考虑了光线在微表面之间的多次反射，提供更真实的外观。
+ * 
+ * 执行步骤：
+ * 1. 对每个采样：
+ *    - 使用GGX分布进行重要性采样
+ *    - 计算Fresnel项和可见性项
+ *    - 应用多重散射能量补偿
+ * 2. 平均所有采样结果
+ * 
+ * @param NoV 法线n和视线方向v的点积
+ * @param linearRoughness 线性粗糙度
+ * @param numSamples 采样数
+ * @return DFV项（x=f0系数, y=f90系数）
+ */
 static float2 DFV_Multiscatter(float NoV, float linearRoughness, size_t numSamples) {
     float2 r = 0;
     const float3 V(std::sqrt(1 - NoV * NoV), 0, NoV);
@@ -832,6 +1077,16 @@ static float2 DFV_Multiscatter(float NoV, float linearRoughness, size_t numSampl
     return r * (4.0f / numSamples);
 }
 
+/**
+ * DFV Lazanyi项计算实现（未使用）
+ * 
+ * 计算DFV的Lazanyi项，用于某些特殊的光照模型。
+ * 
+ * @param NoV 法线n和视线方向v的点积
+ * @param linearRoughness 线性粗糙度
+ * @param numSamples 采样数
+ * @return DFV Lazanyi项
+ */
 static float UTILS_UNUSED DFV_LazanyiTerm(float NoV, float linearRoughness, size_t numSamples) {
     float r = 0;
     const float cosThetaMax = (float) std::cos(81.7 * F_PI / 180.0);
@@ -853,6 +1108,16 @@ static float UTILS_UNUSED DFV_LazanyiTerm(float NoV, float linearRoughness, size
     return r * (4.0f / numSamples);
 }
 
+/**
+ * DFV Charlie分布均匀采样实现
+ * 
+ * 使用Charlie分布和均匀采样计算DFV项，用于布料材质。
+ * 
+ * @param NoV 法线n和视线方向v的点积
+ * @param linearRoughness 线性粗糙度
+ * @param numSamples 采样数
+ * @return DFV项
+ */
 static float DFV_Charlie_Uniform(float NoV, float linearRoughness, size_t numSamples) {
     float r = 0.0;
     const float3 V(std::sqrt(1 - NoV * NoV), 0, NoV);
@@ -958,6 +1223,16 @@ static float DFV_Charlie_Uniform(float NoV, float linearRoughness, size_t numSam
  *  +---------------------------------------+
  *
  */
+/**
+ * DFV Charlie分布重要性采样实现（未使用）
+ * 
+ * 使用Charlie分布和重要性采样计算DFV项，用于布料材质。
+ * 
+ * @param NoV 法线n和视线方向v的点积
+ * @param linearRoughness 线性粗糙度
+ * @param numSamples 采样数
+ * @return DFV项
+ */
 static float UTILS_UNUSED DFV_Charlie_IS(float NoV, float linearRoughness, size_t numSamples) {
     float r = 0.0;
     const float3 V(std::sqrt(1 - NoV * NoV), 0, NoV);
@@ -979,25 +1254,46 @@ static float UTILS_UNUSED DFV_Charlie_IS(float NoV, float linearRoughness, size_
     return r / numSamples;
 }
 
+/**
+ * BRDF计算实现
+ * 
+ * 计算给定粗糙度的BRDF值并存储到立方体贴图中。
+ * 用于生成BRDF查找表或可视化BRDF函数。
+ * 
+ * 执行步骤：
+ * 1. 对立方体贴图的每个像素：
+ *    - 获取像素对应的半向量H
+ *    - 计算光线方向L（反射）
+ *    - 计算BRDF项：D * F * V * NoL
+ *    - 写入立方体贴图
+ * 
+ * BRDF公式：
+ * BRDF = D(h) * F(h) * V(v, l) * <n•l>
+ * 
+ * @param js 作业系统
+ * @param dst 目标立方体贴图（会被修改）
+ * @param linearRoughness 线性粗糙度
+ */
 void CubemapIBL::brdf(utils::JobSystem& js, Cubemap& dst, float linearRoughness) {
     CubemapUtils::process<CubemapUtils::EmptyState>(dst, js,
             [ & ](CubemapUtils::EmptyState&, size_t y,
                     Cubemap::Face f, Cubemap::Texel* data, size_t dim) {
                 for (size_t x=0 ; x<dim ; ++x, ++data) {
                     const float2 p(Cubemap::center(x, y));
-                    const float3 H(dst.getDirectionFor(f, p.x, p.y));
-                    const float3 N = { 0, 0, 1 };
-                    const float3 V = N;
-                    const float3 L = 2 * dot(H, V) * H - V;
+                    const float3 H(dst.getDirectionFor(f, p.x, p.y));  // 半向量
+                    const float3 N = { 0, 0, 1 };  // 法线（切线空间）
+                    const float3 V = N;  // 视线方向（等于法线）
+                    const float3 L = 2 * dot(H, V) * H - V;  // 光线方向（反射）
                     const float NoL = dot(N, L);
                     const float NoH = dot(N, H);
                     const float NoV = dot(N, V);
                     const float LoH = dot(L, H);
                     float brdf_NoL = 0;
                     if (NoL > 0 && LoH > 0) {
-                        const float D = DistributionGGX(NoH, linearRoughness);
-                        const float F = Fresnel(0.04f, 1.0f, LoH);
-                        const float V = Visibility(NoV, NoL, linearRoughness);
+                        // 计算BRDF项：D * F * V * NoL
+                        const float D = DistributionGGX(NoH, linearRoughness);  // 分布函数
+                        const float F = Fresnel(0.04f, 1.0f, LoH);  // 菲涅尔项（f0=0.04, f90=1.0）
+                        const float V = Visibility(NoV, NoL, linearRoughness);  // 可见性项
                         brdf_NoL = float(D * F * V * NoL);
                     }
                     Cubemap::writeAt(data, Cubemap::Texel{ brdf_NoL });
@@ -1005,8 +1301,36 @@ void CubemapIBL::brdf(utils::JobSystem& js, Cubemap& dst, float linearRoughness)
             });
 }
 
+/**
+ * DFG查找表生成实现
+ * 
+ * 生成DFG（Diffuse-Fresnel-Glossy）查找表，用于split-sum近似。
+ * 查找表存储了不同NoV和粗糙度组合的DFV项。
+ * 
+ * 执行步骤：
+ * 1. 选择DFV函数（多重散射或标准版本）
+ * 2. 对图像的每一行（粗糙度）：
+ *    - 将Y坐标映射到线性粗糙度（使用平方映射）
+ * 3. 对图像的每一列（NoV）：
+ *    - 将X坐标映射到NoV值 [0, 1]
+ *    - 计算DFV项
+ *    - 如果启用布料模式，额外计算Charlie分布的DFV项
+ *    - 存储到图像中
+ * 
+ * 查找表格式：
+ * - R通道：f0项的系数（DFV.x）
+ * - G通道：f90项的系数（DFV.y）
+ * - B通道：Charlie分布的DFV项（如果启用布料模式）
+ * 
+ * @param js 作业系统
+ * @param dst 目标图像（会被修改，存储DFG查找表）
+ * @param multiscatter 是否使用多重散射模型
+ * @param cloth 是否启用布料模式（使用Charlie分布）
+ */
 void CubemapIBL::DFG(JobSystem& js, Image& dst, bool multiscatter, bool cloth) {
+    // 选择DFV函数（多重散射或标准版本）
     auto dfvFunction = multiscatter ? DFV_Multiscatter : DFV;
+    // 使用多线程并行处理每一行
     auto job = jobs::parallel_for<char>(js, nullptr, nullptr, uint32_t(dst.getHeight()),
             [&dst, dfvFunction, cloth](char const* d, size_t c) {
                 const size_t width = dst.getWidth();
@@ -1017,16 +1341,22 @@ void CubemapIBL::DFG(JobSystem& js, Image& dst, bool multiscatter, bool cloth) {
                             static_cast<Cubemap::Texel*>(dst.getPixelRef(0, y));
 
                     const float h = (float) height;
+                    // 将Y坐标映射到线性粗糙度
                     const float coord = saturate((h - y + 0.5f) / h);
                     // map the coordinate in the texture to a linear_roughness,
                     // here we're using ^2, but other mappings are possible.
                     // ==> coord = sqrt(linear_roughness)
+                    // 将坐标映射到纹理中的线性粗糙度，这里使用^2，但也可以使用其他映射
+                    // ==> coord = sqrt(linear_roughness)
                     const float linear_roughness = coord * coord;
                     for (size_t x = 0; x < width; x++, data++) {
+                        // 将X坐标映射到NoV值 [0, 1]
                         // const float NoV = float(x) / (width-1);
                         const float NoV = saturate((x + 0.5f) / width);
+                        // 计算DFV项（f0和f90系数）
                         float3 r = { dfvFunction(NoV, linear_roughness, 1024), 0 };
                         if (cloth) {
+                            // 如果启用布料模式，计算Charlie分布的DFV项
                             r.b = float(DFV_Charlie_Uniform(NoV, linear_roughness, 4096));
                         }
                         *data = r;

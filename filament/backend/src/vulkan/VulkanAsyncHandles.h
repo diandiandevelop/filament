@@ -36,6 +36,7 @@
 namespace filament::backend {
 
 // Wrapper to enable use of shared_ptr for implementing shared ownership of low-level Vulkan fences.
+// 包装器：用于通过 shared_ptr 在多个高层对象之间共享底层 Vulkan Fence 的所有权。
 struct VulkanCmdFence {
     explicit VulkanCmdFence(VkFence fence) : mFence(fence) { }
     ~VulkanCmdFence() = default;
@@ -69,24 +70,36 @@ private:
     // Internally we use the VK_INCOMPLETE status to mean "not yet submitted". When this fence
     // gets submitted, its status changes to VK_NOT_READY. Finally, when the GPU actually
     // finishes executing the command buffer, the status changes to VK_SUCCESS.
+    // 内部约定：VK_INCOMPLETE 表示“尚未提交”；提交后状态变为 VK_NOT_READY；
+    // 当 GPU 真正执行完对应的命令缓冲后，状态变为 VK_SUCCESS。
     VkResult mStatus{ VK_INCOMPLETE };
     VkFence mFence;
 };
 
+/**
+ * VulkanFence - Vulkan Fence 高层包装
+ *
+ * 将 VulkanCmdFence 封装为 HwFence，实现 CPU 侧 fence 的共享和等待逻辑，
+ * 同时继承 ThreadSafeResource 以确保跨线程安全。
+ */
 struct VulkanFence : public HwFence, fvkmemory::ThreadSafeResource {
     VulkanFence() {}
 
+    // 设置底层共享 Fence
     void setFence(std::shared_ptr<VulkanCmdFence> fence) {
         std::lock_guard const l(lock);
         sharedFence = std::move(fence);
         cond.notify_all();
     }
 
+    // 获取底层共享 Fence 引用
     std::shared_ptr<VulkanCmdFence>& getSharedFence() {
         std::lock_guard const l(lock);
         return sharedFence;
     }
 
+    // 在指定时间点之前等待 Fence 可用或被取消
+    // 返回值：{ sharedFence, canceled }，如果超时 sharedFence 为空
     std::pair<std::shared_ptr<VulkanCmdFence>, bool>
             wait(std::chrono::steady_clock::time_point const until) {
         // hold a reference so that our state doesn't disappear while we wait
@@ -98,6 +111,7 @@ struct VulkanFence : public HwFence, fvkmemory::ThreadSafeResource {
         return { sharedFence, canceled };
     }
 
+    // 取消当前 Fence：标记为 canceled 并通知等待线程，同时取消底层 VulkanCmdFence
     void cancel() const {
         std::lock_guard const l(lock);
         if (sharedFence) {
@@ -108,12 +122,18 @@ struct VulkanFence : public HwFence, fvkmemory::ThreadSafeResource {
     }
 
 private:
-    mutable std::mutex lock;
-    mutable std::condition_variable cond;
-    mutable bool canceled = false;
-    std::shared_ptr<VulkanCmdFence> sharedFence;
+    mutable std::mutex lock;                // 保护 sharedFence / canceled 状态
+    mutable std::condition_variable cond;   // 条件变量，用于等待 / 唤醒
+    mutable bool canceled = false;          // 是否已被取消
+    std::shared_ptr<VulkanCmdFence> sharedFence; // 底层共享 Fence
 };
 
+/**
+ * VulkanSync - Vulkan 同步对象包装
+ *
+ * 封装 HwSync，管理平台回调（如 Android 的 SyncFence 等），
+ * 用于在 GPU 完成特定操作时通知上层平台。
+ */
 struct VulkanSync : fvkmemory::ThreadSafeResource, public HwSync {
     struct CallbackData {
         CallbackHandler* handler;
@@ -123,20 +143,27 @@ struct VulkanSync : fvkmemory::ThreadSafeResource, public HwSync {
     };
 
     VulkanSync() {}
-    std::mutex lock;
-    std::vector<std::unique_ptr<CallbackData>> conversionCallbacks;
+    std::mutex lock;    // 保护回调列表
+    std::vector<std::unique_ptr<CallbackData>> conversionCallbacks; // 平台回调列表
 };
 
+/**
+ * VulkanTimerQuery - Vulkan 定时器查询包装
+ *
+ * 负责追踪 GPU 时间戳查询的起止索引，并通过 Fence 判断查询是否完成。
+ */
 struct VulkanTimerQuery : public HwTimerQuery, fvkmemory::ThreadSafeResource {
     VulkanTimerQuery(uint32_t startingIndex, uint32_t stoppingIndex)
         : mStartingQueryIndex(startingIndex),
           mStoppingQueryIndex(stoppingIndex) {}
 
+    // 关联用于标记查询完成的 Fence
     void setFence(std::shared_ptr<VulkanCmdFence> fence) noexcept {
         std::lock_guard const lock(mFenceMutex);
         mFence = std::move(fence);
     }
 
+    // 查询对应的 GPU 命令是否已完成（通过 Fence 状态判断）
     bool isCompleted() noexcept {
         std::lock_guard const lock(mFenceMutex);
         // QueryValue is a synchronous call and might occur before beginTimerQuery has written
@@ -148,18 +175,20 @@ struct VulkanTimerQuery : public HwTimerQuery, fvkmemory::ThreadSafeResource {
         return mFence && mFence->getStatus() == VK_SUCCESS;
     }
 
+    // 获取起始查询索引
     uint32_t getStartingQueryIndex() const { return mStartingQueryIndex; }
 
+    // 获取结束查询索引
     uint32_t getStoppingQueryIndex() const {
         return mStoppingQueryIndex;
     }
 
 private:
-    uint32_t mStartingQueryIndex;
-    uint32_t mStoppingQueryIndex;
+    uint32_t mStartingQueryIndex;               // 起始查询索引
+    uint32_t mStoppingQueryIndex;               // 结束查询索引
 
-    std::shared_ptr<VulkanCmdFence> mFence;
-    utils::Mutex mFenceMutex;
+    std::shared_ptr<VulkanCmdFence> mFence;     // 标记查询完成的 Fence
+    utils::Mutex mFenceMutex;                   // 保护 Fence 的互斥锁
 };
 
 } // namespace filament::backend

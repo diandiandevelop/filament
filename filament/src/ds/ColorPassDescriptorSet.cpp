@@ -65,15 +65,15 @@ using namespace backend;
 using namespace math;
 
 /**
- * 获取描述符集索引
+ * 获取描述符堆索引
  * 
- * 根据光照、屏幕空间反射和雾的状态计算描述符集布局索引。
+ * 根据光照、屏幕空间反射和雾的状态计算描述符堆布局索引。
  * 使用位掩码编码不同的配置组合。
  * 
  * @param lit 是否启用光照
  * @param ssr 是否启用屏幕空间反射
  * @param fog 是否启用雾
- * @return 描述符集布局索引（0-7）
+ * @return 描述符堆布局索引（0-7）
  */
 uint8_t ColorPassDescriptorSet::getIndex(
         bool const lit, bool const ssr, bool const fog) noexcept {
@@ -109,9 +109,9 @@ uint8_t ColorPassDescriptorSet::getIndex(
 }
 
 /**
- * 颜色通道描述符集构造函数
+ * 颜色通道描述符堆构造函数
  * 
- * 为所有可能的配置组合创建描述符集布局。
+ * 为所有可能的配置组合创建描述符堆布局。
  * 
  * @param engine 引擎引用
  * @param vsm 是否使用 VSM（方差阴影贴图）
@@ -122,7 +122,7 @@ ColorPassDescriptorSet::ColorPassDescriptorSet(FEngine& engine, bool const vsm,
     : mUniforms(uniforms),  // 初始化统一缓冲区引用
       mIsVsm(vsm) {  // 初始化 VSM 标志
     /**
-     * 为所有配置组合创建描述符集布局
+     * 为所有配置组合创建描述符堆布局
      * 
      * 遍历所有可能的 lit、ssr、fog 组合（2^3 = 8 种组合）。
      */
@@ -130,8 +130,8 @@ ColorPassDescriptorSet::ColorPassDescriptorSet(FEngine& engine, bool const vsm,
         for (bool const ssr: { false, true }) {  // 遍历 SSR 状态
             for (bool const fog: { false, true }) {  // 遍历雾状态
                 auto const index = getIndex(lit, ssr, fog);  // 获取索引
-                mDescriptorSetLayout[index] = {  // 创建描述符集布局
-                        engine.getDescriptorSetLayoutFactory(),  // 描述符集布局工厂
+                mDescriptorSetLayout[index] = {  // 创建描述符堆布局
+                        engine.getDescriptorSetLayoutFactory(),  // 描述符堆布局工厂
                         engine.getDriverApi(),  // 驱动 API
                         descriptor_sets::getPerViewDescriptorSetLayout(
                                 MaterialDomain::SURFACE, lit, ssr, fog, vsm)
@@ -162,9 +162,9 @@ ColorPassDescriptorSet::ColorPassDescriptorSet(FEngine& engine, bool const vsm,
 }
 
 /**
- * 初始化描述符集
+ * 初始化描述符堆
  * 
- * 为所有描述符集布局设置光源、记录缓冲区和 Froxel 缓冲区。
+ * 为所有描述符堆布局设置光源、记录缓冲区和 Froxel 缓冲区。
  * 
  * @param engine 引擎引用
  * @param lights 光源缓冲区句柄
@@ -177,7 +177,7 @@ void ColorPassDescriptorSet::init(
         BufferObjectHandle recordBuffer,  // 记录缓冲区句柄
         BufferObjectHandle froxelBuffer) noexcept {  // Froxel 缓冲区句柄
     for (size_t i = 0; i < DESCRIPTOR_LAYOUT_COUNT; i++) {  // 遍历所有布局
-        auto& descriptorSet = mDescriptorSet[i];  // 获取描述符集
+        auto& descriptorSet = mDescriptorSet[i];  // 获取描述符堆
         auto const& layout = mDescriptorSetLayout[i];  // 获取布局
         /**
          * 设置光源缓冲区
@@ -198,16 +198,16 @@ void ColorPassDescriptorSet::init(
 }
 
 /**
- * 终止描述符集
+ * 终止描述符堆
  * 
- * 释放所有描述符集和布局资源。
+ * 释放所有描述符堆和布局资源。
  * 
- * @param factory 描述符集布局工厂引用
+ * @param factory 描述符堆布局工厂引用
  * @param driver 驱动 API 引用
  */
 void ColorPassDescriptorSet::terminate(HwDescriptorSetLayoutFactory& factory, DriverApi& driver) {
-    for (auto&& entry : mDescriptorSet) {  // 遍历所有描述符集
-        entry.terminate(driver);  // 终止描述符集
+    for (auto&& entry : mDescriptorSet) {  // 遍历所有描述符堆
+        entry.terminate(driver);  // 终止描述符堆
     }
     for (auto&& entry : mDescriptorSetLayout) {  // 遍历所有布局
         entry.terminate(factory, driver);  // 终止布局

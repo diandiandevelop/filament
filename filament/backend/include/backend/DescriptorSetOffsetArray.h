@@ -50,9 +50,9 @@ namespace filament::backend {
 void* allocateFromCommandStream(DriverApi& driver, size_t size, size_t alignment) noexcept;
 
 /**
- * 描述符集偏移数组
+ * 描述符堆偏移数组
  * 
- * 用于存储描述符集中动态偏移量的数组。这些偏移量用于动态 uniform 缓冲区绑定。
+ * 用于存储描述符堆中动态偏移量的数组。这些偏移量用于动态 uniform 缓冲区绑定。
  * 
  * 特性：
  * - 内存从命令流分配，生命周期与命令流绑定

@@ -23,7 +23,16 @@ namespace filament::backend {
 
 namespace filament::filamentapp {
 
+/**
+ * 创建Vulkan平台对象
+ * @param gpuHintCstr GPU偏好提示字符串（可以是GPU名称或索引号）
+ * @return Vulkan平台对象指针
+ */
 filament::backend::VulkanPlatform* createVulkanPlatform(char const* gpuHintCstr);
+/**
+ * 销毁Vulkan平台对象
+ * @param platform Vulkan平台对象指针
+ */
 void destroyVulkanPlatform(filament::backend::VulkanPlatform* platform);
 
 } // namespace filament::filamentapp

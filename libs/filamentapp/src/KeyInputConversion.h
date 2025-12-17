@@ -24,6 +24,16 @@ namespace filamentapp_utils {
 
 // Copied from
 // https://github.com/ocornut/imgui/blob/940627d008b8f0584b7f50d24574537cf24a32e1/backends/imgui_impl_sdl2.cpp#L206
+/**
+ * 将SDL键盘事件转换为ImGui键码
+ * 
+ * 此函数将SDL的键盘码和扫描码转换为ImGui的键码。
+ * 首先尝试使用键盘码，如果无法匹配则回退到扫描码。
+ * 
+ * @param keycode SDL键盘码（受键盘布局影响）
+ * @param scancode SDL扫描码（物理按键，不受键盘布局影响）
+ * @return ImGui键码，如果无法匹配则返回ImGuiKey_None
+ */
 ImGuiKey ImGui_ImplSDL2_KeyEventToImGuiKey(SDL_Keycode keycode, SDL_Scancode scancode) {
     switch (keycode) {
         case SDLK_TAB:

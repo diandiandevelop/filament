@@ -23,28 +23,36 @@
 
 #include <camutils/Manipulator.h>
 
+/**
+ * Config - 应用程序配置结构体
+ * 
+ * 包含FilamentApp运行所需的所有配置参数，如窗口设置、
+ * 渲染后端、相机模式、IBL路径等。
+ */
 struct Config {
-    std::string title;
-    std::string iblDirectory;
-    std::string dirt;
-    float scale = 1.0f;
-    bool splitView = false;
-    mutable filament::Engine::Backend backend = filament::Engine::Backend::DEFAULT;
-    mutable filament::backend::FeatureLevel featureLevel = filament::backend::FeatureLevel::FEATURE_LEVEL_3;
-    filament::camutils::Mode cameraMode = filament::camutils::Mode::ORBIT;
-    bool resizeable = true;
-    bool headless = false;
-    int stereoscopicEyeCount = 2;
-    uint8_t samples = 1;
+    std::string title;                                    // 窗口标题
+    std::string iblDirectory;                             // IBL资源目录路径
+    std::string dirt;                                     // 污垢纹理文件路径
+    float scale = 1.0f;                                   // 场景缩放比例
+    bool splitView = false;                              // 是否启用分屏视图（用于调试）
+    mutable filament::Engine::Backend backend = filament::Engine::Backend::DEFAULT; // 渲染后端类型
+    mutable filament::backend::FeatureLevel featureLevel = filament::backend::FeatureLevel::FEATURE_LEVEL_3; // 功能级别
+    filament::camutils::Mode cameraMode = filament::camutils::Mode::ORBIT; // 相机操作模式
+    bool resizeable = true;                               // 窗口是否可调整大小
+    bool headless = false;                                // 是否为无头模式（无窗口）
+    int stereoscopicEyeCount = 2;                        // 立体渲染眼睛数量
+    uint8_t samples = 1;                                  // 多重采样抗锯齿（MSAA）采样数
 
     // Indicate GPU preference for vulkan
+    /** Vulkan后端GPU偏好提示（可以是GPU名称或索引） */
     std::string vulkanGPUHint;
 
 
     // Note that WebGPU has its own enums for backends, but to avoid leaking webgpu headers to
     // consumers of FilamentApp, we just overload the Engine::Backend enum.
+    /** WebGPU后端类型别名 */
     using WebGPUBackend = filament::Engine::Backend;
-    // Force a backend for webgpu.
+    /** 强制使用的WebGPU后端 */
     WebGPUBackend forcedWebGPUBackend = WebGPUBackend::DEFAULT;
 };
 

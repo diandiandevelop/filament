@@ -86,7 +86,7 @@ public:
      * 组成：
      * - name: 着色器中的资源名称
      * - type: 描述符类型（纹理类型、缓冲区类型等）
-     * - binding: 绑定索引（在描述符集中的位置）
+     * - binding: 绑定索引（在描述符堆中的位置）
      */
     struct Descriptor {
         utils::CString name;           // 着色器中的资源名称
@@ -123,14 +123,14 @@ public:
     /**
      * 描述符绑定信息类型
      * 
-     * 固定容量的描述符向量，用于存储一个描述符集的绑定信息。
+     * 固定容量的描述符向量，用于存储一个描述符堆的绑定信息。
      */
     using DescriptorBindingsInfo = utils::FixedCapacityVector<Descriptor>;
     
     /**
-     * 描述符集信息类型
+     * 描述符堆信息类型
      * 
-     * 描述符集数组，最多支持 MAX_DESCRIPTOR_SET_COUNT 个描述符集。
+     * 描述符堆数组，最多支持 MAX_DESCRIPTOR_SET_COUNT 个描述符堆。
      */
     using DescriptorSetInfo = std::array<DescriptorBindingsInfo, MAX_DESCRIPTOR_SET_COUNT>;
     
@@ -287,9 +287,9 @@ public:
     /**
      * 设置描述符绑定信息
      * 
-     * 设置描述符集的绑定信息，描述着色器如何访问资源。
+     * 设置描述符堆的绑定信息，描述着色器如何访问资源。
      * 
-     * @param set               描述符集索引（0 到 MAX_DESCRIPTOR_SET_COUNT - 1）
+     * @param set               描述符堆索引（0 到 MAX_DESCRIPTOR_SET_COUNT - 1）
      * @param descriptorBindings 描述符绑定信息列表
      *                          - 每个描述符包含：名称、类型、绑定索引
      *                          - 用于将着色器中的资源名称映射到绑定索引
@@ -297,7 +297,7 @@ public:
      * 
      * 用途：
      * - 定义纹理、采样器、uniform 缓冲区的绑定
-     * - 在 Vulkan 后端中用于创建描述符集布局
+     * - 在 Vulkan 后端中用于创建描述符堆布局
      * - 在 OpenGL 后端中用于验证资源绑定
      */
     // Descriptor binding (set, binding, type -> shader name) info

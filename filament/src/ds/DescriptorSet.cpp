@@ -44,18 +44,18 @@ using namespace utils;
 /**
  * 默认构造函数
  * 
- * 创建一个空的描述符集。
+ * 创建一个空的描述符堆。
  */
 DescriptorSet::DescriptorSet() noexcept = default;
 
 /**
  * 析构函数
  * 
- * 确保描述符集句柄已被释放，避免资源泄漏。
+ * 确保描述符堆句柄已被释放，避免资源泄漏。
  */
 DescriptorSet::~DescriptorSet() noexcept {
     /**
-     * 确保我们没有泄漏描述符集句柄
+     * 确保我们没有泄漏描述符堆句柄
      */
     // make sure we're not leaking the descriptor set handle
     assert_invariant(!mDescriptorSetHandle);  // 断言句柄为空
@@ -64,10 +64,10 @@ DescriptorSet::~DescriptorSet() noexcept {
 /**
  * 构造函数
  * 
- * 根据描述符集布局创建描述符集。
+ * 根据描述符堆布局创建描述符堆。
  * 
- * @param name 描述符集名称
- * @param descriptorSetLayout 描述符集布局常量引用
+ * @param name 描述符堆名称
+ * @param descriptorSetLayout 描述符堆布局常量引用
  */
 DescriptorSet::DescriptorSet(StaticString const name, DescriptorSetLayout const& descriptorSetLayout) noexcept
         : mDescriptors(descriptorSetLayout.getMaxDescriptorBinding() + 1),  // 初始化描述符数组（大小 = 最大绑定点 + 1）
@@ -92,12 +92,12 @@ DescriptorSet::DescriptorSet(DescriptorSet&& rhs) noexcept = default;
 DescriptorSet& DescriptorSet::operator=(DescriptorSet&& rhs) noexcept {
     if (this != &rhs) {  // 如果不是自赋值
         /**
-         * 确保我们没有泄漏描述符集句柄
+         * 确保我们没有泄漏描述符堆句柄
          */
         // make sure we're not leaking the descriptor set handle
         assert_invariant(!mDescriptorSetHandle);  // 断言当前句柄为空
         mDescriptors = std::move(rhs.mDescriptors);  // 移动描述符数组
-        mDescriptorSetHandle = std::move(rhs.mDescriptorSetHandle);  // 移动描述符集句柄
+        mDescriptorSetHandle = std::move(rhs.mDescriptorSetHandle);  // 移动描述符堆句柄
         mDirty = rhs.mDirty;  // 复制脏标志
         mValid = rhs.mValid;  // 复制有效标志
         mSetAfterCommitWarning = rhs.mSetAfterCommitWarning;  // 复制提交后设置警告标志
@@ -108,46 +108,46 @@ DescriptorSet& DescriptorSet::operator=(DescriptorSet&& rhs) noexcept {
 }
 
 /**
- * 终止描述符集
+ * 终止描述符堆
  * 
- * 释放描述符集的硬件资源。
+ * 释放描述符堆的硬件资源。
  * 
  * @param driver 驱动 API 引用
  */
 void DescriptorSet::terminate(FEngine::DriverApi& driver) noexcept {
     if (mDescriptorSetHandle) {  // 如果句柄有效
-        driver.destroyDescriptorSet(std::move(mDescriptorSetHandle));  // 销毁描述符集
+        driver.destroyDescriptorSet(std::move(mDescriptorSetHandle));  // 销毁描述符堆
     }
 }
 
 /**
- * 提交描述符集（慢速路径）
+ * 提交描述符堆（慢速路径）
  * 
- * 当描述符集有脏数据时，创建新的描述符集并更新所有描述符。
+ * 当描述符堆有脏数据时，创建新的描述符堆并更新所有描述符。
  * 
- * @param layout 描述符集布局常量引用
+ * @param layout 描述符堆布局常量引用
  * @param driver 驱动 API 引用
  */
 void DescriptorSet::commitSlow(DescriptorSetLayout const& layout,
         FEngine::DriverApi& driver) noexcept {
     mDirty.clear();  // 清除脏标志
     /**
-     * 如果我们有脏的描述符集，
+     * 如果我们有脏的描述符堆，
      * 需要分配一个新的并重置所有描述符
      */
     // if we have a dirty descriptor set,
     // we need to allocate a new one and reset all the descriptors
     if (UTILS_LIKELY(mDescriptorSetHandle)) {  // 如果句柄存在（常见情况）
         /**
-         * 注意：如果描述符集已绑定，这样做会使其悬空。
-         * 如果新的描述符集在稍后某个时刻没有绑定，这可能导致驱动中的释放后使用。
+         * 注意：如果描述符堆已绑定，这样做会使其悬空。
+         * 如果新的描述符堆在稍后某个时刻没有绑定，这可能导致驱动中的释放后使用。
          */
         // note: if the descriptor-set is bound, doing this will essentially make it dangling.
         // This can result in a use-after-free in the driver if the new one isn't bound at some
         // point later.
-        driver.destroyDescriptorSet(mDescriptorSetHandle);  // 销毁旧的描述符集
+        driver.destroyDescriptorSet(mDescriptorSetHandle);  // 销毁旧的描述符堆
     }
-    mDescriptorSetHandle = driver.createDescriptorSet(layout.getHandle(), mName);  // 创建新的描述符集
+    mDescriptorSetHandle = driver.createDescriptorSet(layout.getHandle(), mName);  // 创建新的描述符堆
     /**
      * 更新所有有效的描述符
      */
@@ -181,24 +181,24 @@ void DescriptorSet::commitSlow(DescriptorSetLayout const& layout,
 }
 
 /**
- * 绑定描述符集
+ * 绑定描述符堆
  * 
- * 将描述符集绑定到指定的绑定点（无动态偏移）。
+ * 将描述符堆绑定到指定的绑定点（无动态偏移）。
  * 
  * @param driver 驱动 API 引用
- * @param set 描述符集绑定点
+ * @param set 描述符堆绑定点
  */
 void DescriptorSet::bind(FEngine::DriverApi& driver, DescriptorSetBindingPoints const set) const noexcept {
     bind(driver, set, {});  // 调用带动态偏移的版本（空偏移）
 }
 
 /**
- * 绑定描述符集
+ * 绑定描述符堆
  * 
- * 将描述符集绑定到指定的绑定点，并设置动态偏移。
+ * 将描述符堆绑定到指定的绑定点，并设置动态偏移。
  * 
  * @param driver 驱动 API 引用
- * @param set 描述符集绑定点
+ * @param set 描述符堆绑定点
  * @param dynamicOffsets 动态偏移数组
  */
 void DescriptorSet::bind(FEngine::DriverApi& driver, DescriptorSetBindingPoints const set,
@@ -222,20 +222,20 @@ void DescriptorSet::bind(FEngine::DriverApi& driver, DescriptorSetBindingPoints 
         });
         mSetAfterCommitWarning = true;  // 设置警告标志
     }
-    driver.bindDescriptorSet(mDescriptorSetHandle, +set, std::move(dynamicOffsets));  // 绑定描述符集
+    driver.bindDescriptorSet(mDescriptorSetHandle, +set, std::move(dynamicOffsets));  // 绑定描述符堆
 }
 
 /**
- * 解绑描述符集
+ * 解绑描述符堆
  * 
- * 从指定的绑定点解绑描述符集。
+ * 从指定的绑定点解绑描述符堆。
  * 
  * @param driver 驱动 API 引用
- * @param set 描述符集绑定点
+ * @param set 描述符堆绑定点
  */
 void DescriptorSet::unbind(backend::DriverApi& driver,
         DescriptorSetBindingPoints set) noexcept {
-    driver.bindDescriptorSet({}, +set, {});  // 绑定空描述符集（即解绑）
+    driver.bindDescriptorSet({}, +set, {});  // 绑定空描述符堆（即解绑）
 }
 
 /**
@@ -243,7 +243,7 @@ void DescriptorSet::unbind(backend::DriverApi& driver,
  * 
  * 将缓冲区对象绑定到指定的绑定点。
  * 
- * @param layout 描述符集布局常量引用
+ * @param layout 描述符堆布局常量引用
  * @param binding 绑定点
  * @param boh 缓冲区对象句柄
  * @param offset 偏移量
@@ -276,7 +276,7 @@ void DescriptorSet::setBuffer(DescriptorSetLayout const& layout,
  * 
  * 将纹理和采样器参数绑定到指定的绑定点。
  * 
- * @param layout 描述符集布局常量引用
+ * @param layout 描述符堆布局常量引用
  * @param binding 绑定点
  * @param th 纹理句柄
  * @param params 采样器参数
@@ -323,21 +323,21 @@ void DescriptorSet::setSampler(
 }
 
 /**
- * 复制描述符集
+ * 复制描述符堆
  * 
- * 创建一个新的描述符集，复制当前描述符集的所有描述符。
+ * 创建一个新的描述符堆，复制当前描述符堆的所有描述符。
  * 
- * @param name 新描述符集名称
- * @param layout 描述符集布局常量引用
- * @return 新的描述符集
+ * @param name 新描述符堆名称
+ * @param layout 描述符堆布局常量引用
+ * @return 新的描述符堆
  */
 DescriptorSet DescriptorSet::duplicate(
         StaticString const name, DescriptorSetLayout const& layout) const noexcept {
-    DescriptorSet set{ name, layout };  // 创建新的描述符集
+    DescriptorSet set{ name, layout };  // 创建新的描述符堆
     set.mDescriptors = mDescriptors;  // 使用向量的赋值运算符复制描述符
     set.mDirty = mValid | mDirty;  // 将所有有效描述符标记为脏，以便在提交时更新
     set.mValid = mValid;  // 复制有效标志
-    return set;  // 返回新描述符集
+    return set;  // 返回新描述符堆
 }
 
 /**

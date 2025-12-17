@@ -31,109 +31,245 @@ namespace filament {
 namespace ibl {
 
 /**
- * Generic cubemap class. It handles writing / reading into the 6 faces of a cubemap.
- *
- * Seamless trilinear filtering is handled.
- *
- * This class doesn't own the face data, it's just a "view" on the 6 images.
- *
+ * Cubemap - 立方体贴图类
+ * 
+ * 通用的立方体贴图类，处理立方体贴图6个面的读写操作。
+ * 支持无缝三线性过滤。
+ * 
+ * 注意：此类不拥有面的数据，它只是6个图像的"视图"。
+ * 
  * @see CubemapUtils
- *
  */
 class UTILS_PUBLIC Cubemap {
 public:
 
     /**
-     *  Initialize the cubemap with a given size, but no face is set and no memory is allocated.
-     *
-     *  Usually Cubemaps are created using CubemapUtils.
-     *
+     * 构造函数
+     * 
+     * 使用给定尺寸初始化立方体贴图，但不设置任何面，也不分配内存。
+     * 
+     * 通常使用CubemapUtils创建Cubemap。
+     * 
+     * @param dim 立方体贴图的尺寸（每个面的宽度和高度）
      * @see CubemapUtils
      */
     explicit Cubemap(size_t dim);
 
+    /**
+     * 移动构造函数（默认）
+     */
     Cubemap(Cubemap&&) = default;
+    
+    /**
+     * 移动赋值运算符（默认）
+     */
     Cubemap& operator=(Cubemap&&) = default;
 
+    /**
+     * 析构函数
+     */
     ~Cubemap();
 
-
+    /**
+     * 立方体贴图面枚举
+     * 
+     * 立方体贴图的6个面，按照标准OpenGL立方体贴图布局：
+     * 
+     *            +----+
+     *            | PY |  (上/正Y)
+     *     +----+----+----+----+
+     *     | NX | PZ | PX | NZ |  (左/负X, 后/正Z, 右/正X, 前/负Z)
+     *     +----+----+----+----+
+     *            | NY |  (下/负Y)
+     *            +----+
+     */
     enum class Face : uint8_t {
-        PX = 0,     // left            +----+
-        NX,         // right           | PY |
-        PY,         // bottom     +----+----+----+----+
-        NY,         // top        | NX | PZ | PX | NZ |
-        PZ,         // back       +----+----+----+----+
-        NZ          // front           | NY |
-                    //                 +----+
+        PX = 0,     // 右面（正X）            +----+
+        NX,         // 左面（负X）            | PY |
+        PY,         // 上面（正Y）      +----+----+----+----+
+        NY,         // 下面（负Y）      | NX | PZ | PX | NZ |
+        PZ,         // 后面（正Z）      +----+----+----+----+
+        NZ          // 前面（负Z）            | NY |
+                    //                        +----+
     };
 
+    /**
+     * 纹理元素类型（每个像素为float3，RGB格式）
+     */
     using Texel = filament::math::float3;
 
 
-    //! releases all images and reset the cubemap size
+    /**
+     * 重置立方体贴图尺寸
+     * 
+     * 释放所有图像并重置立方体贴图尺寸。
+     * 
+     * @param dim 新的立方体贴图尺寸
+     */
     void resetDimensions(size_t dim);
 
-    //! assigns an image to a face.
+    /**
+     * 为指定面分配图像
+     * 
+     * 将图像分配给立方体贴图的指定面（不复制数据，只是引用）。
+     * 
+     * @param face 立方体贴图面
+     * @param image 图像对象
+     */
     void setImageForFace(Face face, const Image& image);
 
-    //! retrieves the image attached to a face
+    /**
+     * 获取指定面的图像（常量版本）
+     * 
+     * @param face 立方体贴图面
+     * @return 图像对象的常量引用
+     */
     inline const Image& getImageForFace(Face face) const;
 
-    //! retrieves the image attached to a face
+    /**
+     * 获取指定面的图像（非常量版本）
+     * 
+     * @param face 立方体贴图面
+     * @return 图像对象的引用
+     */
     inline Image& getImageForFace(Face face);
 
-    //! computes the center of a pixel at coordinate x, y
+    /**
+     * 计算像素的中心坐标
+     * 
+     * 将像素坐标转换为像素中心坐标（添加0.5偏移）。
+     * 
+     * @param x 像素X坐标
+     * @param y 像素Y坐标
+     * @return 像素中心坐标（float2）
+     */
     static inline filament::math::float2 center(size_t x, size_t y);
 
-    //! computes a direction vector from a face and a location of the center of pixel in an Image
+    /**
+     * 从面和像素中心位置计算方向向量
+     * 
+     * @param face 立方体贴图面
+     * @param x 像素X坐标
+     * @param y 像素Y坐标
+     * @return 归一化的方向向量（float3）
+     */
     inline filament::math::float3 getDirectionFor(Face face, size_t x, size_t y) const;
 
-    //! computes a direction vector from a face and a location in pixel in an Image
+    /**
+     * 从面和像素位置计算方向向量
+     * 
+     * @param face 立方体贴图面
+     * @param x 像素X坐标（浮点数）
+     * @param y 像素Y坐标（浮点数）
+     * @return 归一化的方向向量（float3）
+     */
     inline filament::math::float3 getDirectionFor(Face face, float x, float y) const;
 
-    //! samples the cubemap at the given direction using nearest neighbor filtering
+    /**
+     * 使用最近邻过滤在给定方向采样立方体贴图
+     * 
+     * @param direction 归一化的方向向量
+     * @return 采样到的纹理元素（常量引用）
+     */
     inline Texel const& sampleAt(const filament::math::float3& direction) const;
 
-    //! samples the cubemap at the given direction using bilinear filtering
+    /**
+     * 使用双线性过滤在给定方向采样立方体贴图
+     * 
+     * @param direction 归一化的方向向量
+     * @return 采样到的纹理元素
+     */
     inline Texel filterAt(const filament::math::float3& direction) const;
 
-    //! samples an image at the given location in pixel using bilinear filtering
+    /**
+     * 使用双线性过滤在图像指定位置采样
+     * 
+     * @param image 图像对象
+     * @param x 采样位置X坐标（浮点数）
+     * @param y 采样位置Y坐标（浮点数）
+     * @return 采样到的纹理元素
+     */
     static Texel filterAt(const Image& image, float x, float y);
-    static Texel filterAtCenter(const Image& image, size_t x, size_t y);
+    
+    /**
+     * 在像素中心位置使用双线性过滤采样图像
+     * 
+     * @param image 图像对象
+     * @param x0 像素X坐标
+     * @param y0 像素Y坐标
+     * @return 采样到的纹理元素（4个相邻像素的平均值）
+     */
+    static Texel filterAtCenter(const Image& image, size_t x0, size_t y0);
 
-    //! samples two cubemaps in a given direction and lerps the result by a given lerp factor
+    /**
+     * 在两个立方体贴图的给定方向采样并线性插值
+     * 
+     * 执行三线性过滤：在两个Mipmap级别之间进行线性插值。
+     * 
+     * @param c0 第一个立方体贴图（较低Mipmap级别）
+     * @param c1 第二个立方体贴图（较高Mipmap级别）
+     * @param lerp 插值因子（0.0 = c0, 1.0 = c1）
+     * @param direction 归一化的方向向量
+     * @return 插值后的纹理元素
+     */
     static Texel trilinearFilterAt(const Cubemap& c0, const Cubemap& c1, float lerp,
             const filament::math::float3& direction);
 
-    //! reads a texel at a given address
+    /**
+     * 从给定地址读取纹理元素（内联函数）
+     * 
+     * @param data 数据指针
+     * @return 纹理元素的常量引用
+     */
     inline static const Texel& sampleAt(void const* data) {
         return *static_cast<Texel const*>(data);
     }
 
-    //! writes a texel at a given address
+    /**
+     * 在给定地址写入纹理元素（内联函数）
+     * 
+     * @param data 数据指针
+     * @param texel 要写入的纹理元素
+     */
     inline static void writeAt(void* data, const Texel& texel) {
         *static_cast<Texel*>(data) = texel;
     }
 
-    //! returns the size of the cubemap in pixels
+    /**
+     * 获取立方体贴图的尺寸
+     * 
+     * @return 立方体贴图的尺寸（像素数）
+     */
     size_t getDimensions() const;
 
     /**
-     * Prepares a cubemap for seamless access to its faces.
-     *
-     * @warning All faces of the cubemap must be backed-up by the same Image, and must already
-     * be spaced by 2 lines/rows.
+     * 准备立方体贴图以实现无缝访问
+     * 
+     * 在面的边缘复制相邻面的数据，使立方体贴图可以在边界处无缝采样。
+     * 
+     * @warning 立方体贴图的所有面必须由同一个Image支持，并且必须已经间隔2行/列。
      */
     void makeSeamless();
 
+    /**
+     * 立方体贴图地址结构体
+     * 
+     * 包含方向向量对应的面和纹理坐标。
+     */
     struct Address {
-        Face face;
-        float s = 0;
-        float t = 0;
+        Face face;      // 立方体贴图面
+        float s = 0;    // 纹理坐标S（U坐标，范围[0,1]）
+        float t = 0;    // 纹理坐标T（V坐标，范围[0,1]）
     };
 
-    //! returns the face and texture coordinates of the given direction
+    /**
+     * 获取给定方向对应的面和纹理坐标
+     * 
+     * 将3D方向向量转换为立方体贴图的面和2D纹理坐标。
+     * 
+     * @param direction 归一化的方向向量
+     * @return 立方体贴图地址（包含面和纹理坐标）
+     */
     static Address getAddressFor(const filament::math::float3& direction);
 
 private:

@@ -964,7 +964,7 @@ public:
     /**
      * 设置帧统一数据
      * 
-     * 将每视图统一缓冲区绑定到后处理描述符集。
+     * 将每视图统一缓冲区绑定到后处理描述符堆。
      * 
      * @param driver 驱动 API 引用
      * @param uniforms 每视图统一缓冲区引用
@@ -973,7 +973,7 @@ public:
             TypedUniformBuffer<PerViewUib>& uniforms) noexcept;
 
     /**
-     * 绑定后处理描述符集
+     * 绑定后处理描述符堆
      * 
      * @param driver 驱动 API 引用
      */
@@ -1066,9 +1066,9 @@ public:
             uint32_t width, uint32_t height) noexcept;
 
     /**
-     * 获取结构描述符集
+     * 获取结构描述符堆
      * 
-     * @return 结构描述符集引用
+     * @return 结构描述符堆引用
      */
     StructureDescriptorSet& getStructureDescriptorSet() const noexcept { return mStructureDescriptorSet; }
 

@@ -33,9 +33,9 @@ class FEngine;
 struct ScreenSpaceReflectionsOptions;
 
 /**
- * SSR 通道描述符集
+ * SSR 通道描述符堆
  * 
- * 管理屏幕空间反射（Screen-Space Reflections，SSR）通道的描述符集。
+ * 管理屏幕空间反射（Screen-Space Reflections，SSR）通道的描述符堆。
  * 用于绑定 SSR 通道所需的统一缓冲区和纹理采样器。
  */
 class SsrPassDescriptorSet {
@@ -49,16 +49,16 @@ public:
     SsrPassDescriptorSet() noexcept;
 
     /**
-     * 初始化描述符集
+     * 初始化描述符堆
      * 
-     * 创建描述符集布局和统一缓冲区。
+     * 创建描述符堆布局和统一缓冲区。
      * 
      * @param engine 引擎引用
      */
     void init(FEngine& engine) noexcept;
 
     /**
-     * 终止描述符集
+     * 终止描述符堆
      * 
      * 释放所有资源。
      * 
@@ -107,9 +107,9 @@ public:
     void commit(FEngine& engine) noexcept;
 
     /**
-     * 绑定描述符集
+     * 绑定描述符堆
      * 
-     * 绑定此描述符集到渲染管线。
+     * 绑定此描述符堆到渲染管线。
      * 
      * @param driver 驱动 API 引用
      */
@@ -117,7 +117,7 @@ public:
     void bind(backend::DriverApi& driver) noexcept;
 
 private:
-    DescriptorSet mDescriptorSet;  // 描述符集
+    DescriptorSet mDescriptorSet;  // 描述符堆
     backend::BufferObjectHandle mShadowUbh;  // 阴影统一缓冲区句柄（虚拟，用于 Vulkan 验证层）
 };
 

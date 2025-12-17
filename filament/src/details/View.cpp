@@ -104,28 +104,28 @@ static constexpr float PID_CONTROLLER_Kd = 0.0f;
 /**
  * 视图构造函数
  * 
- * 初始化视图的所有组件，包括描述符集、Froxelizer、雾实体、立体支持检测等。
+ * 初始化视图的所有组件，包括描述符堆、Froxelizer、雾实体、立体支持检测等。
  * 
  * @param engine 引擎引用
  */
 FView::FView(FEngine& engine)
-        : mCommonRenderableDescriptorSet("mCommonRenderableDescriptorSet",  // 通用可渲染对象描述符集（名称和布局）
+        : mCommonRenderableDescriptorSet("mCommonRenderableDescriptorSet",  // 通用可渲染对象描述符堆（名称和布局）
                 engine.getPerRenderableDescriptorSetLayout()),
           mFroxelizer(engine),  // Froxelizer（用于光照计算）
           mFogEntity(engine.getEntityManager().create()),  // 雾实体
           mIsStereoSupported(engine.getDriverApi().isStereoSupported()),  // 立体渲染支持检测
           mUniforms(engine.getDriverApi()),  // 统一缓冲区管理器
-          mColorPassDescriptorSet{  // 颜色通道描述符集（两个变体：深度和非深度）
+          mColorPassDescriptorSet{  // 颜色通道描述符堆（两个变体：深度和非深度）
                 { engine, false, mUniforms },  // 非深度变体
                 { engine, true, mUniforms } },  // 深度变体
           mSharedState(std::make_shared<SharedState>())  // 共享状态（用于多线程）
 {
     DriverApi& driver = engine.getDriverApi();  // 获取驱动 API
 
-    auto const& layout = engine.getPerRenderableDescriptorSetLayout();  // 获取每个可渲染对象的描述符集布局
+    auto const& layout = engine.getPerRenderableDescriptorSetLayout();  // 获取每个可渲染对象的描述符堆布局
 
     /**
-     * 使用虚拟描述符初始化通用描述符集
+     * 使用虚拟描述符初始化通用描述符堆
      * 
      * 这些虚拟描述符用于可渲染对象，当它们没有骨骼、变形等数据时使用。
      */
@@ -225,12 +225,12 @@ FView::FView(FEngine& engine)
     mDefaultColorGrading = mColorGrading = engine.getDefaultColorGrading();  // 设置默认和当前颜色分级
 
     /**
-     * 初始化颜色通道描述符集
+     * 初始化颜色通道描述符堆
      * 
-     * 为每个变体（深度和非深度）初始化描述符集。
+     * 为每个变体（深度和非深度）初始化描述符堆。
      */
     for (auto&& colorPassDescriptorSet : mColorPassDescriptorSet) {
-        colorPassDescriptorSet.init(  // 初始化描述符集
+        colorPassDescriptorSet.init(  // 初始化描述符堆
                 engine,
                 mLightUbh,  // 光源统一缓冲区句柄
                 mFroxelizer.getRecordBuffer(),  // Froxel 记录缓冲区
@@ -266,7 +266,7 @@ void FView::terminate(FEngine& engine) {
     ShadowMapManager::terminate(engine, mShadowMapManager);  // 终止阴影贴图管理器
     mUniforms.terminate(driver);  // 终止统一缓冲区管理器
     for (auto&& colorPassDescriptorSet : mColorPassDescriptorSet) {
-        colorPassDescriptorSet.terminate(engine.getDescriptorSetLayoutFactory(), driver);  // 终止颜色通道描述符集
+        colorPassDescriptorSet.terminate(engine.getDescriptorSetLayoutFactory(), driver);  // 终止颜色通道描述符堆
     }
     mFroxelizer.terminate(driver);  // 终止 Froxelizer
     mCommonRenderableDescriptorSet.terminate(driver);  // 终止通用可渲染对象描述符集

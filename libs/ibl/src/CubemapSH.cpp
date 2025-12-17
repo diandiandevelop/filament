@@ -41,8 +41,14 @@ namespace ibl {
 // A few useful utilities
 // -----------------------------------------------------------------------------------------------
 
-/*
- * returns n! / d!
+/**
+ * 计算阶乘比 n! / d!
+ * 
+ * 用于计算球谐函数中的归一化因子。
+ * 
+ * @param n 分子阶乘的参数
+ * @param d 分母阶乘的参数（默认为1）
+ * @return n! / d! 的结果
  */
 static constexpr float factorial(size_t n, size_t d = 1) {
    d = std::max(size_t(1), d);
@@ -50,11 +56,14 @@ static constexpr float factorial(size_t n, size_t d = 1) {
    float r = 1.0;
    if (n == d) {
        // intentionally left blank
+       // 如果n == d，结果为1
    } else if (n > d) {
+       // 计算 n * (n-1) * ... * (d+1)
        for ( ; n>d ; n--) {
            r *= n;
        }
    } else {
+       // 计算 d * (d-1) * ... * (n+1)，然后取倒数
        for ( ; d>n ; d--) {
            r *= d;
        }
@@ -65,21 +74,43 @@ static constexpr float factorial(size_t n, size_t d = 1) {
 
 // -----------------------------------------------------------------------------------------------
 
-/*
- * SH scaling factors:
- *  returns sqrt((2*l + 1) / 4*pi) * sqrt( (l-|m|)! / (l+|m|)! )
+/**
+ * 计算球谐函数缩放因子 K(m,l) 实现
+ * 
+ * 返回 sqrt((2*l + 1) / 4*pi) * sqrt( (l-|m|)! / (l+|m|)! )
+ * 
+ * 这是球谐函数归一化因子，用于确保球谐基函数的正交性。
+ * 
+ * @param m 球谐函数的m参数（方位角阶数）
+ * @param l 球谐函数的l参数（球面阶数）
+ * @return 缩放因子
  */
 float CubemapSH::Kml(ssize_t m, size_t l) {
     m = m < 0 ? -m : m;  // abs() is not constexpr
+    // 计算 (2*l + 1) * (l-|m|)! / (l+|m|)!
     const float K = (2 * l + 1) * factorial(size_t(l - m), size_t(l + m));
+    // 返回 sqrt(K) / sqrt(4*pi) = sqrt(K) * sqrt(1/(4*pi))
     return std::sqrt(K) * (F_2_SQRTPI * 0.25);
 }
 
+/**
+ * 计算所有球谐系数的缩放因子实现
+ * 
+ * 执行步骤：
+ * 1. 为每个球谐系数创建缩放因子数组
+ * 2. 对于m=0的系数，直接使用Kml(0, l)
+ * 3. 对于m!=0的系数，使用F_SQRT2 * Kml(m, l)（因为cos和sin项需要额外的sqrt(2)因子）
+ * 
+ * @param numBands 球谐函数的频带数
+ * @return 缩放因子数组（大小为numBands * numBands）
+ */
 std::vector<float> CubemapSH::Ki(size_t numBands) {
     const size_t numCoefs = numBands * numBands;
     std::vector<float> K(numCoefs);
     for (size_t l = 0; l < numBands; l++) {
+        // m=0的系数
         K[SHindex(0, l)] = Kml(0, l);
+        // m!=0的系数（正负m共享相同的缩放因子）
         for (size_t m = 1; m <= l; m++) {
             K[SHindex(m, l)] =
             K[SHindex(-m, l)] = F_SQRT2 * Kml(m, l);
@@ -88,26 +119,51 @@ std::vector<float> CubemapSH::Ki(size_t numBands) {
     return K;
 }
 
-// < cos(theta) > SH coefficients pre-multiplied by 1 / K(0,l)
+/**
+ * 计算截断余弦函数的球谐系数实现
+ * 
+ * 计算 < cos(theta) > 的球谐系数，预乘以 1 / K(0,l)。
+ * 
+ * 用于计算环境光照的漫反射部分。
+ * 
+ * @param l 球谐函数的l参数（球面阶数）
+ * @return 截断余弦的球谐系数
+ */
 constexpr float CubemapSH::computeTruncatedCosSh(size_t l) {
     if (l == 0) {
         return F_PI;
     } else if (l == 1) {
         return 2 * F_PI / 3;
     } else if (l & 1u) {
+        // 奇数l的系数为0
         return 0;
     }
+    // 偶数l的计算
     const size_t l_2 = l / 2;
     float A0 = ((l_2 & 1u) ? 1.0f : -1.0f) / ((l + 2) * (l - 1));
     float A1 = factorial(l, l_2) / (factorial(l_2) * (1 << l));
     return 2 * F_PI * A0 * A1;
 }
 
-/*
- * Calculates non-normalized SH bases, i.e.:
- *  m > 0, cos(m*phi)   * P(m,l)
- *  m < 0, sin(|m|*phi) * P(|m|,l)
- *  m = 0, P(0,l)
+/**
+ * 计算非归一化球谐基函数实现
+ * 
+ * 计算球谐基函数的值：
+ *  - m > 0: cos(m*phi) * P(m,l)
+ *  - m < 0: sin(|m|*phi) * P(|m|,l)
+ *  - m = 0: P(0,l)
+ * 
+ * 执行步骤：
+ * 1. 使用递归计算关联勒让德多项式 P(m,l)
+ * 2. 使用递归计算 cos(m*phi) 和 sin(m*phi)
+ * 3. 组合得到球谐基函数值
+ * 
+ * 注意：为了数值稳定性，计算过程中移除了 sin(theta)^|m| 因子，
+ * 然后在最后通过 cos(m*phi) 和 sin(m*phi) 递归进行修正。
+ * 
+ * @param SHb 输出的球谐基函数值数组（会被修改）
+ * @param numBands 球谐函数的频带数
+ * @param s 归一化的3D方向向量 (x, y, z) = (sin(theta)*cos(phi), sin(theta)*sin(phi), cos(theta))
  */
 void CubemapSH::computeShBasis(
         float* UTILS_RESTRICT SHb,
@@ -206,8 +262,20 @@ void CubemapSH::computeShBasis(
 }
 
 
-/*
- * utilities to rotate very low order spherical harmonics (up to 3rd band)
+/**
+ * 旋转1阶球谐函数实现
+ * 
+ * 将1阶球谐函数系数（3个系数）通过旋转矩阵M进行旋转。
+ * 用于在环境光照旋转时更新球谐系数。
+ * 
+ * 执行步骤：
+ * 1. 将旋转矩阵M应用到标准基向量N0, N1, N2
+ * 2. 将旋转后的基向量投影到球谐空间
+ * 3. 使用预计算的逆矩阵变换球谐系数
+ * 
+ * @param band1 1阶球谐函数系数（3个系数）
+ * @param M 旋转矩阵
+ * @return 旋转后的1阶球谐函数系数
  */
 float3 CubemapSH::rotateShericalHarmonicBand1(float3 band1, mat3f const& M) {
 
@@ -244,6 +312,21 @@ float3 CubemapSH::rotateShericalHarmonicBand1(float3 band1, mat3f const& M) {
     return R1OverK * (invA1TimesK * band1);
 }
 
+/**
+ * 旋转2阶球谐函数实现
+ * 
+ * 将2阶球谐函数系数（5个系数）通过旋转矩阵M进行旋转。
+ * 用于在环境光照旋转时更新球谐系数。
+ * 
+ * 执行步骤：
+ * 1. 将旋转矩阵M应用到5个标准基向量
+ * 2. 将旋转后的基向量投影到球谐空间
+ * 3. 使用预计算的逆矩阵变换球谐系数
+ * 
+ * @param band2 2阶球谐函数系数（5个系数）
+ * @param M 旋转矩阵
+ * @return 旋转后的2阶球谐函数系数
+ */
 CubemapSH::float5 CubemapSH::rotateShericalHarmonicBand2(float5 const& band2, mat3f const& M) {
     constexpr float M_SQRT_3  = 1.7320508076f;
     constexpr float n = F_SQRT1_2;
@@ -299,38 +382,69 @@ CubemapSH::float5 CubemapSH::rotateShericalHarmonicBand2(float5 const& band2, ma
     return result;
 }
 
-/*
- * SH from environment with high dynamic range (or high frequencies -- high dynamic range creates
- * high frequencies) exhibit "ringing" and negative values when reconstructed.
- * To mitigate this, we need to low-pass the input image -- or equivalently window the SH by
- * coefficient that tapper towards zero with the band.
- *
- * We use ideas and techniques from
- *    Stupid Spherical Harmonics (SH)
- *    Deringing Spherical Harmonics
- * by Peter-Pike Sloan
+/**
+ * Sinc窗口函数实现
+ * 
+ * 用于减少球谐函数重建时的"振铃"（ringing）和负值问题。
+ * 高动态范围环境贴图（或高频内容）在重建时会出现振铃和负值。
+ * 为了缓解这个问题，需要对输入图像进行低通滤波，或者等价地
+ * 对球谐系数应用窗口函数，使系数随频带数逐渐衰减到零。
+ * 
+ * 参考：
+ * - "Stupid Spherical Harmonics (SH)"
+ * - "Deringing Spherical Harmonics"
+ * 作者：Peter-Pike Sloan
  * https://www.ppsloan.org/publications/shdering.pdf
- *
+ * 
+ * 执行步骤：
+ * 1. l=0时返回1（DC分量不受影响）
+ * 2. l>=w时返回0（完全衰减）
+ * 3. 否则计算sinc窗口值并取4次方（相当于应用4次滤波器）
+ * 
+ * @param l 球谐函数的l参数（球面阶数）
+ * @param w 窗口大小（频带单位）
+ * @return 窗口系数
  */
 float CubemapSH::sincWindow(size_t l, float w) {
     if (l == 0) {
-        return 1.0f;
+        return 1.0f;  // DC分量不受影响
     } else if (l >= w) {
-        return 0.0f;
+        return 0.0f;  // 完全衰减
     }
 
     // we use a sinc window scaled to the desired window size in bands units
     // a sinc window only has zonal harmonics
+    // 我们使用缩放到所需窗口大小的sinc窗口（以频带为单位）
+    // sinc窗口只有带状谐波
     float x = (float(F_PI) * l) / w;
-    x = std::sin(x) / x;
+    x = std::sin(x) / x;  // sinc函数
 
     // The convolution of a SH function f and a ZH function h is just the product of both
     // scaled by 1 / K(0,l) -- the window coefficients include this scale factor.
+    // SH函数f和ZH函数h的卷积就是两者的乘积，缩放因子为1/K(0,l)
+    // ——窗口系数包含此缩放因子
 
     // Taking the window to power N is equivalent to applying the filter N times
+    // 将窗口取N次方等价于应用N次滤波器
     return std::pow(x, 4);
 }
 
+/**
+ * 对球谐函数应用窗口函数实现
+ * 
+ * 用于减少球谐函数重建时的振铃和负值问题。
+ * 如果cutoff为0，则自动计算合适的截止频带。
+ * 
+ * 执行步骤：
+ * 1. 如果cutoff为0（自动窗口）：
+ *    - 对每个颜色通道分别处理
+ *    - 使用二分查找找到使最小值为非负的最大截止频带
+ * 2. 对所有球谐系数应用sinc窗口函数
+ * 
+ * @param sh 球谐函数系数数组（会被修改）
+ * @param numBands 球谐函数的频带数
+ * @param cutoff 截止频带（0表示自动计算）
+ */
 void CubemapSH::windowSH(std::unique_ptr<float3[]>& sh, size_t numBands, float cutoff) {
 
     using SH3 = std::array<float, 9>;
@@ -508,11 +622,32 @@ void CubemapSH::windowSH(std::unique_ptr<float3[]>& sh, size_t numBands, float c
     }
 }
 
+/**
+ * 从立方体贴图计算球谐函数系数实现
+ * 
+ * 执行步骤：
+ * 1. 对立方体贴图的每个像素：
+ *    - 获取像素对应的3D方向向量
+ *    - 采样颜色值
+ *    - 乘以立体角（重要性采样权重）
+ *    - 计算球谐基函数值
+ *    - 累加到球谐系数中
+ * 2. 预计算缩放因子K
+ * 3. 如果计算辐照度，应用截断余弦函数
+ * 4. 应用所有缩放因子
+ * 
+ * @param js 作业系统
+ * @param cm 源立方体贴图
+ * @param numBands 球谐函数的频带数
+ * @param irradiance 是否计算辐照度（true）或环境贴图（false）
+ * @return 球谐函数系数数组
+ */
 std::unique_ptr<float3[]> CubemapSH::computeSH(JobSystem& js, const Cubemap& cm, size_t numBands, bool irradiance) {
 
     const size_t numCoefs = numBands * numBands;
     std::unique_ptr<float3[]> SH(new float3[numCoefs]{});
 
+    // 状态结构体：存储每个线程的中间结果
     struct State {
         State() = default;
         explicit State(size_t numCoefs) : numCoefs(numCoefs) { }
@@ -523,40 +658,48 @@ std::unique_ptr<float3[]> CubemapSH::computeSH(JobSystem& js, const Cubemap& cm,
             return *this;
         }
         size_t numCoefs = 0;
-        std::unique_ptr<float3[]> SH;
-        std::unique_ptr<float[]> SHb;
+        std::unique_ptr<float3[]> SH;      // 球谐系数累加器
+        std::unique_ptr<float[]> SHb;       // 球谐基函数值
     } prototype(numCoefs);
 
+    // 使用多线程处理立方体贴图
     CubemapUtils::process<State>(const_cast<Cubemap&>(cm), js,
             [&](State& state, size_t y, Cubemap::Face f, Cubemap::Texel const* data, size_t dim) {
         for (size_t x=0 ; x<dim ; ++x, ++data) {
 
-            float3 s(cm.getDirectionFor(f, x, y));
+            float3 s(cm.getDirectionFor(f, x, y));  // 获取3D方向向量
 
             // sample a color
+            // 采样颜色值
             float3 color(Cubemap::sampleAt(data));
 
             // take solid angle into account
+            // 考虑立体角（重要性采样权重）
             color *= CubemapUtils::solidAngle(dim, x, y);
 
+            // 计算球谐基函数值
             computeShBasis(state.SHb.get(), numBands, s);
 
             // apply coefficients to the sampled color
+            // 将系数应用到采样的颜色
             for (size_t i=0 ; i<numCoefs ; i++) {
                 state.SH[i] += color * state.SHb[i];
             }
         }
     },
     [&](State& state) {
+        // 归约：合并所有线程的结果
         for (size_t i=0 ; i<numCoefs ; i++) {
             SH[i] += state.SH[i];
         }
     }, prototype);
 
     // precompute the scaling factor K
+    // 预计算缩放因子K
     std::vector<float> K = Ki(numBands);
 
     // apply truncated cos (irradiance)
+    // 应用截断余弦（辐照度）
     if (irradiance) {
         for (size_t l = 0; l < numBands; l++) {
             const float truncatedCosSh = computeTruncatedCosSh(size_t(l));
@@ -569,24 +712,45 @@ std::unique_ptr<float3[]> CubemapSH::computeSH(JobSystem& js, const Cubemap& cm,
     }
 
     // apply all the scale factors
+    // 应用所有缩放因子
     for (size_t i = 0; i < numCoefs; i++) {
         SH[i] *= K[i];
     }
     return SH;
 }
 
+/**
+ * 从球谐函数系数渲染立方体贴图实现
+ * 
+ * 执行步骤：
+ * 1. 预计算缩放因子K
+ * 2. 对立方体贴图的每个像素：
+ *    - 获取像素对应的3D方向向量
+ *    - 计算球谐基函数值
+ *    - 使用球谐系数重建颜色值
+ *    - 写入立方体贴图
+ * 
+ * @param js 作业系统
+ * @param cm 目标立方体贴图（会被修改）
+ * @param sh 球谐函数系数数组
+ * @param numBands 球谐函数的频带数
+ */
 void CubemapSH::renderSH(JobSystem& js, Cubemap& cm,
         const std::unique_ptr<float3[]>& sh, size_t numBands) {
     const size_t numCoefs = numBands * numBands;
 
     // precompute the scaling factor K
+    // 预计算缩放因子K
     const std::vector<float> K = Ki(numBands);
 
+    // 状态结构体：用于调试（计算最小值）
     struct State {
         // we compute the min just for debugging -- it's not actually needed.
+        // 我们计算最小值仅用于调试——实际上不需要
         float3 min = std::numeric_limits<float>::max();
     } prototype;
 
+    // 使用多线程处理立方体贴图
     CubemapUtils::process<State>(cm, js,
             [&](State& state, size_t y,
                     Cubemap::Face f, Cubemap::Texel* data, size_t dim) {
@@ -609,10 +773,23 @@ void CubemapSH::renderSH(JobSystem& js, Cubemap& cm,
     //slog.d << prototype.min << io::endl;
 }
 
-/*
- * This computes the 3-bands SH coefficients of the Cubemap convoluted by the
- * truncated cos(theta) (i.e.: saturate(s.z)), pre-scaled by the reconstruction
- * factors.
+/**
+ * 为着色器预处理球谐函数系数实现
+ * 
+ * 计算立方体贴图与截断余弦函数（即 saturate(s.z)）卷积的3阶球谐系数，
+ * 并预乘以重建因子。
+ * 
+ * 执行步骤：
+ * 1. 定义球谐函数的多项式形式系数A[i]
+ * 2. 将球谐系数乘以A[i]和Lambertian漫反射BRDF（1/π）
+ * 
+ * 这样在着色器中可以直接使用多项式形式计算，无需额外的数学运算：
+ * c += sh[0] * A[0];
+ * c += sh[1] * A[1] * s.y;
+ * c += sh[2] * A[2] * s.z;
+ * ...
+ * 
+ * @param SH 球谐函数系数数组（会被修改）
  */
 void CubemapSH::preprocessSHForShader(std::unique_ptr<filament::math::float3[]>& SH) {
     constexpr size_t numBands = 3;
@@ -657,25 +834,42 @@ void CubemapSH::preprocessSHForShader(std::unique_ptr<filament::math::float3[]>&
     }
 }
 
+/**
+ * 使用预缩放球谐系数渲染3阶球谐立方体贴图实现
+ * 
+ * 执行步骤：
+ * 1. 对立方体贴图的每个像素：
+ *    - 获取像素对应的3D方向向量
+ *    - 使用多项式形式直接计算球谐函数值（系数已预缩放）
+ *    - 写入立方体贴图
+ * 
+ * 使用预缩放的球谐系数，可以直接使用多项式形式计算，无需额外的缩放因子。
+ * 这比renderSH更高效，因为系数已经包含了重建因子和Lambertian BRDF。
+ * 
+ * @param js 作业系统
+ * @param cm 目标立方体贴图（会被修改）
+ * @param sh 预缩放的3阶球谐函数系数数组（9个系数）
+ */
 void CubemapSH::renderPreScaledSH3Bands(JobSystem& js,
         Cubemap& cm, const std::unique_ptr<filament::math::float3[]>& sh) {
     CubemapUtils::process<CubemapUtils::EmptyState>(cm, js,
             [&](CubemapUtils::EmptyState&, size_t y, Cubemap::Face f, Cubemap::Texel* data,
                     size_t dim) {
                 for (size_t x = 0; x < dim; ++x, ++data) {
-                    float3 s(cm.getDirectionFor(f, x, y));
+                    float3 s(cm.getDirectionFor(f, x, y));  // 获取3D方向向量
                     float3 c = 0;
-                    c += sh[0];
+                    // 使用多项式形式计算球谐函数值（系数已预缩放）
+                    c += sh[0];  // L0,0
 
-                    c += sh[1] * s.y;
-                    c += sh[2] * s.z;
-                    c += sh[3] * s.x;
+                    c += sh[1] * s.y;  // L1,-1
+                    c += sh[2] * s.z;  // L1,0
+                    c += sh[3] * s.x;  // L1,1
 
-                    c += sh[4] * s.y * s.x;
-                    c += sh[5] * s.y * s.z;
-                    c += sh[6] * (3 * s.z * s.z - 1);
-                    c += sh[7] * s.z * s.x;
-                    c += sh[8] * (s.x * s.x - s.y * s.y);
+                    c += sh[4] * s.y * s.x;  // L2,-2
+                    c += sh[5] * s.y * s.z;  // L2,-1
+                    c += sh[6] * (3 * s.z * s.z - 1);  // L2,0
+                    c += sh[7] * s.z * s.x;  // L2,1
+                    c += sh[8] * (s.x * s.x - s.y * s.y);  // L2,2
                     Cubemap::writeAt(data, Cubemap::Texel(c));
                 }
             });
@@ -683,10 +877,23 @@ void CubemapSH::renderPreScaledSH3Bands(JobSystem& js,
 
 // -----------------------------------------------------------------------------------------------
 // Only used for debugging
+// 仅用于调试
 // -----------------------------------------------------------------------------------------------
 
+/**
+ * 计算关联勒让德多项式实现（仅用于调试）
+ * 
+ * 计算关联勒让德多项式 P(l,m,x) 在 x 处的值。
+ * 使用递归公式计算。
+ * 
+ * @param l 球面阶数
+ * @param m 方位角阶数
+ * @param x 输入值（通常是cos(theta)）
+ * @return 关联勒让德多项式的值
+ */
 float UTILS_UNUSED CubemapSH::Legendre(ssize_t l, ssize_t m, float x) {
     // evaluate an Associated Legendre Polynomial P(l,m,x) at x
+    // 计算关联勒让德多项式 P(l,m,x) 在 x 处的值
     float pmm = 1.0;
     if (m > 0) {
         float somx2 = sqrt((1.0f - x) * (1.0f + x));
@@ -710,7 +917,19 @@ float UTILS_UNUSED CubemapSH::Legendre(ssize_t l, ssize_t m, float x) {
     return pll;
 }
 
+/**
+ * 计算球谐基函数值实现（仅用于调试）
+ * 
+ * 直接计算球谐基函数在给定方向上的值。
+ * 仅支持前3阶（l=0,1,2）。
+ * 
+ * @param l 球面阶数
+ * @param m 方位角阶数
+ * @param d 归一化的3D方向向量
+ * @return 球谐基函数值
+ */
 // Only used for debugging
+// 仅用于调试
 float UTILS_UNUSED CubemapSH::TSH(int l, int m, const float3& d) {
     if (l==0 && m==0) {
         return 1 / (2*sqrt(F_PI));
@@ -734,6 +953,16 @@ float UTILS_UNUSED CubemapSH::TSH(int l, int m, const float3& d) {
     return 0;
 }
 
+/**
+ * 打印球谐基函数的多项式形式实现（仅用于调试）
+ * 
+ * 将球谐基函数的多项式形式输出到流中，用于代码生成或验证。
+ * 仅支持前3阶（l=0,1,2）。
+ * 
+ * @param out 输出流
+ * @param l 球面阶数
+ * @param m 方位角阶数
+ */
 void UTILS_UNUSED CubemapSH::printShBase(std::ostream& out, int l, int m) {
     if (l<3 && std::abs(m) <= l) {
         const char* d = nullptr;

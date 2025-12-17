@@ -148,7 +148,7 @@ FMaterialInstance::FMaterialInstance(FEngine& engine, FMaterial const* material,
  * 功能：
  * - 复制所有材质参数（uniform 和 sampler）
  * - 复制渲染状态（剔除、深度、模板等）
- * - 创建新的描述符集（复制描述符集布局）
+ * - 创建新的描述符堆（复制描述符堆布局）
  * - 分配新的 UBO（独立模式）或注册到 UBO 管理器（批处理模式）
  */
 FMaterialInstance::FMaterialInstance(FEngine& engine,
@@ -156,7 +156,7 @@ FMaterialInstance::FMaterialInstance(FEngine& engine,
         : mMaterial(other->mMaterial),
           // 复制纹理参数映射（从绑定点到纹理和采样器参数）
           mTextureParameters(other->mTextureParameters),
-          // 复制描述符集（创建新的描述符集，但使用相同的布局）
+          // 复制描述符堆（创建新的描述符堆，但使用相同的布局）
           mDescriptorSet(other->mDescriptorSet.duplicate(
                 "MaterialInstance", mMaterial->getDescriptorSetLayout())),
           mPolygonOffset(other->mPolygonOffset),
@@ -193,7 +193,7 @@ FMaterialInstance::FMaterialInstance(FEngine& engine,
         // 独立 UBO 模式：立即创建动态 BufferObject（因为可能需要修改）
         mUboData = driver.createBufferObject(mUniforms.getSize(), BufferObjectBinding::UNIFORM,
                 BufferUsage::DYNAMIC, ImmutableCString{ material->getName().c_str_safe() });
-        // 设置 UBO 到描述符集，总是使用 descriptor 0
+        // 设置 UBO 到描述符堆，总是使用 descriptor 0
         mDescriptorSet.setBuffer(material->getDescriptorSetLayout(),
                 0, std::get<Handle<HwBufferObject>>(mUboData), 0, mUniforms.getSize());
     }
@@ -218,7 +218,7 @@ FMaterialInstance::FMaterialInstance(FEngine& engine,
     mMaterialSortingKey = RenderPass::makeMaterialSortingKey(
             material->getId(), material->generateMaterialInstanceId());
 
-    // 如果原始描述符集已经提交，副本也需要提交
+    // 如果原始描述符堆已经提交，副本也需要提交
     // 这确保纹理参数等已正确设置
     if (!mUseUboBatching && other->mDescriptorSet.getHandle()) {
         mDescriptorSet.commitSlow(mMaterial->getDescriptorSetLayout(), driver);
@@ -254,13 +254,13 @@ FMaterialInstance::~FMaterialInstance() noexcept = default;
  * @param engine 引擎引用
  * 
  * 功能：
- * - 销毁描述符集
+ * - 销毁描述符堆
  * - 从 UBO 管理器中注销（如果使用批处理）
  * - 销毁独立的 UBO（如果使用独立模式）
  */
 void FMaterialInstance::terminate(FEngine& engine) {
     FEngine::DriverApi& driver = engine.getDriverApi();
-    // 销毁描述符集（释放所有绑定的资源）
+    // 销毁描述符堆（释放所有绑定的资源）
     mDescriptorSet.terminate(driver);
     if (mUseUboBatching) {
         // 从 UBO 管理器中注销，释放分配的槽位
@@ -354,14 +354,14 @@ void FMaterialInstance::commit(FEngine::DriverApi& driver, UboManager* uboManage
  * @param texture 纹理句柄（硬件句柄）
  * @param params 采样器参数
  * 
- * 功能：直接设置纹理和采样器到描述符集，用于内部调用。
+ * 功能：直接设置纹理和采样器到描述符堆，用于内部调用。
  */
 void FMaterialInstance::setParameter(std::string_view const name,
         Handle<HwTexture> texture, SamplerParams const params) {
     // 获取采样器的绑定索引
     auto const binding = mMaterial->getSamplerBinding(name);
 
-    // 设置采样器到描述符集
+    // 设置采样器到描述符堆
     mDescriptorSet.setSampler(mMaterial->getDescriptorSetLayout(),
         binding, texture, params);
 }
@@ -431,7 +431,7 @@ void FMaterialInstance::setParameterImpl(std::string_view const name,
         // 这允许纹理在提交之前更新其句柄（例如外部纹理、流式纹理）
         mTextureParameters[binding] = { texture, sampler.getSamplerParams() };
     } else {
-        // 固定纹理句柄：立即绑定到描述符集
+        // 固定纹理句柄：立即绑定到描述符堆
         // 确保从 mTextureParameters 中删除此绑定，因为它不会在 commit() 时更新
         mTextureParameters.erase(binding);
 
@@ -441,7 +441,7 @@ void FMaterialInstance::setParameterImpl(std::string_view const name,
             handle = texture->getHwHandleForSampling();
             assert_invariant(handle == texture->getHwHandle());
         }
-        // 立即设置采样器到描述符集
+        // 立即设置采样器到描述符堆
         mDescriptorSet.setSampler(mMaterial->getDescriptorSetLayout(),
             binding, handle, sampler.getSamplerParams());
     }
@@ -633,7 +633,7 @@ void FMaterialInstance::use(FEngine::DriverApi& driver, Variant variant) const {
  * 
  * 功能：
  * - 由 UboManager 调用，为材质实例分配 UBO 批处理槽位
- * - 设置描述符集的 UBO 绑定
+ * - 设置描述符堆的 UBO 绑定
  * - 偏移量存储在 mUboOffset 中，用于动态偏移绑定
  */
 void FMaterialInstance::assignUboAllocation(

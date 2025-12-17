@@ -1795,22 +1795,22 @@ private:
     HwVertexBufferInfoFactory mHwVertexBufferInfoFactory;
     
     /**
-     * 硬件描述符集布局工厂
+     * 硬件描述符堆布局工厂
      */
     HwDescriptorSetLayoutFactory mHwDescriptorSetLayoutFactory;
     
     /**
-     * 每视图描述符集布局（深度变体）
+     * 每视图描述符堆布局（深度变体）
      */
     DescriptorSetLayout mPerViewDescriptorSetLayoutDepthVariant;
     
     /**
-     * 每视图描述符集布局（SSR 变体）
+     * 每视图描述符堆布局（SSR 变体）
      */
     DescriptorSetLayout mPerViewDescriptorSetLayoutSsrVariant;
     
     /**
-     * 每可渲染对象描述符集布局
+     * 每可渲染对象描述符堆布局
      */
     DescriptorSetLayout mPerRenderableDescriptorSetLayout;
 

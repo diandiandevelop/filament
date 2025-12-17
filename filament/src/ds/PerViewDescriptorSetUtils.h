@@ -32,10 +32,10 @@ class FEngine;
 struct CameraInfo;
 
 /**
- * 每视图描述符集工具类
+ * 每视图描述符堆工具类
  * 
  * 提供用于准备每视图统一数据的静态工具方法。
- * 这些方法可以被不同的描述符集类（如 ColorPassDescriptorSet、
+ * 这些方法可以被不同的描述符堆类（如 ColorPassDescriptorSet、
  * ShadowMapDescriptorSet、StructureDescriptorSet）共享使用。
  */
 class PerViewDescriptorSetUtils {

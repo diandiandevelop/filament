@@ -39,7 +39,7 @@ class FEngine;
 class LightManager;
 
 /**
- * 阴影贴图描述符集
+ * 阴影贴图描述符堆
  * 
  * 管理生成阴影贴图所需的 UBO。内部只持有 `PerViewUniform` UBO 句柄，
  * 但不保留任何影子副本，而是直接将数据写入 CommandStream，
@@ -76,7 +76,7 @@ public:
     explicit ShadowMapDescriptorSet(FEngine& engine) noexcept;
 
     /**
-     * 终止描述符集
+     * 终止描述符堆
      * 
      * 释放所有资源。
      * 
@@ -180,7 +180,7 @@ public:
     void commit(Transaction& transaction, FEngine& engine, backend::DriverApi& driver) noexcept;
 
     /**
-     * 绑定描述符集
+     * 绑定描述符堆
      * 
      * 绑定此 UBO 到渲染管线。
      * 
@@ -200,7 +200,7 @@ private:
      */
     static PerViewUib& edit(Transaction const& transaction) noexcept;
     backend::Handle<backend::HwBufferObject> mUniformBufferHandle;  // 统一缓冲区对象句柄
-    DescriptorSet mDescriptorSet;  // 描述符集
+    DescriptorSet mDescriptorSet;  // 描述符堆
 };
 
 } // namespace filament

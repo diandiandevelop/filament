@@ -24,27 +24,51 @@
 
 namespace filament::backend {
 
+/**
+ * VulkanBuffer - 高层 GPU 缓冲区封装
+ *
+ * 该类持有一个底层的 `VulkanGpuBuffer` 指针，并在析构时通过回调将其归还给对应的池（Pool），
+ * 便于实现缓冲区的重用（避免频繁创建 / 销毁 VkBuffer）。
+ */
 class VulkanBuffer : public fvkmemory::Resource {
 public:
     // Because we need to recycle the unused `VulkanGpuBuffer`, we allow for a callback that the
     // "Pool" can use to acquire the buffer back.
+    // 由于需要回收未使用的 `VulkanGpuBuffer`，这里允许传入一个回调供池（Pool）将缓冲区取回。
     using OnRecycle = std::function<void(VulkanGpuBuffer const*)>;
 
+    /**
+     * 构造函数
+     *
+     * @param gpuBuffer   底层 GPU 缓冲区指针（由缓存 / 池创建并管理）
+     * @param onRecycleFn 在本对象析构时调用的回调，用于将 gpuBuffer 归还给池
+     */
     VulkanBuffer(VulkanGpuBuffer const* gpuBuffer, OnRecycle&& onRecycleFn)
         : mGpuBuffer(gpuBuffer),
           mOnRecycleFn(onRecycleFn) {}
 
+    /**
+     * 析构函数
+     *
+     * 如果提供了回调函数，则在析构时调用回调，将底层 `VulkanGpuBuffer` 交还给池，
+     * 从而实现缓冲区的重用。
+     */
     ~VulkanBuffer() {
         if (mOnRecycleFn) {
             mOnRecycleFn(mGpuBuffer);
         }
     }
 
+    /**
+     * 获取底层 GPU 缓冲区指针
+     *
+     * @return 指向 `VulkanGpuBuffer` 的常量指针
+     */
     VulkanGpuBuffer const* getGpuBuffer() const { return mGpuBuffer; }
 
 private:
-    VulkanGpuBuffer const* mGpuBuffer;
-    OnRecycle mOnRecycleFn;
+    VulkanGpuBuffer const* mGpuBuffer;  // 实际持有的 GPU 缓冲区（VkBuffer + 分配信息）
+    OnRecycle mOnRecycleFn;             // 回调：在析构时用于回收 GPU 缓冲区
 };
 
 }// namespace filament::backend

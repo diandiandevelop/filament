@@ -37,9 +37,9 @@ class DescriptorSetLayout;
 struct CameraInfo;
 
 /**
- * 结构描述符集
+ * 结构描述符堆
  * 
- * 管理结构相关通道（如 SSAO、SSR 等）的每视图统一缓冲区（UBO）和描述符集。
+ * 管理结构相关通道（如 SSAO、SSR 等）的每视图统一缓冲区（UBO）和描述符堆。
  * 用于存储和更新结构通道所需的每视图统一数据。
  */
 class StructureDescriptorSet {
@@ -55,16 +55,16 @@ public:
     ~StructureDescriptorSet() noexcept;
 
     /**
-     * 初始化描述符集
+     * 初始化描述符堆
      * 
-     * 创建描述符集布局和统一缓冲区。
+     * 创建描述符堆布局和统一缓冲区。
      * 
      * @param engine 引擎引用
      */
     void init(FEngine& engine) noexcept;
 
     /**
-     * 终止描述符集
+     * 终止描述符堆
      * 
      * 释放所有资源。
      * 
@@ -73,9 +73,9 @@ public:
     void terminate(backend::DriverApi& driver);
 
     /**
-     * 绑定描述符集
+     * 绑定描述符堆
      * 
-     * 如果需要则提交 UBO，并绑定描述符集。
+     * 如果需要则提交 UBO，并绑定描述符堆。
      * 
      * @param driver 驱动 API 引用
      */
@@ -138,8 +138,8 @@ public:
     void prepareMaterialGlobals(std::array<math::float4, 4> const& materialGlobals) noexcept;
 
 private:
-    DescriptorSetLayout const* mDescriptorSetLayout = nullptr;  // 描述符集布局指针
-    mutable DescriptorSet mDescriptorSet;  // 描述符集（mutable 因为 bind 是 const）
+    DescriptorSetLayout const* mDescriptorSetLayout = nullptr;  // 描述符堆布局指针
+    mutable DescriptorSet mDescriptorSet;  // 描述符堆（mutable 因为 bind 是 const）
     TypedUniformBuffer<PerViewUib> mUniforms;  // 每视图统一缓冲区
 };
 

@@ -120,7 +120,7 @@ void FRenderer::renderInternal(FView const* view, bool flush) {
 2. **可见性剔除**：剔除不可见的渲染对象
 3. **光照准备**：Froxelization（点光源剔除）
 4. **UBO 更新**：更新 Uniform Buffer 数据
-5. **描述符集提交**：提交描述符集到 GPU
+5. **描述符堆提交**：提交描述符堆到 GPU
 
 ### 详细流程
 
@@ -149,7 +149,7 @@ void FView::prepare(FEngine& engine, DriverApi& driver,
     // 6. 更新 UBO
     updateUBOs(driver, renderableData, visibleRenderables);
     
-    // 7. 提交描述符集
+    // 7. 提交描述符堆
     commitUniforms(driver);
 }
 ```
@@ -193,7 +193,7 @@ void FView::updateUBOs(DriverApi& driver,
 - **可见渲染对象列表**：用于后续通道
 - **光照数据**：Froxel 缓冲区
 - **UBO 数据**：Uniform Buffer
-- **描述符集**：GPU 资源绑定
+- **描述符堆**：GPU 资源绑定
 
 ---
 

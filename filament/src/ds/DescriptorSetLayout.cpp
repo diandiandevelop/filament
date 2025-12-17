@@ -33,18 +33,18 @@ namespace filament {
 /**
  * 默认构造函数
  * 
- * 创建一个空的描述符集布局。
+ * 创建一个空的描述符堆布局。
  */
 DescriptorSetLayout::DescriptorSetLayout() noexcept = default;
 
 /**
  * 构造函数
  * 
- * 从后端描述符集布局创建描述符集布局。
+ * 从后端描述符堆布局创建描述符堆布局。
  * 
- * @param factory 硬件描述符集布局工厂引用
+ * @param factory 硬件描述符堆布局工厂引用
  * @param driver 驱动 API 引用
- * @param descriptorSetLayout 后端描述符集布局（将被移动）
+ * @param descriptorSetLayout 后端描述符堆布局（将被移动）
  */
 DescriptorSetLayout::DescriptorSetLayout(
         HwDescriptorSetLayoutFactory& factory,
@@ -70,18 +70,18 @@ DescriptorSetLayout::DescriptorSetLayout(
     }
 
     /**
-     * 通过工厂创建硬件描述符集布局
+     * 通过工厂创建硬件描述符堆布局
      */
     mDescriptorSetLayoutHandle = factory.create(driver,
             std::move(descriptorSetLayout));  // 创建硬件布局
 }
 
 /**
- * 终止描述符集布局
+ * 终止描述符堆布局
  * 
- * 释放描述符集布局的硬件资源。
+ * 释放描述符堆布局的硬件资源。
  * 
- * @param factory 硬件描述符集布局工厂引用
+ * @param factory 硬件描述符堆布局工厂引用
  * @param driver 驱动 API 引用
  */
 void DescriptorSetLayout::terminate(

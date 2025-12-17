@@ -38,9 +38,9 @@ using namespace backend;
 using namespace math;
 
 /**
- * 阴影贴图描述符集构造函数
+ * 阴影贴图描述符堆构造函数
  * 
- * 创建阴影贴图描述符集并初始化统一缓冲区。
+ * 创建阴影贴图描述符堆并初始化统一缓冲区。
  * 
  * @param engine 引擎引用
  */
@@ -54,14 +54,14 @@ ShadowMapDescriptorSet::ShadowMapDescriptorSet(FEngine& engine) noexcept {
             BufferObjectBinding::UNIFORM, BufferUsage::DYNAMIC);  // 绑定类型、使用方式
 
     /**
-     * 从布局创建描述符集
+     * 从布局创建描述符堆
      */
     // create the descriptor-set from the layout
     mDescriptorSet = DescriptorSet{
             "ShadowMapDescriptorSet", engine.getPerViewDescriptorSetLayoutDepthVariant() };  // 名称、布局
 
     /**
-     * 初始化描述符集
+     * 初始化描述符堆
      */
     // initialize the descriptor-set
     mDescriptorSet.setBuffer(engine.getPerViewDescriptorSetLayoutDepthVariant(),  // 布局
@@ -69,14 +69,14 @@ ShadowMapDescriptorSet::ShadowMapDescriptorSet(FEngine& engine) noexcept {
 }
 
 /**
- * 终止阴影贴图描述符集
+ * 终止阴影贴图描述符堆
  * 
  * 释放驱动资源，对象变为无效。
  * 
  * @param driver 驱动 API 引用
  */
 void ShadowMapDescriptorSet::terminate(DriverApi& driver) {
-    mDescriptorSet.terminate(driver);  // 终止描述符集
+    mDescriptorSet.terminate(driver);  // 终止描述符堆
     driver.destroyBufferObject(mUniformBufferHandle);  // 销毁统一缓冲区对象
 }
 
@@ -205,7 +205,7 @@ ShadowMapDescriptorSet::Transaction ShadowMapDescriptorSet::open(DriverApi& driv
 /**
  * 提交事务
  * 
- * 将统一缓冲区数据更新到 GPU 并提交描述符集。
+ * 将统一缓冲区数据更新到 GPU 并提交描述符堆。
  * 
  * @param transaction 事务引用
  * @param engine 引擎引用
@@ -215,14 +215,14 @@ void ShadowMapDescriptorSet::commit(Transaction& transaction,
         FEngine& engine, DriverApi& driver) noexcept {
     driver.updateBufferObject(mUniformBufferHandle, {  // 更新缓冲区对象
             transaction.uniforms, sizeof(PerViewUib) }, 0);  // 数据指针、大小、偏移
-    mDescriptorSet.commit(engine.getPerViewDescriptorSetLayoutDepthVariant(), driver);  // 提交描述符集
+    mDescriptorSet.commit(engine.getPerViewDescriptorSetLayoutDepthVariant(), driver);  // 提交描述符堆
     transaction.uniforms = nullptr;  // 清空统一缓冲区数据指针
 }
 
 /**
- * 绑定描述符集
+ * 绑定描述符堆
  * 
- * 将描述符集绑定到指定绑定点。
+ * 将描述符堆绑定到指定绑定点。
  * 
  * @param driver 驱动 API 引用
  */

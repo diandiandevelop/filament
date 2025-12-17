@@ -20,6 +20,19 @@
 
 #include <SDL_syswm.h>
 
+/**
+ * 获取SDL窗口的原生窗口句柄实现（Linux平台）
+ * 
+ * 执行步骤：
+ * 1. 初始化SDL系统窗口管理器信息结构
+ * 2. 获取SDL窗口的系统窗口管理器信息
+ * 3. 根据窗口子系统类型（X11或Wayland）提取相应的窗口句柄
+ * 4. 对于Wayland，创建包含display、surface和尺寸的结构体
+ * 5. 返回原生窗口句柄
+ * 
+ * @param sdlWindow SDL窗口指针
+ * @return 原生窗口句柄（X11返回Window，Wayland返回结构体指针，失败返回nullptr）
+ */
 void* getNativeWindow(SDL_Window* sdlWindow) {
     SDL_SysWMinfo wmi;
     SDL_VERSION(&wmi.version);
@@ -27,12 +40,14 @@ void* getNativeWindow(SDL_Window* sdlWindow) {
             << "SDL version unsupported!";
     if (wmi.subsystem == SDL_SYSWM_X11) {
 #if defined(FILAMENT_SUPPORTS_X11)
+        // X11窗口系统：返回X11 Window ID
         Window win = (Window) wmi.info.x11.window;
         return (void *) win;
 #endif
     }
     else if (wmi.subsystem == SDL_SYSWM_WAYLAND) {
 #if defined(FILAMENT_SUPPORTS_WAYLAND)
+        // Wayland窗口系统：需要返回包含display、surface和尺寸的结构体
         int width = 0;
         int height = 0;
         SDL_GetWindowSize(sdlWindow, &width, &height);
@@ -40,11 +55,14 @@ void* getNativeWindow(SDL_Window* sdlWindow) {
         // Static is used here to allocate the struct pointer for the lifetime of the program.
         // Without static the valid struct quickly goes out of scope, and ends with seemingly
         // random segfaults. We must update the values on each call.
+        // 使用静态变量确保结构体在程序生命周期内有效
+        // 不使用静态变量会导致结构体快速超出作用域，造成段错误
+        // 必须在每次调用时更新值
         static struct {
-            struct wl_display *display;
-            struct wl_surface *surface;
-            uint32_t width;
-            uint32_t height;
+            struct wl_display *display;  // Wayland显示对象
+            struct wl_surface *surface;   // Wayland表面对象
+            uint32_t width;               // 窗口宽度
+            uint32_t height;              // 窗口高度
         } wayland;
         wayland.display = wmi.info.wl.display;
         wayland.surface = wmi.info.wl.surface;

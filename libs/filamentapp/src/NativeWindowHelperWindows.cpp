@@ -20,6 +20,18 @@
 
 #include <SDL_syswm.h>
 
+/**
+ * 获取SDL窗口的原生窗口句柄实现（Windows平台）
+ * 
+ * 执行步骤：
+ * 1. 初始化SDL系统窗口管理器信息结构
+ * 2. 获取SDL窗口的系统窗口管理器信息
+ * 3. 从Windows特定信息中提取HWND句柄
+ * 4. 返回HWND句柄
+ * 
+ * @param sdlWindow SDL窗口指针
+ * @return Windows原生窗口句柄（HWND）
+ */
 void* getNativeWindow(SDL_Window* sdlWindow) {
     SDL_SysWMinfo wmi;
     SDL_VERSION(&wmi.version);

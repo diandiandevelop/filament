@@ -36,54 +36,140 @@ namespace ibl {
 class Cubemap;
 
 /**
- * Computes spherical harmonics
+ * CubemapSH - 立方体贴图球谐函数类
+ * 
+ * 用于计算和渲染球谐函数（Spherical Harmonics，SH）。
+ * 球谐函数是一种用于表示球面上函数的数学方法，常用于环境光照的压缩表示。
  */
 class UTILS_PUBLIC CubemapSH {
 public:
     /**
-     * Spherical Harmonics decomposition of the given cubemap
-     * Optionally calculates irradiance by convolving with truncated cos.
+     * 计算给定立方体贴图的球谐函数分解
+     * 
+     * 将立方体贴图分解为球谐函数系数。可选地通过与截断余弦函数卷积来计算辐照度。
+     * 
+     * @param js 作业系统（用于并行处理）
+     * @param cm 源立方体贴图
+     * @param numBands 球谐函数的阶数（通常为3，对应9个系数）
+     * @param irradiance 是否计算辐照度（与截断余弦函数卷积）
+     * @return 球谐函数系数数组（每个系数为float3，RGB格式）
      */
     static std::unique_ptr<math::float3[]> computeSH(
             utils::JobSystem& js, const Cubemap& cm, size_t numBands, bool irradiance);
 
     /**
-     * Render given spherical harmonics into a cubemap
+     * 将给定的球谐函数渲染到立方体贴图
+     * 
+     * 从球谐函数系数重建立方体贴图，用于可视化或验证。
+     * 
+     * @param js 作业系统
+     * @param cm 目标立方体贴图
+     * @param sh 球谐函数系数数组
+     * @param numBands 球谐函数的阶数
      */
     static void renderSH(utils::JobSystem& js, Cubemap& cm,
             const std::unique_ptr<math::float3[]>& sh, size_t numBands);
 
+    /**
+     * 对球谐函数系数应用窗口函数
+     * 
+     * 使用窗口函数平滑球谐函数系数，减少高频噪声。
+     * 
+     * @param sh 球谐函数系数数组（会被修改）
+     * @param numBands 球谐函数的阶数
+     * @param cutoff 截止频率
+     */
     static void windowSH(std::unique_ptr<math::float3[]>& sh, size_t numBands, float cutoff);
 
     /**
-     * Compute spherical harmonics of the irradiance of the given cubemap.
-     * The SH basis are pre-scaled for easier rendering by the shader. The resulting coefficients
-     * are not spherical harmonics (as they're scalled by various factors). In particular they
-     * cannot be rendered with renderSH() above. Instead use renderPreScaledSH3Bands() which
-     * is exactly the code ran by our shader.
+     * 预处理球谐函数以供着色器使用
+     * 
+     * 计算给定立方体贴图的辐照度球谐函数。
+     * SH基函数被预缩放以便着色器更容易渲染。结果系数不是标准球谐函数
+     * （因为它们被各种因子缩放）。特别是它们不能用上面的renderSH()渲染。
+     * 应该使用renderPreScaledSH3Bands()，这正是我们着色器运行的代码。
+     * 
+     * @param sh 球谐函数系数数组（会被修改，预缩放）
      */
     static void preprocessSHForShader(std::unique_ptr<math::float3[]>& sh);
 
     /**
-     * Render pre-scaled irrandiance SH
+     * 渲染预缩放的辐照度球谐函数
+     * 
+     * 将预缩放的球谐函数系数渲染到立方体贴图。
+     * 这是着色器中使用的确切代码。
+     * 
+     * @param js 作业系统
+     * @param cm 目标立方体贴图
+     * @param sh 预缩放的球谐函数系数数组
      */
     static void renderPreScaledSH3Bands(utils::JobSystem& js, Cubemap& cm,
             const std::unique_ptr<math::float3[]>& sh);
 
+    /**
+     * 获取球谐函数索引
+     * 
+     * 根据球谐函数的阶数l和次数m计算一维索引。
+     * 
+     * @param m 次数（-l到l）
+     * @param l 阶数
+     * @return 一维索引
+     */
     static constexpr size_t getShIndex(ssize_t m, size_t l) {
         return SHindex(m, l);
     }
 
 private:
+    /**
+     * float5 - 5维浮点向量类
+     * 
+     * 用于球谐函数计算中的5维向量操作。
+     */
     class float5 {
-        float v[5];
+        float v[5];  // 5个浮点数值
     public:
+        /**
+         * 默认构造函数
+         */
         float5() = default;
+        
+        /**
+         * 构造函数
+         * 
+         * @param a 第一个分量
+         * @param b 第二个分量
+         * @param c 第三个分量
+         * @param d 第四个分量
+         * @param e 第五个分量
+         */
         constexpr float5(float a, float b, float c, float d, float e) : v{ a, b, c, d, e } {}
+        
+        /**
+         * 常量索引运算符
+         * 
+         * @param i 索引（0-4）
+         * @return 对应分量的常量引用
+         */
         constexpr float operator[](size_t i) const { return v[i]; }
+        
+        /**
+         * 索引运算符
+         * 
+         * @param i 索引（0-4）
+         * @return 对应分量的引用
+         */
         float& operator[](size_t i) { return v[i]; }
     };
 
+    /**
+     * 矩阵向量乘法（内联函数）
+     * 
+     * 计算5x5矩阵与5维向量的乘积。
+     * 
+     * @param M 5x5矩阵（数组形式）
+     * @param x 5维向量
+     * @return 矩阵向量乘积结果
+     */
     static inline const float5 multiply(const float5 M[5], float5 x) noexcept {
         return float5{
                 M[0][0] * x[0] + M[1][0] * x[1] + M[2][0] * x[2] + M[3][0] * x[3] + M[4][0] * x[4],
@@ -94,7 +180,16 @@ private:
         };
     };
 
-
+    /**
+     * 计算球谐函数索引（内联函数）
+     * 
+     * 根据球谐函数的阶数l和次数m计算一维索引。
+     * 索引公式：l * (l + 1) + m
+     * 
+     * @param m 次数（-l到l）
+     * @param l 阶数
+     * @return 一维索引
+     */
     static inline constexpr size_t SHindex(ssize_t m, size_t l) {
         return l * (l + 1) + m;
     }

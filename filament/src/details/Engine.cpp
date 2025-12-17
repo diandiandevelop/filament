@@ -713,9 +713,9 @@ void FEngine::init() {
 
 
     /**
-     * 创建每视图描述符集布局（SSR 变体）
+     * 创建每视图描述符堆布局（SSR 变体）
      * 
-     * 用于屏幕空间反射（SSR）的着色器变体的描述符集布局。
+     * 用于屏幕空间反射（SSR）的着色器变体的描述符堆布局。
      */
     mPerViewDescriptorSetLayoutSsrVariant = {
             mHwDescriptorSetLayoutFactory,
@@ -723,9 +723,9 @@ void FEngine::init() {
             descriptor_sets::getSsrVariantLayout() };
 
     /**
-     * 创建每视图描述符集布局（深度变体）
+     * 创建每视图描述符堆布局（深度变体）
      * 
-     * 用于深度通道的着色器变体的描述符集布局。
+     * 用于深度通道的着色器变体的描述符堆布局。
      */
     mPerViewDescriptorSetLayoutDepthVariant = {
             mHwDescriptorSetLayoutFactory,
@@ -733,9 +733,9 @@ void FEngine::init() {
             descriptor_sets::getDepthVariantLayout() };
 
     /**
-     * 创建每可渲染对象描述符集布局
+     * 创建每可渲染对象描述符堆布局
      * 
-     * 用于可渲染对象的描述符集布局，包含材质相关的资源绑定。
+     * 用于可渲染对象的描述符堆布局，包含材质相关的资源绑定。
      */
     mPerRenderableDescriptorSetLayout = {
             mHwDescriptorSetLayoutFactory,
@@ -790,7 +790,7 @@ void FEngine::init() {
      * 提交默认材质实例
      * 
      * 必须在此时提交默认材质实例，因为：
-     * - 它可能不在场景中使用，但其描述符集仍可能用于共享变体
+     * - 它可能不在场景中使用，但其描述符堆仍可能用于共享变体
      * - 此材质实例在 UboManager 创建之前实例化，此时 `isUboBatchingEnabled` 为 false
      * - 会自动回退到单独的 UBO
      */
@@ -983,7 +983,7 @@ FEngine::~FEngine() noexcept {
  * 4. 释放资源分配器
  * 5. 释放 DFG（分布函数）
  * 6. 释放所有组件管理器（Renderable、Light、Camera）
- * 7. 释放描述符集布局
+ * 7. 释放描述符堆布局
  * 8. 释放全屏三角形
  * 9. 释放默认资源（IBL、材质、颜色分级等）
  * 10. 清理用户创建的资源列表

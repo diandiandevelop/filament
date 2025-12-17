@@ -122,11 +122,11 @@ public:
     }
 
     /**
-     * 获取每视图描述符集布局
+     * 获取每视图描述符堆布局
      * 
      * 仅用于后处理材质。
      * 
-     * @return 每视图描述符集布局常量引用
+     * @return 每视图描述符堆布局常量引用
      */
     DescriptorSetLayout const& getPerViewDescriptorSetLayout() const noexcept {
         assert_invariant(mDefinition.materialDomain == MaterialDomain::POST_PROCESS);
@@ -134,23 +134,23 @@ public:
     }
 
     /**
-     * 获取每视图描述符集布局（带变体和 VSM 选项）
+     * 获取每视图描述符堆布局（带变体和 VSM 选项）
      * 
      * @param variant 着色器变体
-     * @param useVsmDescriptorSetLayout 是否使用 VSM 描述符集布局
-     * @return 每视图描述符集布局常量引用
+     * @param useVsmDescriptorSetLayout 是否使用 VSM 描述符堆布局
+     * @return 每视图描述符堆布局常量引用
      */
     DescriptorSetLayout const& getPerViewDescriptorSetLayout(
             Variant const variant, bool const useVsmDescriptorSetLayout) const noexcept;
 
     /**
-     * 获取描述符集布局
+     * 获取描述符堆布局
      * 
      * 返回在将材质绑定到管线时应使用的布局。
      * 共享变体使用引擎的默认材质的变体，因此也应使用默认材质的布局。
      * 
      * @param variant 着色器变体（默认为空，使用默认变体）
-     * @return 描述符集布局常量引用
+     * @return 描述符堆布局常量引用
      */
     DescriptorSetLayout const& getDescriptorSetLayout(Variant variant = {}) const noexcept {
         if (!isSharedVariant(variant)) {  // 如果不是共享变体
@@ -306,7 +306,7 @@ public:
     /**
      * 使用共享
      * 
-     * MaterialInstance::use() 在绘制前绑定描述符集。
+     * MaterialInstance::use() 在绘制前绑定描述符堆。
      * 对于共享变体，材质实例将调用 useShared() 来绑定默认材质的集合。
      * 
      * @param driver 驱动 API 引用
@@ -655,9 +655,9 @@ public:
     /**
      * 获取每视图布局索引
      * 
-     * @return 每视图描述符集布局索引
+     * @return 每视图描述符堆布局索引
      * 
-     * 功能：用于后处理材质，指定使用哪个每视图描述符集布局。
+     * 功能：用于后处理材质，指定使用哪个每视图描述符堆布局。
      */
     uint8_t getPerViewLayoutIndex() const noexcept {
         return mDefinition.perViewLayoutIndex;

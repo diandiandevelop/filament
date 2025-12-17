@@ -272,17 +272,17 @@ static constexpr size_t MAX_VERTEX_BUFFER_COUNT     = 16;   // Max number of bou
 static constexpr size_t MAX_SSBO_COUNT              = 4;    // This is guaranteed by OpenGL ES.
 
 /**
- * 最大描述符集数量
+ * 最大描述符堆数量
  * 
  * Vulkan 保证的最小值。
- * 用于资源绑定的描述符集数量。
+ * 用于资源绑定的描述符堆数量。
  */
 static constexpr size_t MAX_DESCRIPTOR_SET_COUNT    = 4;    // This is guaranteed by Vulkan.
 
 /**
- * 每个描述符集的最大描述符数量
+ * 每个描述符堆的最大描述符数量
  * 
- * 单个描述符集中可以绑定的资源数量。
+ * 单个描述符堆中可以绑定的资源数量。
  */
 static constexpr size_t MAX_DESCRIPTOR_COUNT        = 64;   // per set
 
@@ -353,7 +353,7 @@ static constexpr size_t CONFIG_SAMPLER_BINDING_COUNT = 4;   // This is guarantee
  * 值：uint8_t(-1) = 255
  * 
  * 用途：
- * - 表示描述符集绑定未使用任何外部采样器状态
+ * - 表示描述符堆绑定未使用任何外部采样器状态
  * - 因此没有有效条目
  * - 用于标记未使用的绑定槽
  */
@@ -770,7 +770,7 @@ constexpr std::string_view to_string(TextureType type) noexcept {
 /**
  * 描述符类型枚举
  * 
- * 定义可在描述符集中绑定的资源类型。
+ * 定义可在描述符堆中绑定的资源类型。
  * 描述符用于在着色器中访问纹理、采样器、缓冲区等资源。
  * 
  * 分类：
@@ -1115,26 +1115,26 @@ enum class DescriptorFlags : uint8_t {
 };
 
 /**
- * 描述符集索引类型
+ * 描述符堆索引类型
  * 
- * 用于标识描述符集的索引（0-255）。
- * 在 Vulkan 中，描述符集是资源绑定的集合。
+ * 用于标识描述符堆的索引（0-255）。
+ * 在 Vulkan 中，描述符堆是资源绑定的集合。
  */
 using descriptor_set_t = uint8_t;
 
 /**
  * 描述符绑定索引类型
  * 
- * 用于标识描述符在描述符集中的绑定位置（0-255）。
+ * 用于标识描述符在描述符堆中的绑定位置（0-255）。
  * 绑定索引在着色器中对应 binding 布局限定符。
  */
 using descriptor_binding_t = uint8_t;
 
 /**
- * 描述符集布局绑定结构体
+ * 描述符堆布局绑定结构体
  * 
- * 定义描述符集中一个绑定的配置。
- * 用于创建描述符集布局，指定资源的类型、绑定位置和使用阶段。
+ * 定义描述符堆中一个绑定的配置。
+ * 用于创建描述符堆布局，指定资源的类型、绑定位置和使用阶段。
  */
 struct DescriptorSetLayoutBinding {
     /**
@@ -1167,7 +1167,7 @@ struct DescriptorSetLayoutBinding {
     uint16_t count = 0;               //!< 数组元素数量（用于数组绑定，0 表示单个资源）
 
     /**
-     * 比较两个描述符集布局绑定是否相等
+     * 比较两个描述符堆布局绑定是否相等
      * 
      * @param lhs 左侧绑定
      * @param rhs 右侧绑定

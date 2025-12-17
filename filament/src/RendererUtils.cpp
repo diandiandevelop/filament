@@ -441,7 +441,7 @@ RendererUtils::ColorPassOutput RendererUtils::refractionPass(
      * present in both.
      * 
      * 生成 mipmap 链
-     * 注意：我们可以在"颜色通道"描述符集绑定的情况下运行一些后处理效果，
+     * 注意：我们可以在"颜色通道"描述符堆绑定的情况下运行一些后处理效果，
      * 因为只有描述符 0（帧统一缓冲区）是重要的，它在两者中都存在。
      * 
      * 为屏幕空间折射生成 mipmap，用于更好的采样质量

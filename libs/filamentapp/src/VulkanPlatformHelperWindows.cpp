@@ -22,18 +22,37 @@ namespace filament::filamentapp {
 
 using namespace filament::backend;
 
+/**
+ * FilamentAppVulkanPlatform - Windows平台的Vulkan平台实现
+ * 
+ * 继承自VulkanPlatformWindows，提供GPU偏好配置功能。
+ */
 class FilamentAppVulkanPlatform : public VulkanPlatformWindows {
 public:
+    /**
+     * 构造函数
+     * @param gpuHintCstr GPU偏好提示字符串
+     */
     FilamentAppVulkanPlatform(char const* gpuHintCstr) : mCustomization(parseGpuHint(gpuHintCstr)) {}
 
+    /**
+     * 获取自定义配置实现
+     * @return Vulkan平台自定义配置
+     */
     VulkanPlatform::Customization getCustomization() const noexcept override {
         return mCustomization;
     }
 
 private:
-    VulkanPlatform::Customization mCustomization;
+    VulkanPlatform::Customization mCustomization; // 自定义配置
 };
 
+/**
+ * 创建Vulkan平台对象实现（Windows平台）
+ * 
+ * @param gpuHintCstr GPU偏好提示字符串
+ * @return Vulkan平台对象指针
+ */
 VulkanPlatform* createVulkanPlatform(char const* gpuHintCstr) {
     return new FilamentAppVulkanPlatform(gpuHintCstr);
 }

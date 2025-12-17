@@ -34,6 +34,7 @@ template <typename D>
 struct resource_ptr;
 
 // Subclasses of VulkanResource must provide this enum in their construction.
+// VulkanResource（及其子类）在构造时必须提供对应的资源类型，用于统一管理生命周期和调试。
 enum class ResourceType : uint8_t {
     BUFFER_OBJECT = 0,
     INDEX_BUFFER = 1,
@@ -68,6 +69,8 @@ inline bool isThreadSafeType(ResourceType type) {
     return type == ResourceType::FENCE || type == ResourceType::TIMER_QUERY;
 }
 
+// 非线程安全的资源基类
+// 适用于只在单线程环境中访问的 Vulkan 资源（例如大部分图形对象）。
 struct Resource {
     Resource()
         : resManager(nullptr),
@@ -76,16 +79,19 @@ struct Resource {
           restype(ResourceType::UNDEFINED_TYPE),
           mHandleConsideredDestroyed(false) {}
 
+    // 检查当前资源是否为指定类型 D
     template<typename D>
     bool isType() const {
         return getTypeEnum<D>() == restype;
     }
 
 private:
+    // 增加引用计数
     inline void inc() noexcept {
         mCount++;
     }
 
+    // 减少引用计数，当计数归零时通过 ResourceManager 延迟销毁对应句柄
     inline void dec() noexcept {
         assert_invariant(mCount > 0);
         if (--mCount == 0) {
@@ -95,6 +101,7 @@ private:
 
     // To be able to detect use-after-free, we need a bit to signify if the handle should be
     // consider destroyed (from Filament's perspective).
+    // 为了检测 use-after-free，需要一个标记位表示（从 Filament 视角）句柄是否已被视为销毁。
     inline void setHandleConsiderDestroyed() noexcept {
         mHandleConsideredDestroyed = true;
     }
@@ -103,6 +110,7 @@ private:
         return mHandleConsideredDestroyed;
     }
 
+    // 初始化资源：设置句柄 id、所属 ResourceManager 和资源类型
     template <typename T>
     inline void init(HandleId id, ResourceManager* resManager) {
         this->id = id;
@@ -110,14 +118,15 @@ private:
         this->restype = getTypeEnum<T>();
     }
 
+    // 实际销毁逻辑委托给 ResourceManager（延迟销毁）
     void destroy(ResourceType type, HandleId id);
 
-    ResourceManager* resManager; // 8
-    HandleId id;                 // 4
-    uint32_t mCount      : 24;
-    ResourceType restype : 7;
-    bool mHandleConsideredDestroyed : 1;  // restype + mCount + mHandleConsideredDestroyed
-                                          //   is 4 bytes.
+    ResourceManager* resManager; // 8 资源管理器指针
+    HandleId id;                 // 4 句柄id（用于在管理器中索引资源）
+    uint32_t mCount      : 24;   // 24 位引用计数
+    ResourceType restype : 7;    // 7 位资源类型
+    bool mHandleConsideredDestroyed : 1;  // 是否已将句柄视为销毁
+                                          // restype + mCount + mHandleConsideredDestroyed 共4字节
 
     friend class ResourceManager;
 
@@ -125,6 +134,8 @@ private:
     friend struct resource_ptr;
 };
 
+// 线程安全的资源基类
+// 适用于可能被多个线程并发访问的 Vulkan 资源（如 Fence / TimerQuery 等）。
 struct ThreadSafeResource {
     ThreadSafeResource()
         : resManager(nullptr),
@@ -134,10 +145,12 @@ struct ThreadSafeResource {
           mHandleConsideredDestroyed(false) {}
 
 private:
+    // 原子地增加引用计数
     inline void inc() noexcept {
         mCount.fetch_add(1, std::memory_order_relaxed);
     }
 
+    // 原子地减少引用计数，当计数归零时通过 ResourceManager 延迟销毁对应句柄
     inline void dec() noexcept {
         if (mCount.fetch_sub(1, std::memory_order_acq_rel) == 1) {
             destroy(restype, id);
@@ -146,6 +159,7 @@ private:
 
     // To be able to detect use-after-free, we need a bit to signify if the handle should be
     // consider destroyed (from Filament's perspective).
+    // 为了检测 use-after-free，需要一个标记位表示（从 Filament 视角）句柄是否已被视为销毁。
     inline void setHandleConsiderDestroyed() noexcept {
         mHandleConsideredDestroyed = true;
     }
@@ -154,6 +168,7 @@ private:
         return mHandleConsideredDestroyed;
     }
 
+    // 初始化资源：设置句柄 id、所属 ResourceManager 和资源类型
     template <typename T>
     inline void init(HandleId id, ResourceManager* resManager) {
         this->id = id;
@@ -161,13 +176,14 @@ private:
         this->restype = getTypeEnum<T>();
     }
 
+    // 实际销毁逻辑委托给 ResourceManager（延迟销毁）
     void destroy(ResourceType type, HandleId id);
 
-    ResourceManager* resManager;  // 8
-    HandleId id;                  // 4
-    std::atomic<uint32_t> mCount; // 4
-    ResourceType restype : 7;
-    bool mHandleConsideredDestroyed : 1;  // restype + mHandleConsideredDestroyed is 1 byte
+    ResourceManager* resManager;  // 8 资源管理器指针
+    HandleId id;                  // 4 句柄id
+    std::atomic<uint32_t> mCount; // 4 原子引用计数
+    ResourceType restype : 7;     // 7 位资源类型
+    bool mHandleConsideredDestroyed : 1;  // 是否已将句柄视为销毁（与 restype 共用1字节）
 
     friend class ResourceManager;
 

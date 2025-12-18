@@ -56,6 +56,7 @@ struct Skybox::BuilderDetails {
     float4 mColor{0, 0, 0, 1};  // 颜色（RGBA，默认黑色不透明）
     float mIntensity = FIndirectLight::DEFAULT_INTENSITY;  // 强度（默认太阳照度）
     bool mShowSun = false;  // 是否显示太阳（默认不显示）
+    uint8_t mPriority = 7;
 };
 
 using BuilderType = Skybox;  // 构建器类型别名
@@ -105,6 +106,12 @@ Skybox::Builder& Skybox::Builder::color(float4 const color) noexcept {
     return *this;  // 返回自身引用
 }
 
+Skybox::Builder& Skybox::Builder::priority(uint8_t const priority) noexcept {
+    mImpl->mPriority = priority;
+    return *this;
+}
+
+
 /**
  * 设置是否显示太阳
  * 
@@ -127,7 +134,8 @@ Skybox::Builder& Skybox::Builder::showSun(bool const show) noexcept {
  * @return 天空盒指针
  */
 Skybox* Skybox::Builder::build(Engine& engine) {
-    FTexture* cubemap = downcast(mImpl->mEnvironmentMap);  // 转换为实现类
+
+    FTexture const* cubemap = downcast(mImpl->mEnvironmentMap);// 转换为实现类
 
     FILAMENT_CHECK_PRECONDITION(!cubemap || cubemap->isCubemap())  // 检查是否为立方体贴图
             << "environment maps must be a cubemap";
@@ -181,9 +189,10 @@ FSkybox::FSkybox(FEngine& engine, const Builder& builder) noexcept
             .material(0, mSkyboxMaterialInstance)  // 设置材质实例
             .castShadows(false)  // 不投射阴影
             .receiveShadows(false)  // 不接收阴影
-            .priority(0x7)  // 最低优先级（7）
+            .priority(builder->mPriority)  // 最低优先级（7）
             .culling(false)  // 禁用剔除
             .build(engine, mSkybox);  // 构建可渲染对象
+
 }
 
 /**

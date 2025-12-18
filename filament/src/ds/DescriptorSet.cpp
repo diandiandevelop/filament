@@ -171,12 +171,24 @@ void DescriptorSet::commitSlow(DescriptorSetLayout const& layout,
      * 检查是否有未设置的有效描述符
      */
     auto const unsetValidDescriptors = layout.getValidDescriptors() & ~mValid;  // 计算未设置的有效描述符
-    if (UTILS_VERY_UNLIKELY(!unsetValidDescriptors.empty() && !mSetUndefinedParameterWarning)) {  // 如果有未设置的描述符且未警告过
-        unsetValidDescriptors.forEachSetBit([&](auto i) {  // 遍历未设置的描述符
-            LOG(WARNING) << (layout.isSampler(i) ? "Sampler" : "Buffer") << " descriptor " << i  // 输出警告
-                         << " of " << mName.c_str() << " is not set. Please report this issue.";
-        });
-        mSetUndefinedParameterWarning = true;  // 设置警告标志
+    
+
+    // FIXME: see [b/468072646]
+    //  We only validate empty descriptors at FEATURE_LEVEL_1 and above.
+    //  This is because at FL0 it's expected that some descriptor won't be set. In theory, the
+    //  corresponding layouts should not even contain those descriptors. However, making that change
+    //  is difficult and risky, and will be done at a later time.
+    //  Note: that the correct fix is actually needed to properly support FL3 once we want
+    //  to take advantage of having more samplers.
+    if (UTILS_LIKELY(driver.getFeatureLevel() > backend::FeatureLevel::FEATURE_LEVEL_0)) {
+        auto const unsetValidDescriptors = layout.getValidDescriptors() & ~mValid;
+        if (UTILS_VERY_UNLIKELY(!unsetValidDescriptors.empty() && !mSetUndefinedParameterWarning)) {
+            unsetValidDescriptors.forEachSetBit([&](auto i) {
+                LOG(WARNING) << (layout.isSampler(i) ? "Sampler" : "Buffer") << " descriptor " << i
+                        << " of " << mName.c_str() << " is not set. Please report this issue.";
+            });
+            mSetUndefinedParameterWarning = true;
+        }
     }
 }
 

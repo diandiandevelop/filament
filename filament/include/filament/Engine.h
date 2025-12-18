@@ -711,10 +711,11 @@ public:
         /**
          * 指向标志值的指针
          */
-        bool constant;                          //!< whether the flag is constant after construction
+        bool constant = true;                          //!< whether the flag is constant after construction
         /**
          * 标志在构造后是否恒定
          */
+
     };
 
     /**

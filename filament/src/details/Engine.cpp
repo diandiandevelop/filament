@@ -55,6 +55,7 @@
 
 #include <utils/Allocator.h>
 #include <utils/CallStack.h>
+#include <utils/CString.h>
 #include <utils/Invocable.h>
 #include <utils/Logger.h>
 #include <utils/Panic.h>
@@ -145,7 +146,7 @@ struct Engine::BuilderDetails {
     FeatureLevel mFeatureLevel = FeatureLevel::FEATURE_LEVEL_1;  // 特性级别（默认级别 1）
     void* mSharedContext = nullptr;  // 共享上下文（用于多线程渲染）
     bool mPaused = false;  // 是否暂停（用于延迟初始化）
-    std::unordered_map<std::string_view, bool> mFeatureFlags;  // 特性标志映射（用于启用/禁用特定特性）
+    std::unordered_map<CString, bool> mFeatureFlags;  // 特性标志映射（用于启用/禁用特定特性）
     
     /**
      * 验证配置
@@ -473,7 +474,7 @@ FEngine::FEngine(Builder const& builder) :
 
     // 更新 Builder 中指定的所有特性标志
     for (auto const& feature : builder->mFeatureFlags) {
-        auto* const p = getFeatureFlagPtr(feature.first, true);
+        auto* const p = getFeatureFlagPtr(feature.first.c_str_safe(), true);
         if (p) {
             *p = feature.second;
         }
@@ -2207,7 +2208,7 @@ Engine::Builder& Engine::Builder::paused(bool const paused) noexcept {
 }
 
 Engine::Builder& Engine::Builder::feature(char const* name, bool const value) noexcept {
-    mImpl->mFeatureFlags[name] = value;
+    mImpl->mFeatureFlags.emplace(name, value);
     return *this;
 }
 

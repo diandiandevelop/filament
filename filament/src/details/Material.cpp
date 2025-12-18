@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2015 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -112,9 +112,8 @@ struct Material::BuilderDetails {
     Builder::ShadowSamplingQuality mShadowSamplingQuality = Builder::ShadowSamplingQuality::LOW;  // 阴影采样质量（默认 LOW）
     UboBatchingMode mUboBatchingMode = UboBatchingMode::DEFAULT;  // UBO 批处理模式（默认使用引擎设置）
     std::unordered_map<
-        CString,  // 常量名称
-        std::variant<int32_t, float, bool>,  // 常量值（可以是整数、浮点数或布尔值）
-        CString::Hasher> mConstantSpecializations;  // 常量特化映射（用于编译时优化）
+            CString,                                   // 常量名称
+            std::variant<int32_t, float, bool>> mConstantSpecializations; // 常量特化映射（用于编译时优化）
 };
 
 /**

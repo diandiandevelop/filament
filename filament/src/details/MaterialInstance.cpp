@@ -412,6 +412,9 @@ void FMaterialInstance::setParameterImpl(std::string_view const name,
         TextureType const textureType = texture->getTextureType();
         SamplerType const samplerType = texture->getTarget();
         auto const& featureFlags = mMaterial->getEngine().features.engine.debug;
+        FILAMENT_CHECK_PRECONDITION(texture->getUsage() & TextureUsage::SAMPLEABLE)
+                << "Texture for parameter \"" << name << "\"" << " is not SAMPLEABLE";
+
         // 检查纹理类型、采样器类型和描述符类型是否兼容
         FILAMENT_FLAG_GUARDED_CHECK_PRECONDITION(
                 DescriptorSet::isTextureCompatibleWithDescriptor(

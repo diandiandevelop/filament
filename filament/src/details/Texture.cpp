@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2015 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -398,19 +398,28 @@ Texture* Texture::Builder::build(Engine& engine) {
      * 根据纹理类型和尺寸计算最大可能的 Mip 级别数。
      */
     uint8_t maxLevelCount;  // 最大 Mip 级别数
-    switch (mImpl->mTarget) {  // 根据采样器目标类型
-        case SamplerType::SAMPLER_2D:  // 2D 纹理
-        case SamplerType::SAMPLER_2D_ARRAY:  // 2D 数组纹理
-        case SamplerType::SAMPLER_CUBEMAP:  // 立方体贴图
-        case SamplerType::SAMPLER_EXTERNAL:  // 外部纹理
-        case SamplerType::SAMPLER_CUBEMAP_ARRAY:  // 立方体贴图数组
-            maxLevelCount = FTexture::maxLevelCount(mImpl->mWidth, mImpl->mHeight);  // 基于宽度和高度计算
+    switch (mImpl->mTarget) {                    // 根据采样器目标类型
+        case SamplerType::SAMPLER_2D:            // 2D 纹理
+        case SamplerType::SAMPLER_2D_ARRAY:      // 2D 数组纹理
+        case SamplerType::SAMPLER_CUBEMAP:       // 立方体贴图
+        case SamplerType::SAMPLER_CUBEMAP_ARRAY: // 立方体贴图数组
+            maxLevelCount =
+                    FTexture::maxLevelCount(mImpl->mWidth, mImpl->mHeight); // 基于宽度和高度计算
             break;
-        case SamplerType::SAMPLER_3D:  // 3D 纹理
-            maxLevelCount = FTexture::maxLevelCount(std::max(  // 基于最大维度计算
+        case SamplerType::SAMPLER_3D:                         // 3D 纹理
+            maxLevelCount = FTexture::maxLevelCount(std::max( // 基于最大维度计算
                     { mImpl->mWidth, mImpl->mHeight, mImpl->mDepth }));
             break;
+        case SamplerType::SAMPLER_EXTERNAL:
+            // external samplers can't mipmap
+            maxLevelCount = 1;
+            break;
     }
+    // SAMPLER_EXTERNAL implies external textures.
+    if (mImpl->mTarget == SamplerType::SAMPLER_EXTERNAL) {
+        mImpl->mExternal = true;
+    }
+
     mImpl->mLevels = std::min(mImpl->mLevels, maxLevelCount);  // 限制级别数不超过最大值
 
     /**
@@ -418,6 +427,10 @@ Texture* Texture::Builder::build(Engine& engine) {
      */
     if (mImpl->mUsage == TextureUsage::NONE) {  // 如果未指定使用方式
         mImpl->mUsage = TextureUsage::DEFAULT;  // 设置为默认使用方式
+         if (mImpl->mExternal) {
+            // external textures can't be uploadable
+            mImpl->mUsage = TextureUsage::SAMPLEABLE;
+        }
     }
 
     /**
@@ -1017,7 +1030,6 @@ bool FTexture::textureHandleCanMutate() const noexcept {
 }
 
 void FTexture::updateLodRange(uint8_t const baseLevel, uint8_t const levelCount) noexcept {
-    assert_invariant(!mExternal);
     if (any(mUsage & Usage::SAMPLEABLE) && mLevelCount > 1) {
         auto& range = mLodRange;
         uint8_t const last = int8_t(baseLevel + levelCount);

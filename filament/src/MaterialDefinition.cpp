@@ -61,6 +61,8 @@ std::unique_ptr<MaterialParser> MaterialDefinition::createParser(Backend const b
     /**
      * 如果缺少后端支持，生成错误消息
      */
+    CString name;
+    materialParser->getName(&name);
     if (UTILS_UNLIKELY(materialResult == MaterialParser::ParseResult::ERROR_MISSING_BACKEND)) {
         /**
          * 构建语言名称列表字符串
@@ -78,7 +80,7 @@ std::unique_ptr<MaterialParser> MaterialDefinition::createParser(Backend const b
          */
         FILAMENT_CHECK_POSTCONDITION(
                 materialResult != MaterialParser::ParseResult::ERROR_MISSING_BACKEND)
-                << "the material was not built for any of the " << to_string(backend)
+                << "the material " << name.c_str_safe() << " was not built for any of the " << to_string(backend)
                 << " backend's supported shader languages (" << languageNames.c_str() << ")\n";
     }
 
@@ -93,7 +95,7 @@ std::unique_ptr<MaterialParser> MaterialDefinition::createParser(Backend const b
      * 检查后置条件：解析必须成功
      */
     FILAMENT_CHECK_POSTCONDITION(materialResult == MaterialParser::ParseResult::SUCCESS)
-            << "could not parse the material package";
+            << "could not parse the material package for material " << name.c_str_safe();
 
     /**
      * 获取并验证材质版本
@@ -105,7 +107,7 @@ std::unique_ptr<MaterialParser> MaterialDefinition::createParser(Backend const b
      */
     FILAMENT_CHECK_POSTCONDITION(version == MATERIAL_VERSION)
             << "Material version mismatch. Expected " << MATERIAL_VERSION << " but received "
-            << version << ".";
+            << version << " for material " << name.c_str_safe();
 
     /**
      * 确保后端不是 DEFAULT（应该已解析）

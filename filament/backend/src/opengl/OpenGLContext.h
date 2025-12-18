@@ -252,6 +252,18 @@ public:
 #endif
     }
 
+    bool hasFences() const noexcept {
+    #if defined(BACKEND_OPENGL_VERSION_GLES) && !defined(FILAMENT_IOS) && !defined(__EMSCRIPTEN__)
+    #   ifndef BACKEND_OPENGL_LEVEL_GLES30
+            return false;
+    #   else
+            return mFeatureLevel > FeatureLevel::FEATURE_LEVEL_0;
+    #   endif
+    #else
+            return true;
+    #endif
+    }
+
     /**
      * 获取功能标志的索引
      * 

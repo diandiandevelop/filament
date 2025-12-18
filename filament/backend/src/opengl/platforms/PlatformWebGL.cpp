@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 
+#include <backend/Platform.h>
+
 #include <backend/platforms/PlatformWebGL.h>
+
+#include <cstdint>
 
 namespace filament::backend {
 
@@ -30,8 +34,8 @@ using namespace backend;
  * @return 创建的驱动指针
  */
 Driver* PlatformWebGL::createDriver(void* sharedGLContext,
-        const Platform::DriverConfig& driverConfig) {
-    return OpenGLPlatform::createDefaultDriver(this, sharedGLContext, driverConfig);
+        const DriverConfig& driverConfig) {
+    return createDefaultDriver(this, sharedGLContext, driverConfig);
 }
 
 /**
@@ -64,7 +68,7 @@ void PlatformWebGL::terminate() noexcept {
  */
 Platform::SwapChain* PlatformWebGL::createSwapChain(
         void* nativeWindow, uint64_t flags) noexcept {
-    return (SwapChain*)nativeWindow;
+    return static_cast<SwapChain*>(nativeWindow);
 }
 
 /**
@@ -90,7 +94,7 @@ Platform::SwapChain* PlatformWebGL::createSwapChain(
  * 
  * @param swapChain 交换链指针
  */
-void PlatformWebGL::destroySwapChain(Platform::SwapChain* swapChain) noexcept {
+void PlatformWebGL::destroySwapChain(SwapChain* swapChain) noexcept {
 }
 
 /**
@@ -115,7 +119,7 @@ bool PlatformWebGL::makeCurrent(ContextType type, SwapChain* drawSwapChain,
  * 
  * @param swapChain 交换链指针
  */
-void PlatformWebGL::commit(Platform::SwapChain* swapChain) noexcept {
+void PlatformWebGL::commit(SwapChain* swapChain) noexcept {
 }
 
 } // namespace filament::backend

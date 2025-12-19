@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2015 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -228,7 +228,7 @@ public:
     /**
      * OpenGL 顶点缓冲区结构
      * 
-     * 扩展 HwVertexBuffer，存储 OpenGL 特定的字段。
+     * 扩展 HwVertexBuffer，存储 OpenGL 特定的字段。  VBO
      * 
      * 字段说明：
      * - vbih: 顶点缓冲区信息句柄
@@ -249,7 +249,7 @@ public:
     /**
      * OpenGL 索引缓冲区结构
      * 
-     * 扩展 HwIndexBuffer，存储 OpenGL 缓冲区对象 ID。
+     * 扩展 HwIndexBuffer，存储 OpenGL 缓冲区对象 ID。   IBO(EBO)
      * 
      * 字段说明：
      * - gl.buffer: OpenGL 索引缓冲区对象 ID

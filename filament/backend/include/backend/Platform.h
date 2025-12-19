@@ -462,10 +462,41 @@ public:
         time_point_ns frameTimelineDeadline;
     };
 
+    /**
+     * 帧时间戳结构
+     * 
+     * 包含一帧从提交到显示的完整时间线信息，用于性能分析和延迟测量。
+     * 
+     * 用途：
+     * - 分析渲染管线的各个阶段耗时
+     * - 测量端到端延迟
+     * - 优化帧提交时机
+     * 
+     * 时间单位：
+     * - 所有时间使用纳秒（nanosecond）
+     * - 基于 std::steady_clock
+     */
     struct FrameTimestamps {
         /** duration in nanosecond since epoch of std::steady_clock */
+        /**
+         * 时间点类型
+         * 
+         * 自 std::steady_clock 纪元以来的纳秒数。
+         */
         using time_point_ns = int64_t;
+        /** value not supported */
+        /**
+         * 无效值常量
+         * 
+         * 表示该时间戳不受支持或不可用。
+         */
         static constexpr time_point_ns INVALID = -1;    //!< value not supported
+        /** value not yet available */
+        /**
+         * 待定值常量
+         * 
+         * 表示该时间戳尚未可用（仍在处理中）。
+         */
         static constexpr time_point_ns PENDING = -2;    //!< value not yet available
 
         /**
@@ -473,16 +504,34 @@ public:
          * If the application does not request a presentation time explicitly,
          * this will correspond to buffer's queue time.
          */
+        /**
+         * 请求呈现时间
+         * 
+         * 应用程序请求此帧呈现的时间。
+         * 如果应用程序没有明确请求呈现时间，则对应缓冲区的排队时间。
+         */
         time_point_ns requestedPresentTime;
 
         /**
          * The time when all the application's rendering to the surface was completed.
+         */
+        /**
+         * 获取时间
+         * 
+         * 应用程序完成所有渲染到表面的时间。
+         * 即渲染完成，缓冲区可以提交给合成器的时间。
          */
         time_point_ns acquireTime;
 
         /**
          * The time when the compositor selected this frame as the one to use for the next
          * composition. This is the earliest indication that the frame was submitted in time.
+         */
+        /**
+         * 锁定时间
+         * 
+         * 合成器选择此帧用于下一次合成的时间。
+         * 这是帧及时提交的最早指示。
          */
         time_point_ns latchTime;
 
@@ -491,12 +540,24 @@ public:
          * Zero if composition was handled by the display and the compositor didn't do any
          * rendering.
          */
+        /**
+         * 首次合成开始时间
+         * 
+         * 合成器开始为此帧准备合成的首次时间。
+         * 如果合成由显示器处理且合成器未进行任何渲染，则为 0。
+         */
         time_point_ns firstCompositionStartTime;
 
         /**
          * The last time at which the compositor began preparing composition for this frame, for
          * frames composited more than once. Zero if composition was handled by the display and the
          * compositor didn't do any rendering.
+         */
+        /**
+         * 最后合成开始时间
+         * 
+         * 合成器开始为此帧准备合成的最后时间（对于多次合成的帧）。
+         * 如果合成由显示器处理且合成器未进行任何渲染，则为 0。
          */
         time_point_ns lastCompositionStartTime;
 
@@ -505,10 +566,22 @@ public:
          * INVALID if composition was handled by the display and the compositor didn't do any
          * rendering.
          */
+        /**
+         * GPU 合成完成时间
+         * 
+         * 合成器为此帧完成的渲染工作时间。
+         * 如果合成由显示器处理且合成器未进行任何渲染，则为 INVALID。
+         */
         time_point_ns gpuCompositionDoneTime;
 
         /**
          * The time at which this frame started to scan out to the physical display.
+         */
+        /**
+         * 显示呈现时间
+         * 
+         * 此帧开始扫描输出到物理显示器的时间。
+         * 即实际显示在屏幕上的时间。
          */
         time_point_ns displayPresentTime;
 
@@ -517,11 +590,23 @@ public:
          * without blocking. This is generally the point when all read commands of the buffer have
          * been submitted, but not necessarily completed.
          */
+        /**
+         * 出队就绪时间
+         * 
+         * 缓冲区变为可重用（客户端可以无阻塞地将其作为目标）的时间。
+         * 通常是缓冲区的所有读取命令已提交（但不一定完成）的时间点。
+         */
         time_point_ns dequeueReadyTime;
 
         /**
          * The time at which all reads for the purpose of display/composition were completed for
          * this frame.
+         */
+        /**
+         * 释放时间
+         * 
+         * 此帧的所有显示/合成读取完成的时间。
+         * 即缓冲区可以安全释放或重用给应用程序的时间。
          */
         time_point_ns releaseTime;
     };
@@ -530,18 +615,42 @@ public:
      * The type of technique for stereoscopic rendering. (Note that the materials used will need to
      * be compatible with the chosen technique.)
      */
+    /**
+     * 立体渲染技术类型
+     * 
+     * 定义用于立体渲染（VR/AR）的技术方法。
+     * 
+     * 注意：使用的材质需要与所选技术兼容。
+     */
     enum class StereoscopicType : uint8_t {
         /**
          * No stereoscopic rendering
+         */
+        /**
+         * 无立体渲染
+         * 
+         * 禁用立体渲染，使用标准单眼渲染。
          */
         NONE,
         /**
          * Stereoscopic rendering is performed using instanced rendering technique.
          */
+        /**
+         * 实例化渲染
+         * 
+         * 使用实例化渲染技术进行立体渲染。
+         * 通过绘制两次（左右眼）实现立体效果。
+         */
         INSTANCED,
         /**
          * Stereoscopic rendering is performed using the multiview feature from the graphics
          * backend.
+         */
+        /**
+         * 多视图渲染
+         * 
+         * 使用图形后端的多视图（multiview）功能进行立体渲染。
+         * 更高效，一次绘制同时生成左右眼视图。
          */
         MULTIVIEW,
     };
@@ -550,28 +659,65 @@ public:
      * This controls the priority level for GPU work scheduling, which helps prioritize the
      * submitted GPU work and enables preemption.
      */
+    /**
+     * GPU 上下文优先级
+     * 
+     * 控制 GPU 工作调度的优先级级别，有助于优先处理提交的 GPU 工作并启用抢占。
+     * 
+     * 用途：
+     * - 控制 GPU 任务的执行顺序
+     * - 允许高优先级任务抢占低优先级任务
+     * - 优化延迟敏感应用的性能
+     */
     enum class GpuContextPriority : uint8_t {
         /**
          * Backend default GPU context priority (typically MEDIUM)
+         */
+        /**
+         * 默认优先级
+         * 
+         * 使用后端默认的 GPU 上下文优先级（通常是 MEDIUM）。
          */
         DEFAULT,
         /**
          * For non-interactive, deferrable workloads. This should not interfere with standard
          * applications.
          */
+        /**
+         * 低优先级
+         * 
+         * 用于非交互式、可延迟的工作负载。
+         * 不应干扰标准应用程序。
+         */
         LOW,
         /**
          * The default priority level for standard applications.
+         */
+        /**
+         * 中等优先级
+         * 
+         * 标准应用程序的默认优先级级别。
          */
         MEDIUM,
         /**
          * For high-priority, latency-sensitive workloads that are more important than standard
          * applications.
          */
+        /**
+         * 高优先级
+         * 
+         * 用于高优先级、延迟敏感的工作负载，比标准应用程序更重要。
+         */
         HIGH,
         /**
          * The highest priority, intended for system-critical, real-time applications where missing
          * deadlines is unacceptable (e.g., VR/AR compositors or other system-critical tasks).
+         */
+        /**
+         * 实时优先级
+         * 
+         * 最高优先级，用于系统关键、实时应用程序，其中错过截止时间是不可接受的
+         * （例如，VR/AR 合成器或其他系统关键任务）。
          */
         REALTIME,
     };
@@ -579,9 +725,24 @@ public:
     /**
      * Defines how asynchronous operations are handled by the engine.
      */
+    /**
+     * 异步操作模式
+     * 
+     * 定义引擎如何处理异步操作（如着色器编译、资源加载等）。
+     * 
+     * 用途：
+     * - 控制异步任务的执行方式
+     * - 平衡性能和响应性
+     * - 适应不同平台的能力
+     */
     enum class AsynchronousMode : uint8_t {
         /**
          * Asynchronous operations are disabled. This is the default.
+         */
+        /**
+         * 禁用异步操作
+         * 
+         * 禁用异步操作，所有任务同步执行。这是默认值。
          */
         NONE,
 
@@ -589,27 +750,68 @@ public:
          * Attempts to use a dedicated worker thread for asynchronous tasks. If threading is not
          * supported by the platform, it automatically falls back to using an amortization strategy.
          */
+        /**
+         * 优先使用线程
+         * 
+         * 尝试使用专用工作线程处理异步任务。
+         * 如果平台不支持线程，则自动回退到使用摊销策略。
+         */
         THREAD_PREFERRED,
 
         /**
          * Uses an amortization strategy, processing a small number of asynchronous tasks during
          * each engine update cycle.
          */
+        /**
+         * 摊销策略
+         * 
+         * 使用摊销策略，在每个引擎更新周期中处理少量异步任务。
+         * 将工作分散到多个帧中，避免单帧卡顿。
+         */
         AMORTIZATION,
     };
 
+    /**
+     * 驱动配置结构
+     * 
+     * 包含创建 Driver 时的各种配置参数。
+     * 不同后端可能只支持部分配置项。
+     */
     struct DriverConfig {
         /**
          * Size of handle arena in bytes. Setting to 0 indicates default value is to be used.
          * Driver clamps to valid values.
          */
+        /**
+         * Handle 分配器大小（字节）
+         * 
+         * Handle 分配器使用的内存池大小（字节）。
+         * 设置为 0 表示使用默认值。
+         * Driver 会将其限制为有效值（至少为默认最小值）。
+         */
         size_t handleArenaSize = 0;
 
+        /**
+         * Metal 上传缓冲区大小（字节）
+         * 
+         * Metal 后端用于上传数据到 GPU 的缓冲区大小。
+         * 默认值为 512 KB。
+         */
         size_t metalUploadBufferSizeBytes = 512 * 1024;
 
         /**
          * Set to `true` to forcibly disable parallel shader compilation in the backend.
          * Currently only honored by the GL and Metal backends.
+         */
+        /**
+         * 禁用并行着色器编译
+         * 
+         * 设置为 true 以强制禁用后端的并行着色器编译。
+         * 目前仅在 GL 和 Metal 后端中生效。
+         * 
+         * 用途：
+         * - 调试着色器编译问题
+         * - 减少线程开销（单线程环境）
          */
         bool disableParallelShaderCompile = false;
 
@@ -617,15 +819,37 @@ public:
          * Set to `true` to forcibly disable amortized shader compilation in the backend.
          * Currently only honored by the GL backend.
          */
+        /**
+         * 禁用摊销着色器编译
+         * 
+         * 设置为 true 以强制禁用后端的摊销着色器编译。
+         * 目前仅在 GL 后端中生效。
+         * 
+         * 用途：
+         * - 强制同步编译（调试时）
+         * - 避免编译延迟分散到多帧
+         */
         bool disableAmortizedShaderCompile = true;
 
         /**
          * Disable backend handles use-after-free checks.
          */
+        /**
+         * 禁用句柄释放后使用检查
+         * 
+         * 禁用后端句柄的释放后使用检查。
+         * 可以提升性能，但会降低调试能力。
+         */
         bool disableHandleUseAfterFreeCheck = false;
 
         /**
          * Disable backend handles tags for heap allocated (fallback) handles
+         */
+        /**
+         * 禁用堆分配句柄标签
+         * 
+         * 禁用后端为堆分配（回退）句柄添加的标签。
+         * 可以节省内存，但会降低调试能力。
          */
         bool disableHeapHandleTags = false;
 
@@ -633,10 +857,26 @@ public:
          * Force GLES2 context if supported, or pretend the context is ES2. Only meaningful on
          * GLES 3.x backends.
          */
+        /**
+         * 强制 GLES2 上下文
+         * 
+         * 如果支持，强制使用 GLES2 上下文，或假装上下文是 ES2。
+         * 仅在 GLES 3.x 后端上有意义。
+         * 
+         * 用途：
+         * - 测试兼容性
+         * - 限制功能集
+         */
         bool forceGLES2Context = false;
 
         /**
          * Sets the technique for stereoscopic rendering.
+         */
+        /**
+         * 立体渲染技术
+         * 
+         * 设置用于立体渲染的技术。
+         * 默认值为 NONE（无立体渲染）。
          */
         StereoscopicType stereoscopicType = StereoscopicType::NONE;
 
@@ -645,6 +885,16 @@ public:
          * This is only supported for:
          *      - PlatformEGLAndroid
          */
+        /**
+         * 断言原生窗口有效性
+         * 
+         * 在调用 makeCurrent() 时断言与 SwapChain 关联的原生窗口有效。
+         * 仅在以下平台支持：
+         *      - PlatformEGLAndroid
+         * 
+         * 用途：
+         * - 调试窗口生命周期问题
+         */
         bool assertNativeWindowIsValid = false;
 
         /**
@@ -652,11 +902,29 @@ public:
          * frame is aborted instead of panic. This is only supported for:
          *      - PlatformMetal
          */
+        /**
+         * Metal 禁用 Drawable 获取失败时的 panic
+         * 
+         * 如果无法获取 Drawable 时采取的操作。
+         * 如果为 true，帧会被中止而不是 panic。
+         * 仅在以下平台支持：
+         *      - PlatformMetal
+         * 
+         * 用途：
+         * - 优雅处理窗口关闭等情况
+         */
         bool metalDisablePanicOnDrawableFailure = false;
 
         /**
          * GPU context priority level. Controls GPU work scheduling and preemption.
          * This is only supported for:
+         *      - PlatformEGL
+         */
+        /**
+         * GPU 上下文优先级
+         * 
+         * GPU 上下文优先级级别。控制 GPU 工作调度和抢占。
+         * 仅在以下平台支持：
          *      - PlatformEGL
          */
         GpuContextPriority gpuContextPriority = GpuContextPriority::DEFAULT;
@@ -666,10 +934,27 @@ public:
          * This is only supported for:
          *      - VulkanPlatform
          */
+        /**
+         * Vulkan 启用暂存缓冲区绕过
+         * 
+         * 因为设备是统一内存架构（UMA）而绕过暂存缓冲区。
+         * 仅在以下平台支持：
+         *      - VulkanPlatform
+         * 
+         * 用途：
+         * - 优化 UMA 设备的性能
+         * - 减少内存拷贝
+         */
         bool vulkanEnableStagingBufferBypass = false;
 
         /**
          * Asynchronous mode for the engine. Defines how asynchronous operations are handled.
+         */
+        /**
+         * 异步操作模式
+         * 
+         * 引擎的异步操作模式。定义如何处理异步操作。
+         * 默认值为 NONE（禁用异步操作）。
          */
         AsynchronousMode asynchronousMode = AsynchronousMode::NONE;
     };
@@ -681,6 +966,16 @@ public:
     /**
      * Queries the underlying OS version.
      * @return The OS version.
+     */
+    /**
+     * 查询底层操作系统版本
+     * 
+     * 查询底层操作系统的版本号。
+     * 
+     * @return 操作系统版本号
+     *         - Android: API 级别（如 28 表示 Android 9）
+     *         - iOS: 主版本号（如 13 表示 iOS 13）
+     *         - 其他平台：平台特定的版本号
      */
     virtual int getOSVersion() const noexcept = 0;
 
@@ -734,6 +1029,19 @@ public:
      * on platforms that need it, such as macOS + OpenGL. Returns false if this is not the main
      * thread, or if the platform does not need to perform any special processing.
      */
+    /**
+     * 处理平台事件队列
+     * 
+     * 从主事件处理线程调用时处理平台的事件队列。
+     * 
+     * 内部实现：
+     * - Filament 在等待栅栏时可能需要调用此方法
+     * - 仅在需要此功能的平台上实现（如 macOS + OpenGL）
+     * 
+     * @return 如果成功处理事件返回 true，否则返回 false
+     *         - 如果不在主线程上调用，返回 false
+     *         - 如果平台不需要特殊处理，返回 false
+     */
     virtual bool pumpEvents() noexcept;
 
     // --------------------------------------------------------------------------------------------
@@ -743,6 +1051,17 @@ public:
      * Whether this platform supports compositor timing querying.
      *
      * @return true if this Platform supports compositor timings, false otherwise [default]
+     * @see queryCompositorTiming()
+     * @see setPresentFrameId()
+     * @see queryFrameTimestamps()
+     */
+    /**
+     * 是否支持合成器时序查询
+     * 
+     * 检查此平台是否支持合成器时序查询功能。
+     * 
+     * @return 如果此 Platform 支持合成器时序返回 true，否则返回 false（默认）
+     * 
      * @see queryCompositorTiming()
      * @see setPresentFrameId()
      * @see queryFrameTimestamps()
@@ -757,6 +1076,21 @@ public:
      * @return true on success, false otherwise (e.g. if not supported)
      * @see isCompositorTimingSupported()
      */
+    /**
+     * 查询合成器时序
+     * 
+     * 如果支持合成器时序，用交换链原生窗口使用的合成器的时序信息填充提供的
+     * CompositorTiming 结构。
+     * 
+     * 要求：
+     * - 交换链的原生窗口必须有效（即不是无头交换链）
+     * 
+     * @param swapchain 要查询合成器时序的交换链
+     * @param outCompositorTiming 输出结构，接收合成器时序信息
+     * @return 成功返回 true，否则返回 false（例如不支持）
+     * 
+     * @see isCompositorTimingSupported()
+     */
     virtual bool queryCompositorTiming(SwapChain const* UTILS_NONNULL swapchain,
             CompositorTiming* UTILS_NONNULL outCompositorTiming) const noexcept;
 
@@ -769,6 +1103,21 @@ public:
      * @param swapchain
      * @param frameId
      * @return true on success, false otherwise
+     * @see isCompositorTimingSupported()
+     * @see queryFrameTimestamps()
+     */
+    /**
+     * 设置呈现帧 ID
+     * 
+     * 将必须单调递增（但不严格）的通用 frameId 与指定交换链上要呈现的下一帧关联。
+     * 
+     * 要求：
+     * - 必须从后端线程调用
+     * 
+     * @param swapchain 交换链
+     * @param frameId 帧 ID（必须单调递增）
+     * @return 成功返回 true，否则返回 false
+     * 
      * @see isCompositorTimingSupported()
      * @see queryFrameTimestamps()
      */
@@ -789,6 +1138,24 @@ public:
      * @see isCompositorTimingSupported()
      * @see setPresentFrameId()
      */
+    /**
+     * 查询帧时间戳
+     * 
+     * 如果支持合成器时序，用指定交换链的给定帧（由帧 ID 标识）的时间戳信息填充
+     * 提供的 FrameTimestamps 结构。
+     * 
+     * 注意：
+     * - 系统仅保留有限的历史帧时序
+     * - 此 API 是线程安全的，可以从任何线程调用
+     * 
+     * @param swapchain 要查询时间戳的交换链
+     * @param frameId 我们感兴趣的帧 ID
+     * @param outFrameTimestamps 输出结构，接收时间戳
+     * @return 成功返回 true，否则返回 false
+     * 
+     * @see isCompositorTimingSupported()
+     * @see setPresentFrameId()
+     */
     virtual bool queryFrameTimestamps(SwapChain const* UTILS_NONNULL swapchain,
             uint64_t frameId, FrameTimestamps* UTILS_NONNULL outFrameTimestamps) const noexcept;
 
@@ -800,6 +1167,13 @@ public:
      * backend implementation may use to insert a key/value pair into the
      * cache.
      */
+    /**
+     * 插入 Blob 函数类型
+     * 
+     * 应用程序提供的函数的 Invocable，后端实现可以使用它来将键/值对插入缓存。
+     * 
+     * 签名：void(const void* key, size_t keySize, const void* value, size_t valueSize)
+     */
     using InsertBlobFunc = utils::Invocable<
             void(const void* UTILS_NONNULL key, size_t keySize,
                     const void* UTILS_NONNULL value, size_t valueSize)>;
@@ -808,6 +1182,14 @@ public:
      * RetrieveBlobFunc is an Invocable to an application-provided function that a
      * backend implementation may use to retrieve a cached value from the
      * cache.
+     */
+    /**
+     * 检索 Blob 函数类型
+     * 
+     * 应用程序提供的函数的 Invocable，后端实现可以使用它从缓存中检索缓存值。
+     * 
+     * 签名：size_t(const void* key, size_t keySize, void* value, size_t valueSize)
+     * 返回：如果找到缓存值，返回其大小（字节）；否则返回 0
      */
     using RetrieveBlobFunc = utils::Invocable<
             size_t(const void* UTILS_NONNULL key, size_t keySize,
@@ -828,20 +1210,50 @@ public:
      * @param retrieveBlob  an Invocable that retrieves from the cache the value associated with a
      *                      given key
      */
+    /**
+     * 设置 Blob 缓存回调函数
+     * 
+     * 设置后端可用于与应用程序提供的缓存功能交互的回调函数。
+     * 
+     * 重要说明：
+     * - 缓存函数在 Platform 的生命周期内只能指定一次
+     * - insert 和 retrieve Invocables 可以从调用 setBlobFunc 时到 Platform 销毁时的
+     *   任何时间和任何线程调用
+     * - 允许从不同线程并发调用这些函数
+     * - 任一函数都可以为 null
+     * 
+     * @param insertBlob    将新值插入缓存并将其与给定键关联的 Invocable
+     * @param retrieveBlob 从缓存中检索与给定键关联的值的 Invocable
+     */
     void setBlobFunc(InsertBlobFunc&& insertBlob, RetrieveBlobFunc&& retrieveBlob) noexcept;
 
     /**
      * @return true if insertBlob is valid.
+     */
+    /**
+     * 检查 insertBlob 是否有效
+     * 
+     * @return 如果 insertBlob 有效返回 true
      */
     bool hasInsertBlobFunc() const noexcept;
 
     /**
      * @return true if retrieveBlob is valid.
      */
+    /**
+     * 检查 retrieveBlob 是否有效
+     * 
+     * @return 如果 retrieveBlob 有效返回 true
+     */
     bool hasRetrieveBlobFunc() const noexcept;
 
     /**
      * @return true if either of insertBlob or retrieveBlob are valid.
+     */
+    /**
+     * 检查是否有有效的 Blob 函数
+     * 
+     * @return 如果 insertBlob 或 retrieveBlob 任一有效返回 true
      */
     bool hasBlobFunc() const noexcept {
         return hasInsertBlobFunc() || hasRetrieveBlobFunc();
@@ -864,6 +1276,22 @@ public:
      * @param value         pointer to the beginning of the value data that is to be inserted
      * @param valueSize     specifies the size in byte of the data pointed to by <value>
      */
+    /**
+     * 插入 Blob 到缓存
+     * 
+     * 要将新的二进制值插入缓存并将其与给定键关联，后端实现可以调用应用程序提供的
+     * 回调函数 insertBlob。
+     * 
+     * 注意：
+     * - 不保证在 set 调用后给定的键/值对是否存在于缓存中
+     * - 如果过去已将不同的值与给定键关联，则在 set 调用后与键关联的值（如果有）是未定义的
+     * - 虽然没有保证，但缓存实现应尝试缓存给定键的最 recently set 值
+     * 
+     * @param key       指向要插入的键数据开头的指针
+     * @param keySize   指定 key 指向的数据的大小（字节）
+     * @param value     指向要插入的值数据开头的指针
+     * @param valueSize 指定 value 指向的数据的大小（字节）
+     */
     void insertBlob(const void* UTILS_NONNULL key, size_t keySize,
             const void* UTILS_NONNULL value, size_t valueSize);
 
@@ -884,12 +1312,38 @@ public:
      * @return             If the cache contains a value associated with the given key then the
      *                     size of that binary value in bytes is returned. Otherwise 0 is returned.
      */
+    /**
+     * 从缓存检索 Blob
+     * 
+     * 要从缓存中检索与给定键关联的二进制值，后端实现可以调用应用程序提供的回调函数
+     * retrieveBlob。
+     * 
+     * 行为：
+     * - 如果缓存包含给定键的值且其大小（字节）小于或等于 valueSize，则将值写入 value
+     *   指向的内存
+     * - 否则，不会向 value 指向的内存写入任何内容
+     * 
+     * @param key       指向键开头的指针
+     * @param keySize   指定 key 指向的二进制键的大小（字节）
+     * @param value     指向接收缓存二进制数据的缓冲区的指针（如果存在）
+     * @param valueSize 指定 value 指向的内存的大小（字节）
+     * @return 如果缓存包含与给定键关联的值，则返回该二进制值的大小（字节）。否则返回 0
+     */
     size_t retrieveBlob(const void* UTILS_NONNULL key, size_t keySize,
             void* UTILS_NONNULL value, size_t valueSize);
 
     // --------------------------------------------------------------------------------------------
     // Debugging APIs
 
+    /**
+     * 调试更新统计函数类型
+     * 
+     * 应用程序提供的函数的 Invocable，后端可以使用它来更新后端特定的统计信息以帮助调试。
+     * 
+     * 签名：void(const char* key, uint64_t intValue, utils::CString stringValue)
+     * 
+     * 注意：对于任何给定的调用，只有一个值参数（intValue 或 stringValue）有意义，具体取决于键。
+     */
     using DebugUpdateStatFunc = utils::Invocable<void(const char* UTILS_NONNULL key,
             uint64_t intValue, utils::CString stringValue)>;
 
@@ -908,10 +1362,31 @@ public:
      *
      * @param debugUpdateStat   an Invocable that updates debug statistics
      */
+    /**
+     * 设置调试更新统计回调函数
+     * 
+     * 设置后端可用于更新后端特定统计信息以帮助调试的回调函数。
+     * 此回调保证在 Filament 驱动线程上调用。
+     * 
+     * 回调签名：
+     * - (key, intValue, stringValue)
+     * - 对于任何给定的调用，只有一个值参数（intValue 或 stringValue）有意义，具体取决于键
+     * 
+     * 重要提示：
+     * - 因为回调在驱动线程上调用，只应在其中执行快速、非阻塞的工作
+     * - 不应进行任何图形 API 调用（如 GL 调用），这可能会干扰 Filament 的驱动状态
+     * 
+     * @param debugUpdateStat 更新调试统计信息的 Invocable
+     */
     void setDebugUpdateStatFunc(DebugUpdateStatFunc&& debugUpdateStat) noexcept;
 
     /**
      * @return true if debugUpdateStat is valid.
+     */
+    /**
+     * 检查 debugUpdateStat 是否有效
+     * 
+     * @return 如果 debugUpdateStat 有效返回 true
      */
     bool hasDebugUpdateStatFunc() const noexcept;
 
@@ -928,6 +1403,19 @@ public:
      * @param intValue      the updated integer value of key (the string value passed to the
      *                      callback will be empty)
      */
+    /**
+     * 更新调试统计信息（整数）
+     * 
+     * 要跟踪后端特定的统计信息，后端实现可以调用应用程序提供的回调函数 debugUpdateStatFunc
+     * 来将值与给定键关联或更新。
+     * 
+     * 注意：
+     * - 可以使用相同的键多次调用此函数，在这种情况下，新值应覆盖旧值
+     * - 此函数保证仅在单个线程（Filament 驱动线程）上调用
+     * 
+     * @param key       调试统计信息的键（以 null 结尾的 C 字符串）
+     * @param intValue  键的更新整数值（传递给回调的字符串值将为空）
+     */
     void debugUpdateStat(const char* UTILS_NONNULL key, uint64_t intValue);
 
     /**
@@ -942,6 +1430,19 @@ public:
      * @param key           a null-terminated C-string with the key of the debug statistic
      * @param stringValue   the updated string value of key (the integer value passed to the
      *                      callback will be 0)
+     */
+    /**
+     * 更新调试统计信息（字符串）
+     * 
+     * 要跟踪后端特定的统计信息，后端实现可以调用应用程序提供的回调函数 debugUpdateStatFunc
+     * 来将值与给定键关联或更新。
+     * 
+     * 注意：
+     * - 可以使用相同的键多次调用此函数，在这种情况下，新值应覆盖旧值
+     * - 此函数保证仅在单个线程（Filament 驱动线程）上调用
+     * 
+     * @param key         调试统计信息的键（以 null 结尾的 C 字符串）
+     * @param stringValue 键的更新字符串值（传递给回调的整数值将为 0）
      */
     void debugUpdateStat(const char* UTILS_NONNULL key, utils::CString stringValue);
 

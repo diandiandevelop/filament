@@ -115,6 +115,8 @@ public:
     bool test(size_t bit) const noexcept { return operator[](bit); }
 
     void set(size_t b) noexcept {
+        // b / BITS_PER_WORD: 计算在第几个字（word）中
+        // b % BITS_PER_WORD: 计算在字中的第几位
         assert(b / BITS_PER_WORD < N);
         storage[b / BITS_PER_WORD] |= T(1) << (b % BITS_PER_WORD);
     }

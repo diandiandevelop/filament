@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (C) 2015 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -78,12 +78,12 @@ struct VertexBuffer::BuilderDetails {
          * 默认类型为 FLOAT4。
          */
         AttributeData() : Attribute{ .type = ElementType::FLOAT4 } {
-            static_assert(sizeof(Attribute) == sizeof(AttributeData),  // 静态断言大小匹配
+            static_assert(sizeof(Attribute) == sizeof(AttributeData),  // 静态断言大小匹配  
                     "Attribute and Builder::Attribute must match");
         }
     };
-    std::array<AttributeData, MAX_VERTEX_ATTRIBUTE_COUNT> mAttributes{};  // 属性数组
-    AttributeBitset mDeclaredAttributes;  // 已声明的属性位集
+    std::array<AttributeData, MAX_VERTEX_ATTRIBUTE_COUNT> mAttributes{};  // 属性数组 // 16个属性的详细信息数组
+    AttributeBitset mDeclaredAttributes;  // 已声明的属性位集  // 32位位集（可以有32个属性），标记哪些属性被声明了
     uint32_t mVertexCount = 0;  // 顶点数量
     uint8_t mBufferCount = 0;  // 缓冲区数量
     bool mBufferObjectsEnabled = false;  // 是否启用缓冲区对象
@@ -174,7 +174,7 @@ VertexBuffer::Builder& VertexBuffer::Builder::bufferCount(uint8_t const bufferCo
  * @return 构建器引用（支持链式调用）
  */
 VertexBuffer::Builder& VertexBuffer::Builder::attribute(VertexAttribute const attribute,
-        uint8_t const bufferIndex,  // 缓冲区索引
+        uint8_t const bufferIndex,  // 缓冲区索引  （0-15）
         AttributeType const attributeType,  // 属性类型
         uint32_t const byteOffset,  // 字节偏移
         uint8_t byteStride) noexcept {  // 字节步长
@@ -184,8 +184,8 @@ VertexBuffer::Builder& VertexBuffer::Builder::attribute(VertexAttribute const at
         byteStride = uint8_t(attributeSize);  // 自动设置为属性大小
     }
 
-    if (size_t(attribute) < MAX_VERTEX_ATTRIBUTE_COUNT &&  // 如果属性索引有效
-            size_t(bufferIndex) < MAX_VERTEX_ATTRIBUTE_COUNT) {  // 如果缓冲区索引有效
+    if (size_t(attribute) < MAX_VERTEX_ATTRIBUTE_COUNT &&  // 如果属性索引有效   // 属性索引 < 16
+            size_t(bufferIndex) < MAX_VERTEX_ATTRIBUTE_COUNT) {  // 如果缓冲区索引有效   // 缓冲区索引 < 16
         auto& entry = mImpl->mAttributes[attribute];  // 获取属性条目
         entry.buffer = bufferIndex;  // 设置缓冲区索引
         entry.offset = byteOffset;  // 设置字节偏移
@@ -198,8 +198,52 @@ VertexBuffer::Builder& VertexBuffer::Builder::attribute(VertexAttribute const at
             // BONE_INDICES must always be an integer type
             entry.flags |= Attribute::FLAG_INTEGER_TARGET;  // 设置整数目标标志
         }
+        /**
+         * 
+         *       bitset32 内部存储是一个 uint32_t storage[1]
+                 初始状态：storage[0] = 0b00000000000000000000000000000000
 
-        mImpl->mDeclaredAttributes.set(attribute);  // 标记属性已声明
+                 调用 set(0)：
+                 storage[0 / 32] |= (1 << (0 % 32)) storage[0] |= (1 << 0) storage[0] |=
+                 0b00000000000000000000000000000001
+                 结果：storage[0] = 0b00000000000000000000000000000001
+
+                
+                //设置位置属性（假设 POSITION = 0） builder.attribute(VertexAttribute::POSITION, 0,
+                AttributeType::FLOAT3, 0, 0);
+                // mDeclaredAttributes: 0b00000000000000000000000000000001 (位 0 被设置)
+
+                // 设置法线属性（假设 NORMAL = 1）
+                builder.attribute(VertexAttribute::NORMAL, 0, AttributeType::FLOAT3, 12, 0);
+                // mDeclaredAttributes: 0b00000000000000000000000000000011 (位 0 和 1 被设置)
+
+                // 设置纹理坐标（假设 UV0 = 2）
+                builder.attribute(VertexAttribute::UV0, 1, AttributeType::FLOAT2, 0, 0);
+                // mDeclaredAttributes: 0b00000000000000000000000000000111 (位 0、1、2 被设置)
+
+
+
+
+                 VertexBuffer::Builder builder; builder .bufferCount(2) .vertexCount(1000)
+                    .attribute(VertexAttribute::POSITION, 0, AttributeType::FLOAT3, 0, 0)
+                    // ↑ 设置 mAttributes[0]，设置 mDeclaredAttributes 的第 0 位
+                    .attribute(VertexAttribute::NORMAL, 0, AttributeType::FLOAT3, 12, 0)
+                    // ↑ 设置 mAttributes[1]，设置 mDeclaredAttributes 的第 1 位
+                    .attribute(VertexAttribute::UV0, 1, AttributeType::FLOAT2, 0, 0);
+                    // ↑ 设置 mAttributes[2]，设置 mDeclaredAttributes 的第 2 位
+
+                // 最终状态：
+                // mDeclaredAttributes = 0b00000000000000000000000000000111 (位 0,1,2 被设置)
+                // mAttributes[0] = {buffer:0, offset:0, stride:12, type:FLOAT3}
+                // mAttributes[1] = {buffer:0, offset:12, stride:12, type:FLOAT3}
+                // mAttributes[2] = {buffer:1, offset:0, stride:8, type:FLOAT2}
+         * 
+         * 
+         * 
+         */
+
+
+        mImpl->mDeclaredAttributes.set(attribute);  // 在位集中标记该属性已声明
     } else {  // 如果索引超出范围
         LOG(WARNING) << "Ignoring VertexBuffer attribute, the limit of "  // 记录警告
                      << MAX_VERTEX_ATTRIBUTE_COUNT << " attributes has been exceeded";
@@ -594,9 +638,27 @@ void FVertexBuffer::setBufferAt(FEngine& engine, uint8_t const bufferIndex,
     FILAMENT_CHECK_PRECONDITION(bufferIndex < mBufferCount)  // 检查缓冲区索引
             << "bufferIndex must be < bufferCount";
 
+    /**
+     * 0x3 是十六进制，等于二进制 0b11（十进制 3）。
+     * 0x3 = 0b00000011  // 只有最低 2 位是 1
+     * byteOffset & 0x3  // 只保留最低 2 位，其他位都变成 0   如果 (byteOffset & 0x3) == 0，说明最低 2 位都是 0，即 byteOffset 是 4 的倍数（4 字节对齐）
+     *  对齐的例子（4的倍数） 
+        byteOffset = 0:   0b00000000 & 0b11 = 0b00 = 0 ✅ 
+        byteOffset = 4:   0b00000100 & 0b11 =0b00 = 0  ✅
+
+    *   不对齐的例子（不是 4 的倍数）
+        byteOffset = 1:   0b00000001 & 0b11 = 0b01 = 1  ❌
+        byteOffset = 2:   0b00000010 & 0b11 = 0b10 = 2  ❌
+     * 
+     */
+
     FILAMENT_CHECK_PRECONDITION((byteOffset & 0x3) == 0)  // 检查偏移对齐
         << "byteOffset must be a multiple of 4";
 
+    //std::move(buffer) 将 buffer 转换为右值引用，触发移动语义  调用移动构造函数，转移所有权
+    //   调用后：
+    //  buffer 已经变为空状态，不会在析构时释放缓冲区
+    //  updateBufferObject 内部的对象拥有所有权，会在适当时机释放
     engine.getDriverApi().updateBufferObject(mBufferObjects[bufferIndex],  // 更新缓冲区对象
             std::move(buffer), byteOffset);  // 移动缓冲区描述符和偏移
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (C) 2015 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -4746,23 +4746,63 @@ void OpenGLDriver::updateIndexBuffer(
  * - 部分更新时使用 glBufferSubData
  * - 注意：glBufferSubData 在同一帧多次调用时可能效率低下
  */
+//updateBufferObject(boh, bd, byteOffset)
+//    │
+//    ├─> 获取 GLBufferObject 对象
+//    │
+//    ├─> 验证更新范围(bd.size + byteOffset <= bo->byteCount)
+//    │
+//    ├─> 如果是顶点缓冲区 → 解绑 VAO
+//    │
+//    ├─> 判断路径：
+//    │   │
+//    │   ├─> ES 2.0 + Uniform 缓冲区？
+//    │   │   └─> 是 → memcpy 到系统内存 + age++
+//    │   │
+//    │   └─> 否 → 标准 OpenGL 路径
+//    │       │
+//    │       ├─> 绑定缓冲区(gl.bindBuffer)
+//    │       │
+//    │       ├─> 判断更新类型：
+//    │       │   │
+//    │       │   ├─> 全量更新？(offset == 0 && size == byteCount)
+//    │       │   │   └─> 是 → glBufferData(更快)
+//    │       │   │
+//    │       │   └─> 否 → glBufferSubData(部分更新)
+//    │
+//    └─> scheduleDestroy(bd) → 异步释放 CPU 内存
 void OpenGLDriver::updateBufferObject(
         Handle<HwBufferObject> boh, BufferDescriptor&& bd, uint32_t const byteOffset) {
     DEBUG_MARKER()
 
+    //将句柄转换为实际的 GLBufferObject 指针
     auto& gl = mContext;
     GLBufferObject* bo = handle_cast<GLBufferObject *>(boh);
 
+    // 检查内容
+    //验证：更新起始位置 +更新数据大小 ≤ 缓冲区总大小 
+    // bd.size：要更新的数据大小（字节） 
+    // byteOffset：更新起始位置的偏移量（字节）
+    // bo->byteCount：缓冲区的总大小（字节）
     assert_invariant(bd.size + byteOffset <= bo->byteCount);
 
     // 如果是顶点缓冲区，解绑 VAO（避免影响）
+    // 原因：
+    // 1.VAO 会缓存顶点属性状态 
+    // 2.更新顶点缓冲区时，解绑 VAO 避免状态冲突
+    // 3.确保更新操作正确生效
     if (bo->gl.binding == GL_ARRAY_BUFFER) {
         gl.bindVertexArray(nullptr);
     }
 
     // ES 2.0 特殊处理：uniform 缓冲区使用系统内存
+    // 原因：
+    // ES 2.0 不支持 Uniform Buffer Object（UBO） 
+    // 使用 CPU 内存模拟（bo->gl.buffer 是系统内存指针）
+    // 直接 memcpy 更新内存 
+    // age++ 用于标记缓冲区已更新
     if (UTILS_UNLIKELY(bo->bindingType == BufferObjectBinding::UNIFORM && gl.isES2())) {
-        assert_invariant(bo->gl.buffer);
+        assert_invariant(bo->gl.buffer);     //确保 bo->gl.buffer不为空
         // 直接复制到系统内存
         memcpy(static_cast<uint8_t*>(bo->gl.buffer) + byteOffset, bd.buffer, bd.size);
         bo->age++;  // 增加 age 计数器
@@ -4770,6 +4810,16 @@ void OpenGLDriver::updateBufferObject(
         // 标准 OpenGL 缓冲区更新
         assert_invariant(bo->gl.id);
         gl.bindBuffer(bo->gl.binding, bo->gl.id);
+
+        //两种更新策略：
+        //策略 A：全量更新（glBufferData）
+        //  条件：偏移为 0 且大小等于缓冲区总大小 
+        //  特点：可能更快，驱动可重新分配或优化
+        //  注意：会替换整个缓冲区内容
+        //策略 B：部分更新（glBufferSubData）
+        //  条件：部分更新或偏移不为 0
+        //  特点：只更新指定范围
+        //  注意：同一帧多次调用可能效率较低 
         if (byteOffset == 0 && bd.size == bo->byteCount) {
             // 看起来使用 glBufferData() 通常更快（或不更差）
             glBufferData(bo->gl.binding, GLsizeiptr(bd.size), bd.buffer, getBufferUsage(bo->usage));
@@ -4780,6 +4830,7 @@ void OpenGLDriver::updateBufferObject(
         }
     }
 
+    //std::move(bd) 避免拷贝 BufferDescriptor  所有权转移给驱动层
     scheduleDestroy(std::move(bd));
 
     CHECK_GL_ERROR()

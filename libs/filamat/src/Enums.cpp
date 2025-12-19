@@ -20,6 +20,7 @@
 
 namespace filamat {
 
+// 属性名称到属性枚举的映射表
 std::unordered_map<std::string, Property> Enums::mStringToProperty = {
         { "baseColor",           Property::BASE_COLOR },
         { "roughness",           Property::ROUGHNESS },
@@ -54,11 +55,13 @@ std::unordered_map<std::string, Property> Enums::mStringToProperty = {
         { "shadowStrength",       Property::SHADOW_STRENGTH }
 };
 
+// 获取Property类型的映射表（模板特化）
 template <>
 std::unordered_map<std::string, Property>& Enums::getMap<Property>() noexcept {
     return mStringToProperty;
 };
 
+// 统一变量类型名称到统一变量类型枚举的映射表
 std::unordered_map<std::string, UniformType> Enums::mStringToUniformType = {
         { "bool",     UniformType::BOOL },
         { "bool2",    UniformType::BOOL2 },
@@ -82,11 +85,13 @@ std::unordered_map<std::string, UniformType> Enums::mStringToUniformType = {
         { "float4x4", UniformType::MAT4 }
 };
 
+// 获取UniformType类型的映射表（模板特化）
 template <>
 std::unordered_map<std::string, UniformType>& Enums::getMap<UniformType>() noexcept {
     return mStringToUniformType;
 };
 
+// 采样器类型名称到采样器类型枚举的映射表
 std::unordered_map<std::string, SamplerType> Enums::mStringToSamplerType = {
         { "sampler2d",           SamplerType::SAMPLER_2D },
         { "sampler2dArray",      SamplerType::SAMPLER_2D_ARRAY },
@@ -96,20 +101,24 @@ std::unordered_map<std::string, SamplerType> Enums::mStringToSamplerType = {
         { "samplerCubemapArray", SamplerType::SAMPLER_CUBEMAP_ARRAY },
 };
 
+// 获取SamplerType类型的映射表（模板特化）
 template <>
 std::unordered_map<std::string, SamplerType>& Enums::getMap<SamplerType>() noexcept {
     return mStringToSamplerType;
 };
 
+// 子通道类型名称到子通道类型枚举的映射表
 std::unordered_map<std::string, SubpassType> Enums::mStringToSubpassType = {
         { "subpassInput",       SubpassType::SUBPASS_INPUT },
 };
 
+// 获取SubpassType类型的映射表（模板特化）
 template <>
 std::unordered_map<std::string, SubpassType>& Enums::getMap<SubpassType>() noexcept {
     return mStringToSubpassType;
 };
 
+// 参数精度名称到参数精度枚举的映射表
 std::unordered_map<std::string, ParameterPrecision> Enums::mStringToSamplerPrecision = {
         { "default", ParameterPrecision::DEFAULT },
         { "low",     ParameterPrecision::LOW },
@@ -117,30 +126,36 @@ std::unordered_map<std::string, ParameterPrecision> Enums::mStringToSamplerPreci
         { "high",    ParameterPrecision::HIGH },
 };
 
+// 获取ParameterPrecision类型的映射表（模板特化）
 template <>
 std::unordered_map<std::string, ParameterPrecision>& Enums::getMap<ParameterPrecision>() noexcept {
     return mStringToSamplerPrecision;
 };
 
+// 输出目标名称到输出目标枚举的映射表
 std::unordered_map<std::string, OutputTarget> Enums::mStringToOutputTarget = {
         { "color",   OutputTarget::COLOR },
         { "depth",   OutputTarget::DEPTH }
 };
 
+// 获取OutputTarget类型的映射表（模板特化）
 template <>
 std::unordered_map<std::string, OutputTarget>& Enums::getMap<OutputTarget>() noexcept {
     return mStringToOutputTarget;
 };
 
+// 输出限定符名称到输出限定符枚举的映射表
 std::unordered_map<std::string, OutputQualifier> Enums::mStringToOutputQualifier = {
         { "out",     OutputQualifier::OUT }
 };
 
+// 获取OutputQualifier类型的映射表（模板特化）
 template <>
 std::unordered_map<std::string, OutputQualifier>& Enums::getMap<OutputQualifier>() noexcept {
     return mStringToOutputQualifier;
 };
 
+// 输出类型名称到输出类型枚举的映射表
 std::unordered_map<std::string, OutputType> Enums::mStringToOutputType = {
         { "float",   OutputType::FLOAT },
         { "float2",  OutputType::FLOAT2 },
@@ -148,11 +163,13 @@ std::unordered_map<std::string, OutputType> Enums::mStringToOutputType = {
         { "float4",  OutputType::FLOAT4 },
 };
 
+// 获取OutputType类型的映射表（模板特化）
 template <>
 std::unordered_map<std::string, OutputType>& Enums::getMap<OutputType>() noexcept {
     return mStringToOutputType;
 };
 
+// 采样器格式名称到采样器格式枚举的映射表
 std::unordered_map<std::string, SamplerFormat> Enums::mStringToSamplerFormat = {
         { "int",    SamplerFormat::INT },
         { "uint",   SamplerFormat::UINT },
@@ -160,28 +177,33 @@ std::unordered_map<std::string, SamplerFormat> Enums::mStringToSamplerFormat = {
         { "shadow", SamplerFormat::SHADOW },
 };
 
+// 获取SamplerFormat类型的映射表（模板特化）
 template <>
 std::unordered_map<std::string, SamplerFormat>& Enums::getMap<SamplerFormat>() noexcept {
     return mStringToSamplerFormat;
 };
 
+// 常量类型名称到常量类型枚举的映射表
 std::unordered_map<std::string, ConstantType > Enums::mStringToConstantType = {
         { "int",   ConstantType::INT },
         { "float", ConstantType::FLOAT },
         { "bool",  ConstantType::BOOL },
 };
 
+// 获取ConstantType类型的映射表（模板特化）
 template <>
 std::unordered_map<std::string, ConstantType>& Enums::getMap<ConstantType>() noexcept {
     return mStringToConstantType;
 };
 
+// 着色器阶段类型名称到着色器阶段类型枚举的映射表
 std::unordered_map<std::string, ShaderStageType> Enums::mStringToShaderStageType = {
         { "fragment", ShaderStageType::FRAGMENT },
         { "vertex",   ShaderStageType::VERTEX },
         { "compute",  ShaderStageType::COMPUTE },
 };
 
+// 获取ShaderStageType类型的映射表（模板特化）
 template <>
 std::unordered_map<std::string, ShaderStageType>& Enums::getMap<ShaderStageType>() noexcept {
     return mStringToShaderStageType;

@@ -18,17 +18,21 @@
 
 namespace filamat {
 
+// 构造函数，使用二进制条目列表和块类型初始化
 MaterialBinaryChunk::MaterialBinaryChunk(
         const std::vector<BinaryEntry>&& entries, ChunkType chunkType)
     : Chunk(chunkType), mEntries(entries) {}
 
+// 将块扁平化到Flattener中
 void MaterialBinaryChunk::flatten(Flattener &f) {
+    // 写入条目数量
     f.writeUint64(mEntries.size());
+    // 遍历所有条目，写入着色器信息
     for (const BinaryEntry& entry : mEntries) {
-        f.writeUint8(uint8_t(entry.shaderModel));
-        f.writeUint8(entry.variant.key);
-        f.writeUint8(uint8_t(entry.stage));
-        f.writeUint32(entry.dictionaryIndex);
+        f.writeUint8(uint8_t(entry.shaderModel));     // 写入着色器模型
+        f.writeUint8(entry.variant.key);              // 写入变体键
+        f.writeUint8(uint8_t(entry.stage));           // 写入着色器阶段
+        f.writeUint32(entry.dictionaryIndex);         // 写入字典索引
     }
 }
 

@@ -27,20 +27,23 @@
 namespace filamat {
 
 // TextEntry stores a shader in ASCII text format, like GLSL.
+// TextEntry以ASCII文本格式（如GLSL）存储着色器
 struct TextEntry {
-    filament::backend::ShaderModel shaderModel;
-    filament::Variant variant;
-    filament::backend::ShaderStage stage;
-    std::string shader;
+    filament::backend::ShaderModel shaderModel;  // 着色器模型
+    filament::Variant variant;                    // 着色器变体
+    filament::backend::ShaderStage stage;        // 着色器阶段
+    std::string shader;                          // 着色器代码（文本格式）
 };
 
+// 二进制条目结构，存储二进制着色器信息
 struct BinaryEntry {
-    filament::backend::ShaderModel shaderModel;
-    filament::Variant variant;
-    filament::backend::ShaderStage stage;
-    size_t dictionaryIndex;  // maps to an index in the blob dictionary
+    filament::backend::ShaderModel shaderModel;  // 着色器模型
+    filament::Variant variant;                    // 着色器变体
+    filament::backend::ShaderStage stage;        // 着色器阶段
+    size_t dictionaryIndex;  // maps to an index in the blob dictionary - 映射到blob字典中的索引
 
     // temporarily holds this entry's binary data until added to the dictionary
+    // 临时保存此条目的二进制数据，直到添加到字典中
     std::vector<uint8_t> data;
 };
 

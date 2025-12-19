@@ -27,13 +27,19 @@ namespace filament {
 
 class SamplerInterfaceBlock;
 
+// 采样器接口块生成器类，用于生成和管理采样器接口块（SIB）
 class SibGenerator {
 public:
+    // 获取每视图的采样器接口块（根据变体返回不同的SIB）
     static SamplerInterfaceBlock const& getPerViewSib(Variant variant) noexcept;
+    // 获取每个可渲染对象的采样器接口块
     static SamplerInterfaceBlock const& getPerRenderableSib(Variant variant) noexcept;
+    // 根据绑定点和变体获取采样器接口块
     static SamplerInterfaceBlock const* getSib(filament::DescriptorSetBindingPoints bindingPoint, Variant variant) noexcept;
     // When adding a sampler block here, make sure to also update
     //      FMaterial::getSurfaceProgramSlow and FMaterial::getPostProcessProgramSlow if needed
+    // 在此处添加采样器块时，如果需要，确保也更新
+    //      FMaterial::getSurfaceProgramSlow 和 FMaterial::getPostProcessProgramSlow
 };
 
 } // namespace filament

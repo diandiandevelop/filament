@@ -23,15 +23,26 @@
 
 namespace filament {
 
+/**
+ * 材质推送常量结构
+ * 描述材质中的一个推送常量（push constant）参数
+ */
 struct MaterialPushConstant {
-    using ShaderStage = backend::ShaderStage;
-    using ConstantType = backend::ConstantType;
+    using ShaderStage = backend::ShaderStage;        // 着色器阶段类型别名
+    using ConstantType = backend::ConstantType;      // 常量类型别名
 
-    utils::CString name;
-    ConstantType type;
-    ShaderStage stage;
+    utils::CString name;      // 推送常量名称
+    ConstantType type;        // 推送常量类型
+    ShaderStage stage;        // 适用的着色器阶段
 
+    // 默认构造函数
     MaterialPushConstant() = default;
+    /**
+     * 构造函数
+     * @param name 推送常量名称
+     * @param type 推送常量类型
+     * @param stage 适用的着色器阶段
+     */
     MaterialPushConstant(const char* name, ConstantType type, ShaderStage stage)
         : name(name),
           type(type),

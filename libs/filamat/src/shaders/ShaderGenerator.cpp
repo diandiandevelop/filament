@@ -47,31 +47,37 @@ using namespace filament;
 using namespace filament::backend;
 using namespace utils;
 
+// 生成表面材质变体相关的预处理器定义
 void ShaderGenerator::generateSurfaceMaterialVariantDefines(io::sstream& out,
         ShaderStage const stage, MaterialBuilder::FeatureLevel featureLevel,
         MaterialInfo const& material, filament::Variant const variant) noexcept {
 
+    // 判断是否有光照相关的变体
     bool const litVariants = material.isLit || material.hasShadowMultiplier;
 
+    // 生成变体相关的预处理器定义
     CodeGenerator::generateDefine(out, "VARIANT_HAS_DIRECTIONAL_LIGHTING",
-            litVariants && variant.hasDirectionalLighting());
+            litVariants && variant.hasDirectionalLighting());  // 是否有方向光
     CodeGenerator::generateDefine(out, "VARIANT_HAS_DYNAMIC_LIGHTING",
-            litVariants && variant.hasDynamicLighting());
+            litVariants && variant.hasDynamicLighting());  // 是否有动态光源
     CodeGenerator::generateDefine(out, "VARIANT_HAS_SHADOWING",
-            litVariants && filament::Variant::isShadowReceiverVariant(variant));
+            litVariants && filament::Variant::isShadowReceiverVariant(variant));  // 是否有阴影
     CodeGenerator::generateDefine(out, "VARIANT_HAS_VSM",
-            filament::Variant::isVSMVariant(variant));
+            filament::Variant::isVSMVariant(variant));  // 是否使用方差阴影贴图
     CodeGenerator::generateDefine(out, "VARIANT_HAS_STEREO",
-            hasStereo(variant, featureLevel));
+            hasStereo(variant, featureLevel));  // 是否有立体渲染
     CodeGenerator::generateDefine(out, "VARIANT_DEPTH",
-            filament::Variant::isValidDepthVariant(variant));
+            filament::Variant::isValidDepthVariant(variant));  // 是否是深度变体
 
+    // 根据着色器阶段生成特定的定义
     switch (stage) {
         case ShaderStage::VERTEX:
+        // 顶点着色器：检查是否有蒙皮或变形
         CodeGenerator::generateDefine(out, "VARIANT_HAS_SKINNING_OR_MORPHING",
                 hasSkinningOrMorphing(variant, featureLevel));
             break;
         case ShaderStage::FRAGMENT:
+            // 片段着色器：检查是否有雾效、拾取、屏幕空间反射
             CodeGenerator::generateDefine(out, "VARIANT_HAS_FOG",
                     filament::Variant::isFogVariant(variant));
             CodeGenerator::generateDefine(out, "VARIANT_HAS_PICKING",
@@ -84,23 +90,26 @@ void ShaderGenerator::generateSurfaceMaterialVariantDefines(io::sstream& out,
     }
 
     out << '\n';
-    CodeGenerator::generateDefine(out, "MATERIAL_FEATURE_LEVEL", uint32_t(featureLevel));
+    // 生成材质相关的预处理器定义
+    CodeGenerator::generateDefine(out, "MATERIAL_FEATURE_LEVEL", uint32_t(featureLevel));  // 功能级别
 
     CodeGenerator::generateDefine(out, "MATERIAL_HAS_SHADOW_MULTIPLIER",
-            material.hasShadowMultiplier);
+            material.hasShadowMultiplier);  // 是否有阴影倍增器
 
-    CodeGenerator::generateDefine(out, "MATERIAL_HAS_INSTANCES", material.instanced);
+    CodeGenerator::generateDefine(out, "MATERIAL_HAS_INSTANCES", material.instanced);  // 是否使用实例化
 
     CodeGenerator::generateDefine(out, "MATERIAL_HAS_VERTEX_DOMAIN_DEVICE_JITTERED",
-            material.vertexDomainDeviceJittered);
+            material.vertexDomainDeviceJittered);  // 顶点域设备抖动
 
     CodeGenerator::generateDefine(out, "MATERIAL_HAS_TRANSPARENT_SHADOW",
-            material.hasTransparentShadow);
+            material.hasTransparentShadow);  // 是否有透明阴影
 
     if (stage == ShaderStage::FRAGMENT) {
         // We only support both screen-space refractions and reflections at the same time.
         // And the MATERIAL_HAS_REFRACTION/MATERIAL_HAS_REFLECTIONS defines signify if
         // refraction/reflections are supported by the material.
+        // 我们只同时支持屏幕空间折射和反射。
+        // MATERIAL_HAS_REFRACTION/MATERIAL_HAS_REFLECTIONS定义表示材质是否支持折射/反射。
 
         CodeGenerator::generateDefine(out, "MATERIAL_HAS_REFRACTION",
                 material.refractionMode != RefractionMode::NONE);
@@ -206,17 +215,22 @@ void ShaderGenerator::generateSurfaceMaterialVariantDefines(io::sstream& out,
     }
 }
 
+// 生成表面材质变体属性相关的预处理器定义
+// @param out 输出流
+// @param properties 材质属性列表
+// @param defines 用户提供的预处理器定义列表
 void ShaderGenerator::generateSurfaceMaterialVariantProperties(io::sstream& out,
         MaterialBuilder::PropertyList const properties,
         const MaterialBuilder::PreprocessorDefineList& defines) noexcept {
 
+    // 遍历所有材质属性，生成属性定义
     UTILS_NOUNROLL
     for (size_t i = 0; i < MaterialBuilder::MATERIAL_PROPERTIES_COUNT; i++) {
         CodeGenerator::generateMaterialProperty(out,
                 static_cast<MaterialBuilder::Property>(i), properties[i]);
     }
 
-    // synthetic defines
+    // 合成定义：检查是否需要TBN（切线-副法线-法线）矩阵
     bool const hasTBN =
             properties[static_cast<int>(MaterialBuilder::Property::ANISOTROPY)]         ||
             properties[static_cast<int>(MaterialBuilder::Property::NORMAL)]             ||
@@ -225,12 +239,15 @@ void ShaderGenerator::generateSurfaceMaterialVariantProperties(io::sstream& out,
 
     CodeGenerator::generateDefine(out, "MATERIAL_NEEDS_TBN", hasTBN);
 
-    // Additional, user-provided defines.
+    // 添加用户提供的额外定义
     for (const auto& define : defines) {
         CodeGenerator::generateDefine(out, define.name.c_str(), define.value.c_str());
     }
 }
 
+// 生成顶点域相关的预处理器定义
+// @param out 输出流
+// @param domain 顶点域类型
 void ShaderGenerator::generateVertexDomainDefines(io::sstream& out, VertexDomain const domain) noexcept {
     switch (domain) {
         case VertexDomain::OBJECT:
@@ -248,6 +265,9 @@ void ShaderGenerator::generateVertexDomainDefines(io::sstream& out, VertexDomain
     }
 }
 
+// 生成后处理材质变体相关的预处理器定义
+// @param out 输出流
+// @param variant 后处理变体类型
 void ShaderGenerator::generatePostProcessMaterialVariantDefines(io::sstream& out,
         PostProcessVariant const variant) noexcept {
     switch (variant) {
@@ -260,9 +280,14 @@ void ShaderGenerator::generatePostProcessMaterialVariantDefines(io::sstream& out
     }
 }
 
+// 追加着色器代码到流中（处理行偏移，用于正确的错误报告）
+// @param ss 输出流
+// @param shader 要追加的着色器代码
+// @param lineOffset 行偏移量（用于#line指令）
 void ShaderGenerator::appendShader(io::sstream& ss,
         const CString& shader, size_t const lineOffset) noexcept {
 
+    // Lambda函数：计算字符串中的行数
     auto countLines = [](const char* s) -> size_t {
         size_t lines = 0;
         size_t i = 0;
@@ -273,24 +298,36 @@ void ShaderGenerator::appendShader(io::sstream& ss,
     };
 
     if (!shader.empty()) {
+        // 计算当前流中的行数
         size_t lines = countLines(ss.c_str());
+        // 添加#line指令，设置行偏移
         ss << "#line " << lineOffset + 1 << '\n';
+        // 追加着色器代码
         ss << shader.c_str();
+        // 如果着色器代码不以换行符结尾，添加换行符
         if (shader[shader.size() - 1] != '\n') {
             ss << "\n";
             lines++;
         }
-        // + 2 to account for the #line directives we just added
+        // 添加#line指令，恢复行号（+2以考虑我们刚添加的#line指令）
         ss << "#line " << lines + countLines(shader.c_str()) + 2 << "\n";
     }
 }
 
+// 生成用户指定的特殊化常量（specialization constants）
+// @param cg 代码生成器
+// @param fs 片段着色器输出流
+// @param constants 常量列表
+// Constants 0 to CONFIG_MAX_RESERVED_SPEC_CONSTANTS - 1 are reserved by Filament.
 void ShaderGenerator::generateUserSpecConstants(
         const CodeGenerator& cg, io::sstream& fs, MaterialBuilder::ConstantList const& constants) {
-    // Constants 0 to CONFIG_MAX_RESERVED_SPEC_CONSTANTS - 1 are reserved by Filament.
+    // 从保留常量之后的索引开始
     size_t index = CONFIG_MAX_RESERVED_SPEC_CONSTANTS;
+    // 遍历所有用户常量，生成特殊化常量定义
     for (const auto& constant : constants) {
+        // 生成完整的常量名称（添加前缀）
         std::string const fullName = std::string("materialConstants_") + constant.name.c_str();
+        // 根据常量类型生成相应的特殊化常量
         switch (constant.type) {
             case ConstantType::INT:
                 cg.generateSpecializationConstant(
@@ -310,6 +347,18 @@ void ShaderGenerator::generateUserSpecConstants(
 
 // ------------------------------------------------------------------------------------------------
 
+// 构造函数，初始化着色器生成器
+// @param properties 材质属性列表
+// @param variables 变量列表
+// @param outputs 输出列表
+// @param defines 预处理器定义列表
+// @param constants 常量列表
+// @param pushConstants 推送常量列表
+// @param materialCode 材质片段/计算着色器代码
+// @param lineOffset 材质代码行偏移
+// @param materialVertexCode 材质顶点着色器代码
+// @param vertexLineOffset 顶点着色器代码行偏移
+// @param materialDomain 材质域
 ShaderGenerator::ShaderGenerator(
         MaterialBuilder::PropertyList const& properties,
         MaterialBuilder::VariableList const& variables,
@@ -321,15 +370,18 @@ ShaderGenerator::ShaderGenerator(
         CString const& materialVertexCode, size_t const vertexLineOffset,
         MaterialBuilder::MaterialDomain const materialDomain) noexcept {
 
+    // 计算材质不应该有顶点着色器
     if (materialDomain == MaterialBuilder::MaterialDomain::COMPUTE) {
         // we shouldn't have a vertex shader in a compute material
         assert_invariant(materialVertexCode.empty());
     }
 
+    // 复制属性、变量和输出列表
     std::copy(std::begin(properties), std::end(properties), std::begin(mProperties));
     std::copy(std::begin(variables), std::end(variables), std::begin(mVariables));
     std::copy(std::begin(outputs), std::end(outputs), std::back_inserter(mOutputs));
 
+    // 保存材质代码和行偏移
     mMaterialFragmentCode = materialCode;
     mMaterialVertexCode = materialVertexCode;
     mIsMaterialVertexShaderEmpty = materialVertexCode.empty();
@@ -340,39 +392,53 @@ ShaderGenerator::ShaderGenerator(
     mConstants = constants;
     mPushConstants = pushConstants;
 
+    // 如果片段/计算着色器代码为空，生成默认代码
     if (mMaterialFragmentCode.empty()) {
         if (mMaterialDomain == MaterialBuilder::MaterialDomain::SURFACE) {
+            // 表面材质：生成默认的material函数
             mMaterialFragmentCode =
                     CString("void material(inout MaterialInputs m) {\n    prepareMaterial(m);\n}\n");
         } else if (mMaterialDomain == MaterialBuilder::MaterialDomain::POST_PROCESS) {
+            // 后处理材质：生成默认的postProcess函数
             mMaterialFragmentCode =
                     CString("void postProcess(inout PostProcessInputs p) {\n}\n");
         } else if (mMaterialDomain == MaterialBuilder::MaterialDomain::COMPUTE) {
+            // 计算材质：生成默认的compute函数
             mMaterialFragmentCode =
                     CString("void compute() {\n}\n");
         }
     }
+    // 如果顶点着色器代码为空，生成默认代码
     if (mMaterialVertexCode.empty()) {
         if (mMaterialDomain == MaterialBuilder::MaterialDomain::SURFACE) {
+            // 表面材质：生成默认的materialVertex函数
             mMaterialVertexCode =
                     CString("void materialVertex(inout MaterialVertexInputs m) {\n}\n");
         } else if (mMaterialDomain == MaterialBuilder::MaterialDomain::POST_PROCESS) {
+            // 后处理材质：生成默认的postProcessVertex函数
             mMaterialVertexCode =
                     CString("void postProcessVertex(inout PostProcessVertexInputs m) {\n}\n");
         }
     }
 }
 
+// 修复外部采样器（将外部采样器转换回常规采样器，用于优化后的着色器）
+// @param sm 着色器模型
+// @param shader 着色器代码（会被修改）
+// @param featureLevel 功能级别
+// @param material 材质信息
+// External samplers are only supported on GL ES at the moment, we must
+// skip the fixup on desktop targets
 void ShaderGenerator::fixupExternalSamplers(ShaderModel const sm, std::string& shader,
         MaterialBuilder::FeatureLevel const featureLevel,
         MaterialInfo const& material) noexcept {
-    // External samplers are only supported on GL ES at the moment, we must
-    // skip the fixup on desktop targets
+    // 外部采样器目前仅在GL ES上支持，必须在桌面目标上跳过修复
     if (material.hasExternalSamplers && sm == ShaderModel::MOBILE) {
         CodeGenerator::fixupExternalSamplers(shader, material.sib, featureLevel);
     }
 }
 
+// 创建表面顶点着色器程序
 std::string ShaderGenerator::createSurfaceVertexProgram(ShaderModel const shaderModel,
         MaterialBuilder::TargetApi const targetApi, MaterialBuilder::TargetLanguage const targetLanguage,
         MaterialBuilder::FeatureLevel const featureLevel,
@@ -508,6 +574,7 @@ std::string ShaderGenerator::createSurfaceVertexProgram(ShaderModel const shader
     return vs.c_str();
 }
 
+// 创建表面片段着色器程序
 std::string ShaderGenerator::createSurfaceFragmentProgram(ShaderModel const shaderModel,
         MaterialBuilder::TargetApi const targetApi, MaterialBuilder::TargetLanguage const targetLanguage,
         MaterialBuilder::FeatureLevel const featureLevel,
@@ -672,6 +739,7 @@ std::string ShaderGenerator::createSurfaceFragmentProgram(ShaderModel const shad
     return fs.c_str();
 }
 
+// 创建表面计算着色器程序
 std::string ShaderGenerator::createSurfaceComputeProgram(ShaderModel const shaderModel,
         MaterialBuilder::TargetApi const targetApi, MaterialBuilder::TargetLanguage const targetLanguage,
         MaterialBuilder::FeatureLevel const featureLevel,
@@ -715,6 +783,7 @@ std::string ShaderGenerator::createSurfaceComputeProgram(ShaderModel const shade
     return s.c_str();
 }
 
+// 创建后处理顶点着色器程序
 std::string ShaderGenerator::createPostProcessVertexProgram(ShaderModel const sm,
         MaterialBuilder::TargetApi const targetApi, MaterialBuilder::TargetLanguage const targetLanguage,
         MaterialBuilder::FeatureLevel const featureLevel,
@@ -759,6 +828,7 @@ std::string ShaderGenerator::createPostProcessVertexProgram(ShaderModel const sm
     return vs.c_str();
 }
 
+// 创建后处理片段着色器程序
 std::string ShaderGenerator::createPostProcessFragmentProgram(ShaderModel const sm,
         MaterialBuilder::TargetApi const targetApi, MaterialBuilder::TargetLanguage const targetLanguage,
         MaterialBuilder::FeatureLevel const featureLevel,
@@ -817,20 +887,30 @@ std::string ShaderGenerator::createPostProcessFragmentProgram(ShaderModel const 
     return fs.c_str();
 }
 
+// 检查变体是否具有蒙皮或变形功能
+// @param variant 着色器变体
+// @param featureLevel 功能级别
+// @return 如果变体具有蒙皮或变形且功能级别支持，返回true
+// HACK(exv): Ignore skinning/morphing variant when targeting ESSL 1.0. We should
+// either properly support skinning on FL0 or build a system in matc which allows
+// the set of included variants to differ per-feature level.
 bool ShaderGenerator::hasSkinningOrMorphing(
         filament::Variant const variant, MaterialBuilder::FeatureLevel const featureLevel) noexcept {
     return variant.hasSkinningOrMorphing()
-            // HACK(exv): Ignore skinning/morphing variant when targeting ESSL 1.0. We should
-            // either properly support skinning on FL0 or build a system in matc which allows
-            // the set of included variants to differ per-feature level.
+            // 当目标是ESSL 1.0时忽略蒙皮/变形变体（功能级别0不支持）
             && featureLevel > MaterialBuilder::FeatureLevel::FEATURE_LEVEL_0;
 }
 
+// 检查变体是否具有立体渲染功能
+// @param variant 着色器变体
+// @param featureLevel 功能级别
+// @return 如果变体具有立体渲染且功能级别支持，返回true
+// HACK(exv): Ignore stereo variant when targeting ESSL 1.0. We should properly build a
+// system in matc which allows the set of included variants to differ per-feature level.
 bool ShaderGenerator::hasStereo(
         filament::Variant const variant, MaterialBuilder::FeatureLevel const featureLevel) noexcept {
     return variant.hasStereo()
-            // HACK(exv): Ignore stereo variant when targeting ESSL 1.0. We should properly build a
-            // system in matc which allows the set of included variants to differ per-feature level.
+            // 当目标是ESSL 1.0时忽略立体渲染变体（功能级别0不支持）
             && featureLevel > MaterialBuilder::FeatureLevel::FEATURE_LEVEL_0;
 }
 

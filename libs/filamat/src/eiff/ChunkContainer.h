@@ -29,11 +29,13 @@ namespace filamat {
 
 class Flattener;
 
+// 块容器类，用于管理多个块（Chunk）的集合
 class ChunkContainer {
 public:
     ChunkContainer() = default;
     ~ChunkContainer() = default;
 
+    // 添加块到容器中（模板方法）
     template <typename T,
              std::enable_if_t<std::is_base_of<Chunk, T>::value, int> = 0,
              typename... Args>
@@ -44,17 +46,20 @@ public:
     }
 
     // Helper method to add a SimpleFieldChunk to this ChunkContainer.
+    // 辅助方法：向此ChunkContainer添加SimpleFieldChunk
     template <typename T, typename... Args>
     const SimpleFieldChunk<T>& emplace(Args&&... args) {
         return push<SimpleFieldChunk<T>>(std::forward<Args>(args)...);
     }
 
+    // 获取扁平化后的总大小（计算大小，不实际写入）
     size_t getSize() const;
+    // 将容器中的所有块扁平化到Flattener中
     size_t flatten(Flattener& f) const;
 
 private:
-    using ChunkPtr = std::unique_ptr<Chunk>;
-    std::vector<ChunkPtr> mChildren;
+    using ChunkPtr = std::unique_ptr<Chunk>;  // 块指针类型
+    std::vector<ChunkPtr> mChildren;          // 子块列表
 };
 
 } // namespace filamat

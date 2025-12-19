@@ -26,16 +26,18 @@
 
 namespace filamat {
 
+// Metal库字典块类，用于存储Metal库二进制数据的字典
 class DictionaryMetalLibraryChunk final : public Chunk {
 public:
+    // 构造函数，使用blob字典初始化
     explicit DictionaryMetalLibraryChunk(BlobDictionary&& dictionary);
     ~DictionaryMetalLibraryChunk() = default;
 
 private:
+    // 将块扁平化到Flattener中
     void flatten(Flattener& f) override;
 
-    BlobDictionary mDictionary;
-    bool mStripDebugInfo;
+    BlobDictionary mDictionary;    // Blob字典
 };
 
 } // namespace filamat

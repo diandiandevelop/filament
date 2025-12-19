@@ -25,22 +25,26 @@
 
 namespace filamat {
 
+// 块基类，表示材质包中的一个数据块
 class Chunk{
 public:
     virtual ~Chunk();
 
+    // 获取块类型
     ChunkType getType() const noexcept {
         return mType;
     }
 
+    // 将块扁平化到Flattener中（纯虚函数，子类必须实现）
     virtual void flatten(Flattener &f) = 0;
 
 protected:
+    // 受保护的构造函数，只能由子类调用
     explicit Chunk(ChunkType type) : mType(type) {
     }
 
 private:
-    ChunkType mType;
+    ChunkType mType;  // 块类型
 };
 
 } // namespace filamat

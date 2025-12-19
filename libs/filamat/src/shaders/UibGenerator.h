@@ -30,34 +30,42 @@ namespace filament {
 
 class BufferInterfaceBlock;
 
+// UBO生成器类，用于生成和管理统一缓冲区对象（UBO）
 class UibGenerator {
 public:
     // tag to represent a generated ubo.
+    // 表示生成的UBO的标签
     enum class Ubo : uint8_t {
-        FrameUniforms,              // uniforms updated per view
-        ObjectUniforms,             // uniforms updated per renderable
-        BonesUniforms,              // bones data, per renderable
-        MorphingUniforms,           // morphing uniform/sampler updated per render primitive
-        LightsUniforms,             // lights data array
-        ShadowUniforms,             // punctual shadow data
-        FroxelRecordUniforms,       // froxel records
-        FroxelsUniforms,            // froxels
-        MaterialParams,             // material instance ubo
+        FrameUniforms,              // uniforms updated per view - 每视图更新的统一变量
+        ObjectUniforms,             // uniforms updated per renderable - 每个可渲染对象更新的统一变量
+        BonesUniforms,              // bones data, per renderable - 骨骼数据，每个可渲染对象
+        MorphingUniforms,           // morphing uniform/sampler updated per render primitive - 变形统一变量/采样器，每个渲染基元更新
+        LightsUniforms,             // lights data array - 光源数据数组
+        ShadowUniforms,             // punctual shadow data - 点光源阴影数据
+        FroxelRecordUniforms,       // froxel records - froxel记录
+        FroxelsUniforms,            // froxels - froxel数据
+        MaterialParams,             // material instance ubo - 材质实例UBO
         // Update utils::Enum::count<>() below when adding values here
         // These are limited by CONFIG_BINDING_COUNT (currently 10)
         // When adding an UBO here, make sure to also update
         //      MaterialBuilder::writeCommonChunks() if needed
+        // 在此处添加值时，更新下面的utils::Enum::count<>()
+        // 这些受CONFIG_BINDING_COUNT限制（当前为10）
+        // 在此处添加UBO时，如果需要，确保也更新MaterialBuilder::writeCommonChunks()
     };
 
+    // 绑定信息结构，包含描述符集和绑定点
     struct Binding {
-        backend::descriptor_set_t set;
-        backend::descriptor_binding_t binding;
+        backend::descriptor_set_t set;        // 描述符集
+        backend::descriptor_binding_t binding; // 绑定点
     };
 
     // return the BufferInterfaceBlock for the given UBO tag
+    // 返回给定UBO标签的BufferInterfaceBlock
     static BufferInterfaceBlock const& get(Ubo ubo) noexcept;
 
     // return the {set, binding } for the given UBO tag
+    // 返回给定UBO标签的{set, binding}
     static Binding getBinding(Ubo ubo) noexcept;
 
     // deprecate these...

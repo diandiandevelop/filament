@@ -22,16 +22,19 @@
 
 namespace filamat {
 
+// 简单字段块类（模板类），用于存储单个简单类型的值
 template <class T>
 class SimpleFieldChunk final : public Chunk {
 public:
+    // 构造函数，使用块类型和值初始化
     SimpleFieldChunk(ChunkType type, T value) : Chunk(type), t(value) {}
     ~SimpleFieldChunk() = default;
 
 private:
+    // 将块扁平化到Flattener中
     void flatten(Flattener &f) override;
 
-    T t;
+    T t;  // 存储的值
 };
 
 } // namespace filamat

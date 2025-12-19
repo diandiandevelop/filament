@@ -24,9 +24,15 @@
 
 namespace filamat {
 
+// 压缩字符串块类，用于存储使用ZSTD压缩的字符串
 class CompressedStringChunk final : public Chunk {
 public:
+    // 压缩级别枚举
     enum class CompressionLevel { MIN, MAX, DEFAULT };
+    // 构造函数，使用块类型、字符串和压缩级别初始化
+    // @param type 块类型
+    // @param string 要压缩的字符串
+    // @param compressionLevel 压缩级别
     CompressedStringChunk(
             ChunkType type, std::string_view string, CompressionLevel compressionLevel)
             : Chunk(type),
@@ -35,9 +41,10 @@ public:
     ~CompressedStringChunk() override = default;
 
 private:
+    // 将块扁平化到Flattener中（使用ZSTD压缩字符串）
     void flatten(Flattener& f) override;
-    utils::CString mString;
-    CompressionLevel mCompressionLevel;
+    utils::CString mString;              // 要压缩的字符串
+    CompressionLevel mCompressionLevel;  // 压缩级别
 };
 
 } // namespace filamat

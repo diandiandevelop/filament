@@ -49,6 +49,13 @@ namespace filamat {
  * @param spirvDisassembly a reference to the SPIR-V disassembly, will be modified
  * @return true if the replacement was successful, false otherwise
  */
+// 修复SPIR-V反汇编文本中的裁剪距离装饰（将filament_gl_ClipDistance装饰为gl_ClipDistance内置变量）
+// glslang不支持EXT_clip_cull_distance扩展，直接写入gl_ClipDistance会导致错误
+// 为了解决这个问题，ES着色器应该写入filament_gl_ClipDistance，编译为SPIR-V后，此函数会修改SPIR-V反汇编
+// 并将filament_gl_ClipDistance装饰为gl_ClipDistance
+// 此函数仅应用于为ES环境生成的SPIR-V
+// @param spirvDisassembly SPIR-V反汇编文本的引用（将被修改）
+// @return 如果替换成功返回true，否则返回false
 bool fixupClipDistance(std::string& spirvDisassembly);
 
 }

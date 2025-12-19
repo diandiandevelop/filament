@@ -25,27 +25,32 @@
 
 namespace filamat {
 
+// 材质文本块类，用于存储文本着色器（如GLSL）的条目
 class MaterialTextChunk final : public Chunk {
 public:
+    // 构造函数，使用文本条目列表、行字典和块类型初始化
     MaterialTextChunk(const std::vector<TextEntry>&& entries, const LineDictionary& dictionary,
             ChunkType type) : Chunk(type), mEntries(entries), mDictionary(dictionary) {
     }
     ~MaterialTextChunk() override = default;
 
 private:
+    // 将块扁平化到Flattener中
     void flatten(Flattener& f) override;
 
+    // 写入条目属性（着色器模型、变体、阶段等）
     void writeEntryAttributes(size_t entryIndex, Flattener& f) const noexcept;
 
     // Structure to keep track of duplicates.
+    // 用于跟踪重复项的结构
     struct ShaderMapping {
-        bool isDup = false;
-        size_t dupOfIndex = 0;
+        bool isDup = false;      // 是否是重复项
+        size_t dupOfIndex = 0;   // 重复项的原始索引
     };
-    std::vector<ShaderMapping> mDuplicateMap;
+    std::vector<ShaderMapping> mDuplicateMap;  // 重复项映射表
 
-    const std::vector<TextEntry> mEntries;
-    const LineDictionary& mDictionary;
+    const std::vector<TextEntry> mEntries;  // 文本条目列表
+    const LineDictionary& mDictionary;      // 行字典引用（用于字典压缩）
 };
 
 } // namespace filamat

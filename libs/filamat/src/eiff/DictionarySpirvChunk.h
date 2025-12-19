@@ -26,16 +26,19 @@
 
 namespace filamat {
 
+// SPIR-V字典块类，用于存储SPIR-V二进制数据的字典
 class DictionarySpirvChunk final : public Chunk {
 public:
+    // 构造函数，使用blob字典和是否剥离调试信息标志初始化
     explicit DictionarySpirvChunk(BlobDictionary&& dictionary, bool stripDebugInfo);
     ~DictionarySpirvChunk() = default;
 
 private:
+    // 将块扁平化到Flattener中
     void flatten(Flattener& f) override;
 
-    BlobDictionary mDictionary;
-    bool mStripDebugInfo;
+    BlobDictionary mDictionary;    // Blob字典
+    bool mStripDebugInfo;          // 是否剥离调试信息
 };
 
 } // namespace filamat

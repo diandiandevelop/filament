@@ -18,14 +18,22 @@
 
 namespace filamat {
 
+// 构造函数，使用blob字典初始化
 DictionaryMetalLibraryChunk::DictionaryMetalLibraryChunk(BlobDictionary&& dictionary)
     : Chunk(ChunkType::DictionaryMetalLibrary), mDictionary(std::move(dictionary)) {}
 
+// 将块扁平化到Flattener中
+// @param f Flattener对象，用于写入数据
 void DictionaryMetalLibraryChunk::flatten(Flattener& f) {
+    // 写入blob数量
     f.writeUint32(mDictionary.getBlobCount());
+    // 遍历所有blob，写入blob数据
     for (size_t i = 0 ; i < mDictionary.getBlobCount() ; i++) {
+        // 获取blob
         std::string_view blob = mDictionary.getBlob(i);
+        // 写入对齐填充
         f.writeAlignmentPadding();
+        // 写入blob数据
         f.writeBlob((const char*) blob.data(), blob.size());
     }
 }

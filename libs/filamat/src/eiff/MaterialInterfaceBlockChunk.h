@@ -38,6 +38,7 @@ struct MaterialPushConstant;
 
 namespace filamat {
 
+// 材质统一接口块块类，用于存储材质统一接口块（UBO）信息
 class MaterialUniformInterfaceBlockChunk final : public Chunk {
 public:
     explicit MaterialUniformInterfaceBlockChunk(filament::BufferInterfaceBlock const& uib);
@@ -46,11 +47,12 @@ public:
 private:
     void flatten(Flattener&) override;
 
-    filament::BufferInterfaceBlock const& mUib;
+    filament::BufferInterfaceBlock const& mUib;  // 统一接口块引用
 };
 
 // ------------------------------------------------------------------------------------------------
 
+// 材质采样器接口块块类，用于存储材质采样器接口块（SIB）信息
 class MaterialSamplerInterfaceBlockChunk final : public Chunk {
 public:
     explicit MaterialSamplerInterfaceBlockChunk(filament::SamplerInterfaceBlock const& sib);
@@ -59,11 +61,12 @@ public:
 private:
     void flatten(Flattener&) override;
 
-    filament::SamplerInterfaceBlock const& mSib;
+    filament::SamplerInterfaceBlock const& mSib;  // 采样器接口块引用
 };
 
 // ------------------------------------------------------------------------------------------------
 
+// 材质子通道接口块块类，用于存储子通道信息
 class MaterialSubpassInterfaceBlockChunk final : public Chunk {
 public:
     explicit MaterialSubpassInterfaceBlockChunk(filament::SubpassInfo const& subpass);
@@ -72,11 +75,12 @@ public:
 private:
     void flatten(Flattener&) override;
 
-    filament::SubpassInfo const& mSubpass;
+    filament::SubpassInfo const& mSubpass;  // 子通道信息引用
 };
 
 // ------------------------------------------------------------------------------------------------
 
+// 材质常量参数块类，用于存储材质常量参数信息
 class MaterialConstantParametersChunk final : public Chunk {
 public:
     explicit MaterialConstantParametersChunk(
@@ -86,11 +90,12 @@ public:
 private:
     void flatten(Flattener&) override;
 
-    FixedCapacityVector<filament::MaterialConstant> mConstants;
+    FixedCapacityVector<filament::MaterialConstant> mConstants;  // 常量列表
 };
 
 // ------------------------------------------------------------------------------------------------
 
+// 材质推送常量参数块类，用于存储推送常量参数信息
 class MaterialPushConstantParametersChunk final : public Chunk {
 public:
     explicit MaterialPushConstantParametersChunk(CString const& structVarName,
@@ -100,12 +105,13 @@ public:
 private:
     void flatten(Flattener&) override;
 
-    CString mStructVarName;
-    FixedCapacityVector<filament::MaterialPushConstant> mConstants;
+    CString mStructVarName;  // 结构体变量名称
+    FixedCapacityVector<filament::MaterialPushConstant> mConstants;  // 推送常量列表
 };
 
 // ------------------------------------------------------------------------------------------------
 
+// 材质绑定统一变量信息块类，用于存储绑定统一变量信息
 class MaterialBindingUniformInfoChunk final : public Chunk {
     using Container = FixedCapacityVector<std::tuple<
             uint8_t, CString, filament::backend::Program::UniformInfo>>;
@@ -116,11 +122,12 @@ public:
 private:
     void flatten(Flattener &) override;
 
-    Container mBindingUniformInfo;
+    Container mBindingUniformInfo;  // 绑定统一变量信息列表（绑定点、名称、信息）
 };
 
 // ------------------------------------------------------------------------------------------------
 
+// 材质属性信息块类，用于存储材质属性信息
 class MaterialAttributesInfoChunk final : public Chunk {
     using Container = FixedCapacityVector<std::pair<CString, uint8_t>>;
 public:
@@ -130,11 +137,12 @@ public:
 private:
     void flatten(Flattener &) override;
 
-    Container mAttributeInfo;
+    Container mAttributeInfo;  // 属性信息列表（属性名称、位置）
 };
 
 // ------------------------------------------------------------------------------------------------
 
+// 材质描述符绑定块类，用于存储描述符绑定信息
 class MaterialDescriptorBindingsChuck final : public Chunk {
     using Container = filament::SamplerInterfaceBlock;
 public:
@@ -144,11 +152,12 @@ public:
 private:
     void flatten(Flattener&) override;
 
-    Container const& mSamplerInterfaceBlock;
+    Container const& mSamplerInterfaceBlock;  // 采样器接口块引用
 };
 
 // ------------------------------------------------------------------------------------------------
 
+// 材质描述符集布局块类，用于存储描述符集布局信息
 class MaterialDescriptorSetLayoutChunk final : public Chunk {
     using Container = filament::SamplerInterfaceBlock;
 public:
@@ -158,7 +167,7 @@ public:
 private:
     void flatten(Flattener&) override;
 
-    Container const& mSamplerInterfaceBlock;
+    Container const& mSamplerInterfaceBlock;  // 采样器接口块引用
 };
 
 } // namespace filamat

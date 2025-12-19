@@ -29,20 +29,24 @@
 
 namespace filamat {
 
+// 包类，用于存储材质数据的二进制包
 class UTILS_PUBLIC Package {
 public:
     Package() = default;
 
     // Regular constructor
+    // 常规构造函数，分配指定大小的内存
     explicit Package(size_t size) : mSize(size) {
         mPayload = new uint8_t[size];
     }
 
+    // 从现有数据构造包
     Package(const void* src, size_t size) : Package(size) {
         memcpy(mPayload, src, size);
     }
 
     // Move Constructor
+    // 移动构造函数
     Package(Package&& other) noexcept : mPayload(other.mPayload), mSize(other.mSize),
             mValid(other.mValid) {
         other.mPayload = nullptr;
@@ -51,6 +55,7 @@ public:
     }
 
     // Move assignment
+    // 移动赋值运算符
     Package& operator=(Package&& other) noexcept {
         std::swap(mPayload, other.mPayload);
         std::swap(mSize, other.mSize);
@@ -59,35 +64,43 @@ public:
     }
 
     // Copy assignment operator disallowed.
+    // 禁止复制赋值运算符
     Package& operator=(const Package& other) = delete;
 
     // Copy constructor disallowed.
+    // 禁止复制构造函数
     Package(const Package& other) = delete;
 
     ~Package() {
         delete[] mPayload;
     }
 
+    // 获取数据指针
     uint8_t* getData() const noexcept {
         return mPayload;
     }
 
+    // 获取数据大小
     size_t getSize() const noexcept {
         return mSize;
     }
 
+    // 获取数据结束位置的指针
     uint8_t* getEnd() const noexcept {
         return mPayload + mSize;
     }
 
+    // 设置包的有效性标志
     void setValid(bool valid) noexcept {
         mValid = valid;
     }
 
+    // 检查包是否有效
     bool isValid() const noexcept {
         return mValid;
     }
 
+    // 创建无效包（静态工厂方法）
     static Package invalidPackage() {
         Package package(0);
         package.setValid(false);
@@ -95,9 +108,9 @@ public:
     }
 
 private:
-    uint8_t* mPayload = nullptr;
-    size_t mSize = 0;
-    bool mValid = true;
+    uint8_t* mPayload = nullptr;  // 数据负载指针
+    size_t mSize = 0;              // 数据大小
+    bool mValid = true;            // 有效性标志
 };
 
 } // namespace filamat

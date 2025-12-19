@@ -60,6 +60,7 @@ struct MaterialInfo;
 struct Variant;
 class ChunkContainer;
 
+// 材质构建器基类，提供材质构建的通用功能和配置
 class UTILS_PUBLIC MaterialBuilderBase {
 public:
     /**
@@ -67,26 +68,29 @@ public:
      * generate GLSL) and final output representations (spirv and/or text).
      * When generating the GLSL this is used to differentiate OpenGL from OpenGLES, it is also
      * used to make some performance adjustments.
+     * 高级提示，与TargetApi协同工作以确定着色器模型（用于生成GLSL）和最终输出表示（spirv和/或文本）。
+     * 生成GLSL时，用于区分OpenGL和OpenGLES，也用于进行一些性能调整。
      */
     enum class Platform {
-        DESKTOP,
-        MOBILE,
-        ALL
+        DESKTOP,    // 桌面平台
+        MOBILE,     // 移动平台
+        ALL         // 所有平台
     };
 
     /**
      * TargetApi defines which language after transpilation will be used, it is used to
      * account for some differences between these languages when generating the GLSL.
+     * TargetApi定义转换后将使用哪种语言，在生成GLSL时用于考虑这些语言之间的一些差异。
      */
     enum class TargetApi : uint8_t {
-        OPENGL      = 0x01u,
-        VULKAN      = 0x02u,
-        METAL       = 0x04u,
-        WEBGPU        = 0x08u,
+        OPENGL      = 0x01u,  // OpenGL目标API
+        VULKAN      = 0x02u,  // Vulkan目标API
+        METAL       = 0x04u,  // Metal目标API
+        WEBGPU        = 0x08u,  // WebGPU目标API
 #ifdef FILAMENT_SUPPORTS_WEBGPU
-        ALL         = OPENGL | VULKAN | METAL | WEBGPU
+        ALL         = OPENGL | VULKAN | METAL | WEBGPU  // 所有API
 #else
-        ALL         = OPENGL | VULKAN | METAL
+        ALL         = OPENGL | VULKAN | METAL  // 所有API（不包括WEBGPU）
 #endif
     };
 
@@ -104,28 +108,43 @@ public:
      * release builds.
      *
      * Also note that glslang performs semantics analysis on whichever GLSL ends up being generated.
+     *
+     * 通常我们生成将被转换为SPIRV、优化然后转换到后端语言（如MSL、ESSL300、GLSL410或SPIRV）的GLSL，
+     * 在这种情况下，生成的GLSL使用ESSL310或GLSL450并具有Vulkan语义，必须使用TargetLanguage::SPIRV。
+     *
+     * 然而，在某些情况下（例如，当不要求优化时），我们直接生成*最终*GLSL，
+     * 这个GLSL必须是ESSL300或GLSL410，不能使用任何Vulkan语法，对于这种情况我们使用TargetLanguage::GLSL。
+     * 在这种情况下，TargetApi保证是OPENGL。
+     *
+     * 请注意TargetLanguage::GLSL不是常见情况，因为它通常在发布版本中不使用。
+     *
+     * 还要注意glslang对最终生成的任何GLSL执行语义分析。
      */
     enum class TargetLanguage {
-        GLSL,           // GLSL with OpenGL 4.1 / OpenGL ES 3.0 semantics
-        SPIRV           // GLSL with Vulkan semantics
+        GLSL,           // GLSL with OpenGL 4.1 / OpenGL ES 3.0 semantics - 具有OpenGL 4.1/OpenGL ES 3.0语义的GLSL
+        SPIRV           // GLSL with Vulkan semantics - 具有Vulkan语义的GLSL
     };
 
+    // 优化级别枚举
     enum class Optimization {
-        NONE,
-        PREPROCESSOR,
-        SIZE,
-        PERFORMANCE
+        NONE,           // 无优化
+        PREPROCESSOR,   // 预处理器优化
+        SIZE,           // 大小优化
+        PERFORMANCE     // 性能优化
     };
 
+    // 变通方案枚举（使用位掩码）
     enum class Workarounds : uint64_t {
-        NONE = 0,
-        ALL = 0xFFFFFFFFFFFFFFFF
+        NONE = 0,                                   // 无变通方案
+        ALL = 0xFFFFFFFFFFFFFFFF                    // 所有变通方案
     };
 
     /**
      * Initialize MaterialBuilder.
      *
      * init must be called first before building any materials.
+     * 初始化MaterialBuilder。
+     * 在构建任何材质之前必须先调用init。
      */
     static void init();
 
@@ -134,50 +153,58 @@ public:
      *
      * Call shutdown when finished building materials to release all internal resources. After
      * calling shutdown, another call to MaterialBuilder::init must precede another material build.
+     * 释放MaterialBuilder的内部资源。
+     * 在完成材质构建后调用shutdown以释放所有内部资源。调用shutdown后，
+     * 在另一个材质构建之前必须再次调用MaterialBuilder::init。
      */
     static void shutdown();
 
 protected:
     // Looks at platform and target API, then decides on shader models and output formats.
+    // 查看平台和目标API，然后决定着色器模型和输出格式
     void prepare(bool vulkanSemantics, filament::backend::FeatureLevel featureLevel);
 
-    using ShaderModel = filament::backend::ShaderModel;
-    Platform mPlatform = Platform::DESKTOP;
-    TargetApi mTargetApi = (TargetApi) 0;
-    Optimization mOptimization = Optimization::PERFORMANCE;
-    Workarounds mWorkarounds = Workarounds::ALL;
-    bool mPrintShaders = false;
-    bool mSaveRawVariants = false;
-    bool mGenerateDebugInfo = false;
-    bool mIncludeEssl1 = true;
-    utils::bitset32 mShaderModels;
+    using ShaderModel = filament::backend::ShaderModel;       // 着色器模型类型别名
+    Platform mPlatform = Platform::DESKTOP;                   // 目标平台
+    TargetApi mTargetApi = (TargetApi) 0;                     // 目标API
+    Optimization mOptimization = Optimization::PERFORMANCE;   // 优化级别
+    Workarounds mWorkarounds = Workarounds::ALL;              // 变通方案
+    bool mPrintShaders = false;                               // 是否打印着色器代码
+    bool mSaveRawVariants = false;                            // 是否保存原始变体
+    bool mGenerateDebugInfo = false;                          // 是否生成调试信息
+    bool mIncludeEssl1 = true;                                // 是否包含ESSL 1.0
+    utils::bitset32 mShaderModels;                            // 着色器模型位集合
+    // 代码生成参数结构
     struct CodeGenParams {
-        ShaderModel shaderModel;
-        TargetApi targetApi;
-        TargetLanguage targetLanguage;
-        filament::backend::FeatureLevel featureLevel;
+        ShaderModel shaderModel;                              // 着色器模型
+        TargetApi targetApi;                                  // 目标API
+        TargetLanguage targetLanguage;                        // 目标语言
+        filament::backend::FeatureLevel featureLevel;         // 功能级别
     };
-    std::vector<CodeGenParams> mCodeGenPermutations;
+    std::vector<CodeGenParams> mCodeGenPermutations;          // 代码生成排列组合列表
 
     // Keeps track of how many times MaterialBuilder::init() has been called without a call to
     // MaterialBuilder::shutdown(). Internally, glslang does something similar. We keep track for
     // ourselves, so we can inform the user if MaterialBuilder::init() hasn't been called before
     // attempting to build a material.
+    // 跟踪在没有调用MaterialBuilder::shutdown()的情况下MaterialBuilder::init()被调用了多少次。
+    // 在内部，glslang做类似的事情。我们自己跟踪，以便如果用户在尝试构建材质之前没有调用MaterialBuilder::init()，我们可以通知用户。
     static std::atomic<int> materialBuilderClients;
 };
 
 // Utility function that looks at an Engine backend to determine TargetApi
+// 根据Engine后端确定TargetApi的工具函数
 inline constexpr MaterialBuilderBase::TargetApi targetApiFromBackend(
         filament::backend::Backend backend) noexcept {
     using filament::backend::Backend;
     using TargetApi = MaterialBuilderBase::TargetApi;
     switch (backend) {
-        case Backend::DEFAULT: return TargetApi::ALL;
-        case Backend::OPENGL:  return TargetApi::OPENGL;
-        case Backend::VULKAN:  return TargetApi::VULKAN;
-        case Backend::METAL:   return TargetApi::METAL;
-        case Backend::WEBGPU:    return TargetApi::WEBGPU;
-        case Backend::NOOP:    return TargetApi::OPENGL;
+        case Backend::DEFAULT: return TargetApi::ALL;        // 默认返回所有API
+        case Backend::OPENGL:  return TargetApi::OPENGL;     // OpenGL后端
+        case Backend::VULKAN:  return TargetApi::VULKAN;     // Vulkan后端
+        case Backend::METAL:   return TargetApi::METAL;      // Metal后端
+        case Backend::WEBGPU:    return TargetApi::WEBGPU;   // WebGPU后端
+        case Backend::NOOP:    return TargetApi::OPENGL;     // NOOP后端（返回OpenGL）
     }
 }
 
@@ -235,91 +262,106 @@ public:
         // when adding more variables, make sure to update MATERIAL_VARIABLES_COUNT
     };
 
-    using MaterialDomain = filament::MaterialDomain;
-    using RefractionMode = filament::RefractionMode;
-    using RefractionType = filament::RefractionType;
-    using ReflectionMode = filament::ReflectionMode;
-    using VertexAttribute = filament::VertexAttribute;
+    // 使用filament命名空间中的类型别名
+    using MaterialDomain = filament::MaterialDomain;                    // 材质域
+    using RefractionMode = filament::RefractionMode;                    // 折射模式
+    using RefractionType = filament::RefractionType;                    // 折射类型
+    using ReflectionMode = filament::ReflectionMode;                    // 反射模式
+    using VertexAttribute = filament::VertexAttribute;                  // 顶点属性
 
-    using ShaderQuality = filament::ShaderQuality;
-    using BlendingMode = filament::BlendingMode;
-    using BlendFunction = filament::backend::BlendFunction;
-    using Shading = filament::Shading;
-    using Interpolation = filament::Interpolation;
-    using VertexDomain = filament::VertexDomain;
-    using TransparencyMode = filament::TransparencyMode;
-    using SpecularAmbientOcclusion = filament::SpecularAmbientOcclusion;
+    using ShaderQuality = filament::ShaderQuality;                      // 着色器质量
+    using BlendingMode = filament::BlendingMode;                        // 混合模式
+    using BlendFunction = filament::backend::BlendFunction;             // 混合函数
+    using Shading = filament::Shading;                                  // 着色模型
+    using Interpolation = filament::Interpolation;                      // 插值类型
+    using VertexDomain = filament::VertexDomain;                        // 顶点域
+    using TransparencyMode = filament::TransparencyMode;                // 透明模式
+    using SpecularAmbientOcclusion = filament::SpecularAmbientOcclusion; // 镜面环境光遮蔽
 
-    using AttributeType = filament::backend::UniformType;
-    using UniformType = filament::backend::UniformType;
-    using ConstantType = filament::backend::ConstantType;
-    using ConstantValue = filament::backend::ConstantValue;
-    using SamplerType = filament::backend::SamplerType;
-    using SubpassType = filament::backend::SubpassType;
-    using SamplerFormat = filament::backend::SamplerFormat;
-    using ParameterPrecision = filament::backend::Precision;
-    using Precision = filament::backend::Precision;
-    using CullingMode = filament::backend::CullingMode;
-    using FeatureLevel = filament::backend::FeatureLevel;
-    using StereoscopicType = filament::backend::StereoscopicType;
-    using ShaderStage = filament::backend::ShaderStage;
-    using ShaderStageFlags = filament::backend::ShaderStageFlags;
+    using AttributeType = filament::backend::UniformType;               // 属性类型
+    using UniformType = filament::backend::UniformType;                 // 统一变量类型
+    using ConstantType = filament::backend::ConstantType;               // 常量类型
+    using ConstantValue = filament::backend::ConstantValue;             // 常量值
+    using SamplerType = filament::backend::SamplerType;                 // 采样器类型
+    using SubpassType = filament::backend::SubpassType;                 // 子通道类型
+    using SamplerFormat = filament::backend::SamplerFormat;             // 采样器格式
+    using ParameterPrecision = filament::backend::Precision;            // 参数精度
+    using Precision = filament::backend::Precision;                     // 精度
+    using CullingMode = filament::backend::CullingMode;                 // 剔除模式
+    using FeatureLevel = filament::backend::FeatureLevel;               // 功能级别
+    using StereoscopicType = filament::backend::StereoscopicType;       // 立体类型
+    using ShaderStage = filament::backend::ShaderStage;                 // 着色器阶段
+    using ShaderStageFlags = filament::backend::ShaderStageFlags;       // 着色器阶段标志
 
+    // 变量限定符枚举
     enum class VariableQualifier : uint8_t {
-        OUT
+        OUT  // 输出限定符
     };
 
+    // 输出目标枚举
     enum class OutputTarget : uint8_t {
-        COLOR,
-        DEPTH
+        COLOR,  // 颜色输出
+        DEPTH   // 深度输出
     };
 
+    // 输出类型枚举
     enum class OutputType : uint8_t {
-        FLOAT,
-        FLOAT2,
-        FLOAT3,
-        FLOAT4
+        FLOAT,   // float类型
+        FLOAT2,  // float2类型
+        FLOAT3,  // float3类型
+        FLOAT4   // float4类型
     };
 
+    // 预处理器定义结构
     struct PreprocessorDefine {
-        std::string name;
-        std::string value;
+        std::string name;   // 定义名称
+        std::string value;  // 定义值
 
         PreprocessorDefine(std::string  name, std::string  value) :
                 name(std::move(name)), value(std::move(value)) {}
     };
-    using PreprocessorDefineList = std::vector<PreprocessorDefine>;
+    using PreprocessorDefineList = std::vector<PreprocessorDefine>;  // 预处理器定义列表
 
 
+    // 禁用采样器验证
     MaterialBuilder& noSamplerValidation(bool enabled) noexcept;
 
     //! Enable generation of ESSL 1.0 code in FL0 materials.
+    // 在FL0材质中启用ESSL 1.0代码生成
     MaterialBuilder& includeEssl1(bool enabled) noexcept;
 
     //! Set the name of this material.
+    // 设置此材质的名称
     MaterialBuilder& name(const char* name) noexcept;
 
     //! Set the file name of this material file. Used in error reporting.
+    // 设置此材质文件的文件名。用于错误报告
     MaterialBuilder& fileName(const char* name) noexcept;
 
     //! Set the commandline parameters of matc. Used for debugging purpose.
+    // 设置matc的命令行参数。用于调试目的
     MaterialBuilder& compilationParameters(const char* params) noexcept;
 
     //! Set the shading model.
+    // 设置着色模型
     MaterialBuilder& shading(Shading shading) noexcept;
 
     //! Set the interpolation mode.
+    // 设置插值模式
     MaterialBuilder& interpolation(Interpolation interpolation) noexcept;
 
     //! Add a parameter (i.e., a uniform) to this material.
+    // 向此材质添加参数（即统一变量）
     MaterialBuilder& parameter(const char* name, UniformType type,
             ParameterPrecision precision = ParameterPrecision::DEFAULT) noexcept;
 
     //! Add a parameter array to this material.
+    // 向此材质添加参数数组
     MaterialBuilder& parameter(const char* name, size_t size, UniformType type,
             ParameterPrecision precision = ParameterPrecision::DEFAULT);
 
     //! Add a constant parameter to this material.
+    // 向此材质添加常量参数
     template<typename T>
     using is_supported_constant_parameter_t = typename std::enable_if<
             std::is_same<int32_t, T>::value ||
@@ -332,6 +374,8 @@ public:
      * Add a sampler parameter to this material.
      *
      * When SamplerType::SAMPLER_EXTERNAL is specified, format and precision are ignored.
+     * 向此材质添加采样器参数。
+     * 当指定SamplerType::SAMPLER_EXTERNAL时，格式和精度将被忽略。
      */
     MaterialBuilder& parameter(const char* name, SamplerType samplerType,
             SamplerFormat format = SamplerFormat::FLOAT,
@@ -669,6 +713,7 @@ public:
     /**
      * Build the material. If you are using the Filament engine with this library, you should use
      * the job system provided by Engine.
+     * 构建材质。如果将此库与Filament引擎一起使用，应使用Engine提供的作业系统。
      */
     Package build(utils::JobSystem& jobSystem);
 

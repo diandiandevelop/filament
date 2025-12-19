@@ -23,15 +23,26 @@
 
 namespace filament {
 
+/**
+ * 材质常量结构
+ * 描述材质中的一个常量参数
+ */
 struct MaterialConstant {
-    using ConstantType = backend::ConstantType;
-    using ConstantValue = backend::ConstantValue;
+    using ConstantType = backend::ConstantType;      // 常量类型别名
+    using ConstantValue = backend::ConstantValue;    // 常量值类型别名
 
-    utils::CString name;
-    ConstantType type;
-    ConstantValue defaultValue;
+    utils::CString name;              // 常量名称
+    ConstantType type;                // 常量类型
+    ConstantValue defaultValue;       // 默认值
 
+    // 默认构造函数
     MaterialConstant() = default;
+    /**
+     * 构造函数
+     * @param name 常量名称
+     * @param type 常量类型
+     * @param defaultValue 默认值
+     */
     MaterialConstant(utils::CString name, ConstantType type, ConstantValue defaultValue)
             : name(std::move(name)), type(type), defaultValue(defaultValue) {}
 };

@@ -26,15 +26,18 @@
 
 namespace filamat {
 
+// 构造函数，使用行字典和块类型初始化
 DictionaryTextChunk::DictionaryTextChunk(LineDictionary&& dictionary, ChunkType const chunkType) :
         Chunk(chunkType), mDictionary(std::move(dictionary)) {
 }
 
+// 将块扁平化到Flattener中
+// @param f Flattener对象，用于写入数据
 void DictionaryTextChunk::flatten(Flattener& f) {
-    // NumStrings
+    // 写入字典中的字符串数量
     f.writeUint32(mDictionary.getDictionaryLineCount());
 
-    // Strings
+    // 遍历所有字符串，写入字符串内容
     for (LineDictionary::index_t i = 0, c = mDictionary.getDictionaryLineCount() ; i < c ; i++) {
         f.writeString(mDictionary.getString(i).data());
     }

@@ -21,7 +21,13 @@
 
 namespace filaflat {
 
+// 字典读取器结构，用于从ChunkContainer中读取字典数据
 struct DictionaryReader {
+    // 从容器中反序列化字典数据
+    // @param container 块容器
+    // @param dictionaryTag 字典标签（字典块类型）
+    // @param dictionary 输出字典，将填充字典数据
+    // @return 成功返回true，失败返回false
     static bool unflatten(ChunkContainer const& container,
             ChunkContainer::Type dictionaryTag,
             BlobDictionary& dictionary);

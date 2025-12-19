@@ -40,9 +40,16 @@ using VariantList = utils::bitset<uint64_t, VARIANT_COUNT / 64>;
 struct Variant {
     using type_t = uint8_t;
 
+    // 默认构造函数
     Variant() noexcept = default;
+    // 拷贝构造函数
     Variant(Variant const& rhs) noexcept = default;
+    // 拷贝赋值运算符
     Variant& operator=(Variant const& rhs) noexcept = default;
+    /**
+     * 从键值构造变体
+     * @param key 8位变体键值
+     */
     constexpr explicit Variant(type_t key) noexcept : key(key) { }
 
 
@@ -104,104 +111,172 @@ struct Variant {
     static constexpr type_t VSM   = 0x40; // 方差阴影贴图（深度变体）/ 采样器类型（标准变体）
     static constexpr type_t STE   = 0x80; // 实例化立体渲染
 
-    // special variants (variants that use the reserved space)
-    static constexpr type_t SPECIAL_SSR   = VSM | SRE; // screen-space reflections variant
+    // special variants (variants that use the reserved space) - 特殊变体（使用保留空间的变体）
+    static constexpr type_t SPECIAL_SSR   = VSM | SRE; // screen-space reflections variant - 屏幕空间反射变体
 
-    static constexpr type_t STANDARD_MASK      = DEP;
-    static constexpr type_t STANDARD_VARIANT   = 0u;
+    // 标准变体掩码和标准变体值
+    static constexpr type_t STANDARD_MASK      = DEP;      // 标准变体掩码（深度位）
+    static constexpr type_t STANDARD_VARIANT   = 0u;       // 标准变体值（DEP=0）
 
-    // the depth variant deactivates all variants that make no sense when writing the depth
-    // only -- essentially, all fragment-only variants.
-    static constexpr type_t DEPTH_MASK         = DEP | SRE | DYN | DIR;
-    static constexpr type_t DEPTH_VARIANT      = DEP;
+    // the depth variant deactivates all variants that make no sense when writing the depth - 深度变体会停用所有在仅写入深度时没有意义的变体
+    // only -- essentially, all fragment-only variants. - 本质上，所有仅片段着色器的变体
+    static constexpr type_t DEPTH_MASK         = DEP | SRE | DYN | DIR;  // 深度变体掩码
+    static constexpr type_t DEPTH_VARIANT      = DEP;                    // 深度变体值
 
-    // this mask filters out the lighting variants
-    static constexpr type_t UNLIT_MASK         = STE | SKN | FOG;
+    // this mask filters out the lighting variants - 此掩码过滤掉光照变体（用于无光照材质）
+    static constexpr type_t UNLIT_MASK         = STE | SKN | FOG;  // 无光照掩码（只保留立体、蒙皮、雾效）
 
-    // returns raw variant bits
-    bool hasDirectionalLighting() const noexcept { return key & DIR; }
-    bool hasDynamicLighting() const noexcept     { return key & DYN; }
-    bool hasSkinningOrMorphing() const noexcept  { return key & SKN; }
-    bool hasStereo() const noexcept              { return key & STE; }
+    // returns raw variant bits - 返回原始变体位（检查变体是否包含某个特性）
+    bool hasDirectionalLighting() const noexcept { return key & DIR; }  // 是否有方向光
+    bool hasDynamicLighting() const noexcept     { return key & DYN; }  // 是否有动态光源
+    bool hasSkinningOrMorphing() const noexcept  { return key & SKN; }  // 是否有蒙皮或变形
+    bool hasStereo() const noexcept              { return key & STE; }  // 是否有立体渲染
 
-    void setDirectionalLighting(bool v) noexcept { set(v, DIR); }
-    void setDynamicLighting(bool v) noexcept     { set(v, DYN); }
-    void setShadowReceiver(bool v) noexcept      { set(v, SRE); }
-    void setSkinning(bool v) noexcept            { set(v, SKN); }
-    void setFog(bool v) noexcept                 { set(v, FOG); }
-    void setPicking(bool v) noexcept             { set(v, PCK); }
-    void setVsm(bool v) noexcept                 { set(v, VSM); }
-    void setStereo(bool v) noexcept              { set(v, STE); }
+    // 设置变体标志位的方法
+    void setDirectionalLighting(bool v) noexcept { set(v, DIR); }  // 设置方向光标志
+    void setDynamicLighting(bool v) noexcept     { set(v, DYN); }  // 设置动态光源标志
+    void setShadowReceiver(bool v) noexcept      { set(v, SRE); }  // 设置阴影接收标志
+    void setSkinning(bool v) noexcept            { set(v, SKN); }  // 设置蒙皮标志
+    void setFog(bool v) noexcept                 { set(v, FOG); }  // 设置雾效标志
+    void setPicking(bool v) noexcept             { set(v, PCK); }  // 设置拾取标志
+    void setVsm(bool v) noexcept                 { set(v, VSM); }  // 设置VSM标志
+    void setStereo(bool v) noexcept              { set(v, STE); }  // 设置立体渲染标志
 
+    /**
+     * 检查是否为有效的深度变体
+     * @param variant 要检查的变体
+     * @return 如果是有效的深度变体则返回true
+     */
     static constexpr bool isValidDepthVariant(Variant variant) noexcept {
-        // Can't have VSM and PICKING together with DEPTH variants
-        constexpr type_t RESERVED_MASK  = VSM | PCK | DEP | SRE | DYN | DIR;
-        constexpr type_t RESERVED_VALUE = VSM | PCK | DEP;
+        // Can't have VSM and PICKING together with DEPTH variants - 深度变体不能同时有VSM和PICKING
+        constexpr type_t RESERVED_MASK  = VSM | PCK | DEP | SRE | DYN | DIR;  // 保留掩码
+        constexpr type_t RESERVED_VALUE = VSM | PCK | DEP;                    // 保留值（无效组合）
+        // 检查是否为深度变体且不是保留的无效组合
         return ((variant.key & DEPTH_MASK) == DEPTH_VARIANT) &&
                ((variant.key & RESERVED_MASK) != RESERVED_VALUE);
    }
 
+    /**
+     * 检查是否为有效的标准变体
+     * @param variant 要检查的变体
+     * @return 如果是有效的标准变体则返回true
+     */
     static constexpr bool isValidStandardVariant(Variant variant) noexcept {
-        // can't have shadow receiver if we don't have any lighting
-        constexpr type_t RESERVED0_MASK  = VSM | FOG | SRE | DYN | DIR;
-        constexpr type_t RESERVED0_VALUE = VSM | FOG | SRE;
+        // can't have shadow receiver if we don't have any lighting - 如果没有光照，不能有阴影接收
+        constexpr type_t RESERVED0_MASK  = VSM | FOG | SRE | DYN | DIR;  // 保留掩码0
+        constexpr type_t RESERVED0_VALUE = VSM | FOG | SRE;              // 保留值0（VSM+FOG+SRE无效）
 
-        // can't have shadow receiver if we don't have any lighting
-        constexpr type_t RESERVED1_MASK  = VSM | SRE | DYN | DIR;
-        constexpr type_t RESERVED1_VALUE = SRE;
+        // can't have shadow receiver if we don't have any lighting - 如果没有光照，不能有阴影接收
+        constexpr type_t RESERVED1_MASK  = VSM | SRE | DYN | DIR;  // 保留掩码1
+        constexpr type_t RESERVED1_VALUE = SRE;                    // 保留值1（只有SRE无效）
 
-        // can't have VSM without shadow receiver
-        constexpr type_t RESERVED2_MASK  = VSM | SRE;
-        constexpr type_t RESERVED2_VALUE = VSM;
+        // can't have VSM without shadow receiver - 没有阴影接收时不能有VSM
+        constexpr type_t RESERVED2_MASK  = VSM | SRE;  // 保留掩码2
+        constexpr type_t RESERVED2_VALUE = VSM;        // 保留值2（只有VSM无效）
 
+        // 检查是否为标准变体且不匹配任何保留的无效组合
         return ((variant.key & STANDARD_MASK) == STANDARD_VARIANT) &&
                ((variant.key & RESERVED0_MASK) != RESERVED0_VALUE) &&
                ((variant.key & RESERVED1_MASK) != RESERVED1_VALUE) &&
                ((variant.key & RESERVED2_MASK) != RESERVED2_VALUE);
     }
 
+    /**
+     * 检查是否为有效的顶点着色器变体
+     * @param variant 要检查的变体
+     * @return 如果是有效的顶点变体则返回true
+     */
     static constexpr bool isVertexVariant(Variant variant) noexcept {
         return filterVariantVertex(variant) == variant;
     }
 
+    /**
+     * 检查是否为有效的片段着色器变体
+     * @param variant 要检查的变体
+     * @return 如果是有效的片段变体则返回true
+     */
     static constexpr bool isFragmentVariant(Variant variant) noexcept {
         return filterVariantFragment(variant) == variant;
     }
 
+    /**
+     * 检查是否为保留变体（无效变体）
+     * @param variant 要检查的变体
+     * @return 如果是保留变体则返回true
+     */
     static constexpr bool isReserved(Variant variant) noexcept {
         return !isValid(variant);
     }
 
+    /**
+     * 检查是否为有效变体（标准或深度）
+     * @param variant 要检查的变体
+     * @return 如果是有效变体则返回true
+     */
     static constexpr bool isValid(Variant variant) noexcept {
         return isValidStandardVariant(variant) || isValidDepthVariant(variant);
     }
 
+    /**
+     * 检查是否为SSR（屏幕空间反射）变体
+     * @param variant 要检查的变体
+     * @return 如果是SSR变体则返回true
+     */
     static constexpr bool isSSRVariant(Variant variant) noexcept {
         return (variant.key & (STE | VSM | DEP | SRE | DYN | DIR)) == (VSM | SRE);
     }
 
+    /**
+     * 检查是否为VSM（方差阴影贴图）变体（排除SSR变体）
+     * @param variant 要检查的变体
+     * @return 如果是VSM变体则返回true
+     */
     static constexpr bool isVSMVariant(Variant variant) noexcept {
         return !isSSRVariant(variant) && ((variant.key & VSM) == VSM);
     }
 
+    /**
+     * 检查是否为阴影接收变体（排除SSR变体）
+     * @param variant 要检查的变体
+     * @return 如果是阴影接收变体则返回true
+     */
     static constexpr bool isShadowReceiverVariant(Variant variant) noexcept {
         return !isSSRVariant(variant) && ((variant.key & SRE) == SRE);
     }
 
+    /**
+     * 检查是否为雾效变体
+     * @param variant 要检查的变体
+     * @return 如果是雾效变体则返回true
+     */
     static constexpr bool isFogVariant(Variant variant) noexcept {
         return (variant.key & (FOG | DEP)) == FOG;
     }
 
+    /**
+     * 检查是否为拾取变体
+     * @param variant 要检查的变体
+     * @return 如果是拾取变体则返回true
+     */
     static constexpr bool isPickingVariant(Variant variant) noexcept {
         return (variant.key & (PCK | DEP)) == (PCK | DEP);
     }
 
+    /**
+     * 检查是否为立体渲染变体
+     * @param variant 要检查的变体
+     * @return 如果是立体渲染变体则返回true
+     */
     static constexpr bool isStereoVariant(Variant variant) noexcept {
         return (variant.key & STE) == STE;
     }
 
-    // 过滤出顶点着色器需要的变体位
-    // 过滤掉顶点着色器不需要的位（例如：雾效不影响顶点着色器）
+    /**
+     * 过滤出顶点着色器需要的变体位
+     * 过滤掉顶点着色器不需要的位（例如：雾效不影响顶点着色器）
+     * @param variant 原始变体
+     * @return 过滤后的顶点变体
+     */
     static constexpr Variant filterVariantVertex(Variant variant) noexcept {
         if ((variant.key & STANDARD_MASK) == STANDARD_VARIANT) {
             // 标准变体：顶点着色器只关心立体、蒙皮、阴影接收、动态光源、方向光
@@ -218,8 +293,12 @@ struct Variant {
         return {};
     }
 
-    // 过滤出片段着色器需要的变体位
-    // 过滤掉片段着色器不需要的位（例如：蒙皮不影响片段着色器）
+    /**
+     * 过滤出片段着色器需要的变体位
+     * 过滤掉片段着色器不需要的位（例如：蒙皮不影响片段着色器）
+     * @param variant 原始变体
+     * @return 过滤后的片段变体
+     */
     static constexpr Variant filterVariantFragment(Variant variant) noexcept {
         if ((variant.key & STANDARD_MASK) == STANDARD_VARIANT) {
             // 标准变体：片段着色器只关心 VSM、雾效、阴影接收、动态光源、方向光
@@ -232,10 +311,12 @@ struct Variant {
         return {};
     }
 
-    // 根据材质是否被光照过滤变体
-    // variant: 原始变体
-    // isLit: 材质是否为 Lit（光照）材质
-    // 返回：过滤后的变体（移除不需要的位）
+    /**
+     * 根据材质是否被光照过滤变体
+     * @param variant 原始变体
+     * @param isLit 材质是否为Lit（光照）材质
+     * @return 过滤后的变体（移除不需要的位）
+     */
     static constexpr Variant filterVariant(Variant variant, bool isLit) noexcept {
         // 深度变体的特殊情况
         if (isValidDepthVariant(variant)) {
@@ -261,33 +342,57 @@ struct Variant {
         return variant;
     }
 
+    // 相等比较运算符
     constexpr bool operator==(Variant rhs) const noexcept {
         return key == rhs.key;
     }
 
+    // 不等比较运算符
     constexpr bool operator!=(Variant rhs) const noexcept {
         return key != rhs.key;
     }
 
+    // 按位与运算符
     constexpr Variant operator & (type_t rhs) const noexcept {
         return Variant(key & rhs);
     }
 
+    /**
+     * 根据用户变体过滤器掩码过滤变体
+     * @param variant 原始变体
+     * @param filterMask 用户变体过滤器掩码
+     * @return 过滤后的变体
+     */
     static Variant filterUserVariant(
             Variant variant, UserVariantFilterMask filterMask) noexcept;
 
 private:
+    /**
+     * 设置变体标志位（私有辅助方法）
+     * @param v 要设置的值（true/false）
+     * @param mask 要设置的位掩码
+     */
     void set(bool v, type_t mask) noexcept {
+        // 清除掩码位，然后根据v的值设置或清除
         key = (key & ~mask) | (v ? mask : type_t(0));
     }
 };
 
 namespace VariantUtils {
-// list of lit variants
+/**
+ * list of lit variants - 获取有光照变体列表
+ * @return 有光照变体的切片
+ */
 utils::Slice<const Variant> getLitVariants() noexcept UTILS_PURE;
-// list of unlit variants
+/**
+ * list of unlit variants - 获取无光照变体列表
+ * @return 无光照变体的切片
+ */
 utils::Slice<const Variant> getUnlitVariants() noexcept UTILS_PURE;
-// list of depth variants
+/**
+ * list of depth variants - 获取深度变体列表
+ * @return 深度变体的切片
+ */
 utils::Slice<const Variant> getDepthVariants() noexcept UTILS_PURE;
 }
 

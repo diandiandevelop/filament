@@ -40,14 +40,19 @@ constexpr uint8_t FAKE_DRY_RUNNER_START_ADDR = 0x1;
 
 namespace filamat {
 
+// 扁平化器类，用于将数据序列化到内存缓冲区
 class Flattener {
 public:
+    // 构造函数，使用目标缓冲区初始化
     explicit Flattener(uint8_t* dst) : mCursor(dst), mStart(dst){}
 
     // DryRunner is used to compute the size of the flattened output but not actually carry out
     // flattening. If we set mStart = nullptr and mEnd=nullptr, we would hit an error about
     // offsetting on null when ubsan is enabled. Instead we point mStart to a fake address, and
     // mCursor is offset from that.
+    // DryRunner用于计算扁平化输出的大小，但不实际执行扁平化。
+    // 如果我们将mStart = nullptr和mEnd=nullptr，当启用ubsan时会出现关于在null上偏移的错误。
+    // 相反，我们将mStart指向一个假地址，mCursor从中偏移。
     static Flattener& getDryRunner() {
         static Flattener dryRunner = Flattener(nullptr);
         dryRunner.mStart = (uint8_t*) FAKE_DRY_RUNNER_START_ADDR;
@@ -58,17 +63,21 @@ public:
         return dryRunner;
     }
 
+    // 检查是否是DryRunner（仅计算大小，不实际写入）
     bool isDryRunner() {
         return mStart == (uint8_t*) FAKE_DRY_RUNNER_START_ADDR;
     }
 
+    // 获取起始指针
     uint8_t* getStartPtr() {
         return mStart;
     }
+    // 获取已写入的字节数
     size_t getBytesWritten() {
         return mCursor - mStart;
     }
 
+    // 写入bool值（小端序）
     void writeBool(bool b) {
         if (!isDryRunner()) {
             mCursor[0] = static_cast<uint8_t>(b);
@@ -76,6 +85,7 @@ public:
         mCursor += 1;
     }
 
+    // 写入uint8_t值
     void writeUint8(uint8_t i) {
         if (!isDryRunner()) {
             mCursor[0] = i;
@@ -83,6 +93,7 @@ public:
         mCursor += 1;
     }
 
+    // 写入uint16_t值（小端序）
     void writeUint16(uint16_t i) {
         if (!isDryRunner()) {
             mCursor[0] = static_cast<uint8_t>( i        & 0xff);
@@ -91,6 +102,7 @@ public:
         mCursor += 2;
     }
 
+    // 写入uint32_t值（小端序）
     void writeUint32(uint32_t i) {
         if (!isDryRunner()) {
             mCursor[0] = static_cast<uint8_t>( i        & 0xff);
@@ -101,6 +113,7 @@ public:
         mCursor += 4;
     }
 
+    // 写入uint64_t值（小端序）
     void writeUint64(uint64_t i) {
         if (!isDryRunner()) {
             mCursor[0] = static_cast<uint8_t>( i        & 0xff);
@@ -115,6 +128,7 @@ public:
         mCursor += 8;
     }
 
+    // 写入C风格字符串（以null结尾）
     void writeString(const char* str) {
         size_t const len = strlen(str);
         if (!isDryRunner()) {
@@ -123,6 +137,7 @@ public:
         mCursor += len + 1;
     }
 
+    // 写入string_view字符串（以null结尾）
     void writeString(std::string_view str) {
         size_t const len = str.length();
         if (!isDryRunner()) {
@@ -132,6 +147,7 @@ public:
         mCursor += len + 1;
     }
 
+    // 写入blob（二进制数据块），先写入大小，再写入数据
     void writeBlob(const char* blob, size_t nbytes) {
         writeUint64(nbytes);
         if (!isDryRunner()) {
@@ -140,6 +156,7 @@ public:
         mCursor += nbytes;
     }
 
+    // 写入原始数据（直接复制，不包含大小）
     void writeRaw(const char* raw, size_t nbytes) {
         if (!isDryRunner()) {
             memcpy(reinterpret_cast<char*>(mCursor), raw, nbytes);
@@ -147,6 +164,7 @@ public:
         mCursor += nbytes;
     }
 
+    // 写入大小占位符（稍后可用writeSize填充）
     void writeSizePlaceholder() {
         mSizePlaceholders.push_back(mCursor);
         if (!isDryRunner()) {
@@ -161,6 +179,8 @@ public:
     // This writes 0 to 7 (inclusive) zeroes, and the subsequent write is guaranteed to be on a
     // 8-byte boundary. Note that the reader must perform a similar calculation to figure out
     // how many bytes to skip.
+    // 写入0到7个（包含）零字节，后续写入保证在8字节边界上。
+    // 注意读取器必须执行类似的计算以确定要跳过多少字节。
     void writeAlignmentPadding() {
         const intptr_t offset = mCursor - mStart;
         const uint8_t padSize = (8 - (offset % 8)) % 8;
@@ -170,12 +190,14 @@ public:
         assert_invariant(0 == ((mCursor - mStart) % 8));
     }
 
+    // 填充之前写入的大小占位符，返回写入的大小
     uint32_t writeSize() {
         assert(!mSizePlaceholders.empty());
 
         uint8_t* dst = mSizePlaceholders.back();
         mSizePlaceholders.pop_back();
         // -4 to account for the 4 bytes we are about to write.
+        // -4以考虑我们要写入的4个字节
         uint32_t const size = static_cast<uint32_t>(mCursor - dst - 4);
         if (!isDryRunner()) {
             dst[0] = static_cast<uint8_t>( size        & 0xff);
@@ -186,6 +208,7 @@ public:
         return size;
     }
 
+    // 写入偏移量占位符（稍后可用writeOffsets填充）
     void writeOffsetPlaceholder(size_t index) {
         mOffsetPlaceholders.insert(std::pair<size_t, uint8_t*>(index, mCursor));
         if (!isDryRunner()) {
@@ -197,6 +220,7 @@ public:
         mCursor += 4;
     }
 
+    // 填充指定索引的偏移量占位符
     void writeOffsets(uint32_t forIndex) {
         if (isDryRunner()) {
             return;
@@ -208,6 +232,7 @@ public:
                 continue;
             }
             uint8_t* dst = pair.second;
+            // 计算从偏移基址到当前游标的偏移量
             size_t const offset = mCursor - mOffsetsBase;
             if (offset > UINT32_MAX) {
                 slog.e << "Unable to write offset greater than UINT32_MAX." << io::endl;
@@ -220,6 +245,7 @@ public:
         }
     }
 
+    // 写入值占位符（稍后可用writeValue填充）
     void writeValuePlaceholder() {
         mValuePlaceholders.push_back(mCursor);
         if (!isDryRunner()) {
@@ -231,6 +257,7 @@ public:
         mCursor += 4;
     }
 
+    // 填充之前写入的值占位符
     void writeValue(size_t v) {
         assert(!mValuePlaceholders.empty());
 
@@ -249,10 +276,12 @@ public:
         }
     }
 
+    // 重置偏移量占位符列表
     void resetOffsets() {
         mOffsetPlaceholders.clear();
     }
 
+    // 标记偏移量基址（用于后续计算相对偏移量）
     void markOffsetBase() {
         mOffsetsBase = mCursor;
     }

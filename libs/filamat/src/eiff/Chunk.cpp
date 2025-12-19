@@ -18,6 +18,7 @@
 
 namespace filamat {
 
+// 块基类析构函数（使用默认实现）
 Chunk::~Chunk() = default;
 
 } // namespace filamat

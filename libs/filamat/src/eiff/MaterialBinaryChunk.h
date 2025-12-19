@@ -24,15 +24,18 @@
 
 namespace filamat {
 
+// 材质二进制块类，用于存储二进制着色器（如SPIR-V、Metal库）的条目
 class MaterialBinaryChunk final : public Chunk {
 public:
+    // 构造函数，使用二进制条目列表和块类型初始化
     explicit MaterialBinaryChunk(const std::vector<BinaryEntry>&& entries, ChunkType type);
     ~MaterialBinaryChunk() = default;
 
 private:
+    // 将块扁平化到Flattener中
     void flatten(Flattener& f) override;
 
-    const std::vector<BinaryEntry> mEntries;
+    const std::vector<BinaryEntry> mEntries;  // 二进制条目列表
 };
 
 } // namespace filamat

@@ -26,17 +26,20 @@
 
 namespace filamat {
 
+// 推送常量结构体变量名称
 constexpr char PUSH_CONSTANT_STRUCT_VAR_NAME[] = "pushConstants";
 
+// 推送常量定义列表（定义材质中使用的推送常量）
 utils::FixedCapacityVector<filament::MaterialPushConstant> const PUSH_CONSTANTS = {
     {
-        "morphingBufferOffset",
-        filament::backend::ConstantType::INT,
-        filament::backend::ShaderStage::VERTEX,
+        "morphingBufferOffset",  // 形变缓冲区偏移量
+        filament::backend::ConstantType::INT,  // 整数类型
+        filament::backend::ShaderStage::VERTEX,  // 顶点着色器阶段
     },
 };
 
 // Make sure that the indices defined in filabridge match the actual array indices defined here.
+// 确保filabridge中定义的索引与此处定义的实际数组索引匹配
 static_assert(static_cast<uint8_t>(filament::PushConstantIds::MORPHING_BUFFER_OFFSET) == 0u);
 
 }// namespace filamat

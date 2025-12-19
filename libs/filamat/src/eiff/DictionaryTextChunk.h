@@ -26,17 +26,21 @@
 
 namespace filamat {
 
+// 文本字典块类，用于存储文本字典（用于文本着色器的字典压缩）
 class DictionaryTextChunk final : public Chunk {
 public:
+    // 构造函数，使用行字典和块类型初始化
     DictionaryTextChunk(LineDictionary&& dictionary, ChunkType chunkType);
     ~DictionaryTextChunk() = default;
 
+    // 获取字典引用
     const LineDictionary& getDictionary() const noexcept { return mDictionary; }
 
 private:
+    // 将块扁平化到Flattener中
     void flatten(Flattener& f) override;
 
-    const LineDictionary mDictionary;
+    const LineDictionary mDictionary;  // 行字典
 };
 
 } // namespace filamat

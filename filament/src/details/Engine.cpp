@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2015 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -1016,43 +1016,60 @@ void FEngine::shutdown() {
 
     /*
      * Destroy our own state first
+     * 首先销毁我们自己的状态
      */
 
+    // 释放后处理管理器资源
     mPostProcessManager.terminate(driver);  // free-up post-process manager resources
+    // 终止资源分配器并释放
     mResourceAllocatorDisposer->terminate();
     mResourceAllocatorDisposer.reset();
+    // 释放 DFG（分布函数）资源
     mDFG.terminate(*this);                  // free-up the DFG
+    // 释放所有可渲染对象
     mRenderableManager.terminate();         // free-up all renderables
+    // 释放所有光源
     mLightManager.terminate();              // free-up all lights
+    // 释放所有摄像机
     mCameraManager.terminate(*this);        // free-up all cameras
 
+    // 释放描述符堆布局
     mPerViewDescriptorSetLayoutDepthVariant.terminate(mHwDescriptorSetLayoutFactory, driver);
     mPerViewDescriptorSetLayoutSsrVariant.terminate(mHwDescriptorSetLayoutFactory, driver);
     mPerRenderableDescriptorSetLayout.terminate(mHwDescriptorSetLayoutFactory, driver);
 
+    // 销毁全屏三角形渲染图元
     driver.destroyRenderPrimitive(std::move(mFullScreenTriangleRph));
 
+    // 销毁全屏三角形索引缓冲区
     destroy(mFullScreenTriangleIb);
     mFullScreenTriangleIb = nullptr;
 
+    // 销毁全屏三角形顶点缓冲区
     destroy(mFullScreenTriangleVb);
     mFullScreenTriangleVb = nullptr;
 
+    // 销毁虚拟变形目标缓冲区
     destroy(mDummyMorphTargetBuffer);
     mDummyMorphTargetBuffer = nullptr;
 
+    // 销毁默认 IBL 纹理
     destroy(mDefaultIblTexture);
     mDefaultIblTexture = nullptr;
 
+    // 销毁默认 IBL（间接光）
     destroy(mDefaultIbl);
     mDefaultIbl = nullptr;
 
+    // 销毁默认颜色分级
     destroy(mDefaultColorGrading);
     mDefaultColorGrading = nullptr;
 
+    // 销毁默认材质
     destroy(mDefaultMaterial);
     mDefaultMaterial = nullptr;
 
+    // 销毁未保护的虚拟交换链
     destroy(mUnprotectedDummySwapchain);
     mUnprotectedDummySwapchain = nullptr;
 
@@ -1060,9 +1077,12 @@ void FEngine::shutdown() {
      * clean-up after the user -- we call terminate on each "leaked" object and clear each list.
      *
      * This should free up everything.
+     * 清理用户创建的资源 - 我们对每个"泄漏"的对象调用 terminate 并清空每个列表。
+     * 这应该释放所有资源。
      */
 
     // try to destroy objects in the inverse dependency
+    // 尝试按逆依赖顺序销毁对象（从依赖者到被依赖者）
     cleanupResourceList(std::move(mRenderers));
     cleanupResourceList(std::move(mViews));
     cleanupResourceList(std::move(mScenes));
@@ -1070,34 +1090,44 @@ void FEngine::shutdown() {
     cleanupResourceList(std::move(mColorGradings));
 
     // this must be done after Skyboxes and before materials
+    // 这必须在 Skyboxes 之后、Materials 之前完成（因为天空盒材质可能被天空盒使用）
     destroy(mSkyboxMaterial);
     mSkyboxMaterial = nullptr;
 
+    // 清理各种缓冲区资源
     cleanupResourceList(std::move(mBufferObjects));
     cleanupResourceList(std::move(mIndexBuffers));
     cleanupResourceList(std::move(mMorphTargetBuffers));
     cleanupResourceList(std::move(mSkinningBuffers));
     cleanupResourceList(std::move(mVertexBuffers));
+    // 清理纹理和渲染目标
     cleanupResourceList(std::move(mTextures));
     cleanupResourceList(std::move(mRenderTargets));
+    // 清理材质和实例缓冲区
     cleanupResourceList(std::move(mMaterials));
     cleanupResourceList(std::move(mInstanceBuffers));
+    // 清理所有材质实例（按材质分组）
     for (auto& item : mMaterialInstances) {
         cleanupResourceList(std::move(item.second));
     }
 
+    // 清理需要锁保护的资源（栅栏）
     cleanupResourceListLocked(mFenceListLock, std::move(mFences));
 
+    // 销毁虚拟纹理（用于未绑定的纹理槽）
     driver.destroyTexture(std::move(mDummyOneTexture));
     driver.destroyTexture(std::move(mDummyOneTextureArray));
     driver.destroyTexture(std::move(mDummyZeroTexture));
     driver.destroyTexture(std::move(mDummyZeroTextureArray));
     driver.destroyTexture(std::move(mDummyOneTextureArrayDepth));
 
+    // 销毁虚拟 uniform 缓冲区
     driver.destroyBufferObject(std::move(mDummyUniformBuffer));
 
+    // 销毁默认渲染目标
     driver.destroyRenderTarget(std::move(mDefaultRenderTarget));
 
+    // 如果启用 UBO 批处理，终止 UBO 管理器
     if (isUboBatchingEnabled()) {
         mUboManager->terminate(driver);
         delete mUboManager;
@@ -1106,35 +1136,47 @@ void FEngine::shutdown() {
 
     /*
      * Shutdown the backend...
+     * 关闭后端...
      */
 
     // There might be commands added by the `terminate()` calls, so we need to flush all commands
     // up to this point. After flushCommandBuffer() is called, all pending commands are guaranteed
     // to be executed before the driver thread exits.
+    // `terminate()` 调用可能添加了命令，因此我们需要刷新到此为止的所有命令。
+    // 调用 flushCommandBuffer() 后，保证所有待处理的命令在驱动线程退出前执行。
     flushCommandBuffer(mCommandBufferQueue);
 
     // now wait for all pending commands to be executed and the thread to exit
+    // 现在等待所有待处理的命令执行完成，线程退出
     mCommandBufferQueue.requestExit();
     if constexpr (!UTILS_HAS_THREADING) {
+        // 单线程模式：立即执行并终止
         execute();
         getDriverApi().terminate();
     } else {
+        // 多线程模式：等待驱动线程退出
         mDriverThread.join();
         // Driver::terminate() has been called here.
+        // Driver::terminate() 已在此处调用。
     }
 
     // Finally, call user callbacks that might have been scheduled.
     // These callbacks CANNOT call driver APIs.
+    // 最后，调用可能已调度的用户回调。
+    // 这些回调不能调用驱动 API。
     getDriver().purge();
 
     // and destroy the CommandStream
+    // 销毁命令流（DriverApi）
     std::destroy_at(std::launder(reinterpret_cast<DriverApi*>(&mDriverApiStorage)));
 
     /*
      * Terminate the JobSystem...
+     * 终止 JobSystem...
      */
 
     // detach this thread from the JobSystem
+    // 将此线程从 JobSystem 分离
     mJobSystem.emancipate();
 }
 
@@ -1490,75 +1532,177 @@ const FMaterial* FEngine::getSkyboxMaterial() const noexcept {
 
 /*
  * Object created from a Builder
+ * 从构建器创建的对象
  */
 
+/**
+ * 通用资源创建模板方法
+ * 
+ * 使用构建器创建资源对象并添加到资源列表。
+ * 
+ * @tparam T 资源类型
+ * @tparam ARGS 额外参数类型
+ * @param list 资源列表，用于跟踪创建的资源
+ * @param builder 构建器对象
+ * @param args 额外参数（转发给构造函数）
+ * @return 创建的资源指针，如果创建失败返回 nullptr
+ */
 template<typename T, typename ... ARGS>
 T* FEngine::create(ResourceList<T>& list,
         typename T::Builder const& builder, ARGS&& ... args) noexcept {
+    // 使用堆分配器创建对象
     T* p = mHeapAllocator.make<T>(*this, builder, std::forward<ARGS>(args)...);
     if (UTILS_LIKELY(p)) {
+        // 创建成功，添加到资源列表
         list.insert(p);
     }
     return p;
 }
 
+/**
+ * 创建缓冲区对象
+ * 
+ * @param builder 缓冲区对象构建器
+ * @return 创建的缓冲区对象指针
+ */
 FBufferObject* FEngine::createBufferObject(const BufferObject::Builder& builder) noexcept {
     return create(mBufferObjects, builder);
 }
 
+/**
+ * 创建顶点缓冲区
+ * 
+ * @param builder 顶点缓冲区构建器
+ * @return 创建的顶点缓冲区指针
+ */
 FVertexBuffer* FEngine::createVertexBuffer(const VertexBuffer::Builder& builder) noexcept {
     return create(mVertexBuffers, builder);
 }
 
+/**
+ * 创建索引缓冲区
+ * 
+ * @param builder 索引缓冲区构建器
+ * @return 创建的索引缓冲区指针
+ */
 FIndexBuffer* FEngine::createIndexBuffer(const IndexBuffer::Builder& builder) noexcept {
     return create(mIndexBuffers, builder);
 }
 
+/**
+ * 创建蒙皮缓冲区
+ * 
+ * @param builder 蒙皮缓冲区构建器
+ * @return 创建的蒙皮缓冲区指针
+ */
 FSkinningBuffer* FEngine::createSkinningBuffer(const SkinningBuffer::Builder& builder) noexcept {
     return create(mSkinningBuffers, builder);
 }
 
+/**
+ * 创建变形目标缓冲区
+ * 
+ * @param builder 变形目标缓冲区构建器
+ * @return 创建的变形目标缓冲区指针
+ */
 FMorphTargetBuffer* FEngine::createMorphTargetBuffer(const MorphTargetBuffer::Builder& builder) noexcept {
     return create(mMorphTargetBuffers, builder);
 }
 
+/**
+ * 创建实例缓冲区
+ * 
+ * @param builder 实例缓冲区构建器
+ * @return 创建的实例缓冲区指针
+ */
 FInstanceBuffer* FEngine::createInstanceBuffer(const InstanceBuffer::Builder& builder) noexcept {
     return create(mInstanceBuffers, builder);
 }
 
+/**
+ * 创建纹理
+ * 
+ * @param builder 纹理构建器
+ * @return 创建的纹理指针
+ */
 FTexture* FEngine::createTexture(const Texture::Builder& builder) noexcept {
     return create(mTextures, builder);
 }
 
+/**
+ * 创建间接光
+ * 
+ * @param builder 间接光构建器
+ * @return 创建的间接光指针
+ */
 FIndirectLight* FEngine::createIndirectLight(const IndirectLight::Builder& builder) noexcept {
     return create(mIndirectLights, builder);
 }
 
+/**
+ * 创建材质
+ * 
+ * @param builder 材质构建器
+ * @param definition 材质定义
+ * @return 创建的材质指针
+ */
 FMaterial* FEngine::createMaterial(const Material::Builder& builder,
         MaterialDefinition const& definition) noexcept {
     return create(mMaterials, builder, definition);
 }
 
+/**
+ * 创建天空盒
+ * 
+ * @param builder 天空盒构建器
+ * @return 创建的天空盒指针
+ */
 FSkybox* FEngine::createSkybox(const Skybox::Builder& builder) noexcept {
     return create(mSkyboxes, builder);
 }
 
+/**
+ * 创建颜色分级
+ * 
+ * @param builder 颜色分级构建器
+ * @return 创建的颜色分级指针
+ */
 FColorGrading* FEngine::createColorGrading(const ColorGrading::Builder& builder) noexcept {
     return create(mColorGradings, builder);
 }
 
+/**
+ * 创建流
+ * 
+ * @param builder 流构建器
+ * @return 创建的流指针
+ */
 FStream* FEngine::createStream(const Stream::Builder& builder) noexcept {
     return create(mStreams, builder);
 }
 
+/**
+ * 创建渲染目标
+ * 
+ * @param builder 渲染目标构建器
+ * @return 创建的渲染目标指针
+ */
 FRenderTarget* FEngine::createRenderTarget(const RenderTarget::Builder& builder) noexcept {
     return create(mRenderTargets, builder);
 }
 
 /*
  * Special cases
+ * 特殊情况
  */
 
+/**
+ * 创建渲染器
+ * 
+ * 渲染器不使用构建器，直接创建。
+ * 
+ * @return 创建的渲染器指针
+ */
 FRenderer* FEngine::createRenderer() noexcept {
     FRenderer* p = mHeapAllocator.make<FRenderer>(*this);
     if (UTILS_LIKELY(p)) {
@@ -1567,20 +1711,37 @@ FRenderer* FEngine::createRenderer() noexcept {
     return p;
 }
 
+/**
+ * 创建材质实例（从另一个实例复制）
+ * 
+ * @param material 材质指针
+ * @param other 要复制的材质实例
+ * @param name 材质实例名称（可选）
+ * @return 创建的材质实例指针
+ */
 FMaterialInstance* FEngine::createMaterialInstance(const FMaterial* material,
         const FMaterialInstance* other, const char* name) noexcept {
     FMaterialInstance* p = mHeapAllocator.make<FMaterialInstance>(*this, other, name);
     if (UTILS_LIKELY(p)) {
+        // 将材质实例添加到对应材质的实例列表中
         auto const pos = mMaterialInstances.emplace(material, "MaterialInstance");
         pos.first->second.insert(p);
     }
     return p;
 }
 
+/**
+ * 创建材质实例（新建）
+ * 
+ * @param material 材质指针
+ * @param name 材质实例名称（可选）
+ * @return 创建的材质实例指针
+ */
 FMaterialInstance* FEngine::createMaterialInstance(const FMaterial* material,
         const char* name) noexcept {
     FMaterialInstance* p = mHeapAllocator.make<FMaterialInstance>(*this, material, name);
     if (UTILS_LIKELY(p)) {
+        // 将材质实例添加到对应材质的实例列表中
         auto pos = mMaterialInstances.emplace(material, "MaterialInstance");
         pos.first->second.insert(p);
     }
@@ -1589,8 +1750,14 @@ FMaterialInstance* FEngine::createMaterialInstance(const FMaterial* material,
 
 /*
  * Objects created without a Builder
+ * 不使用构建器创建的对象
  */
 
+/**
+ * 创建场景
+ * 
+ * @return 创建的场景指针
+ */
 FScene* FEngine::createScene() noexcept {
     FScene* p = mHeapAllocator.make<FScene>(*this);
     if (UTILS_LIKELY(p)) {
@@ -1599,6 +1766,11 @@ FScene* FEngine::createScene() noexcept {
     return p;
 }
 
+/**
+ * 创建视图
+ * 
+ * @return 创建的视图指针
+ */
 FView* FEngine::createView() noexcept {
     FView* p = mHeapAllocator.make<FView>(*this);
     if (UTILS_LIKELY(p)) {
@@ -1607,21 +1779,40 @@ FView* FEngine::createView() noexcept {
     return p;
 }
 
+/**
+ * 创建栅栏
+ * 
+ * 栅栏用于同步 GPU 命令执行。
+ * 
+ * @return 创建的栅栏指针
+ */
 FFence* FEngine::createFence() noexcept {
     FFence* p = mHeapAllocator.make<FFence>(*this);
     if (UTILS_LIKELY(p)) {
+        // 栅栏列表需要锁保护（可能从不同线程访问）
         std::lock_guard const guard(mFenceListLock);
         mFences.insert(p);
     }
     return p;
 }
 
+/**
+ * 创建交换链（从原生窗口）
+ * 
+ * @param nativeWindow 原生窗口句柄
+ * @param flags 交换链标志
+ * @return 创建的交换链指针
+ */
 FSwapChain* FEngine::createSwapChain(void* nativeWindow, uint64_t flags) noexcept {
+    // 如果设置了 Apple CVPixelBuffer 标志，设置外部图像
     if (UTILS_UNLIKELY(flags & backend::SWAP_CHAIN_CONFIG_APPLE_CVPIXELBUFFER)) {
         // If this flag is set, then the nativeWindow is a CVPixelBufferRef.
         // The call to setupExternalImage is synchronous, and allows the driver to take ownership of
         // the buffer on this thread.
         // For non-Metal backends, this is a no-op.
+        // 如果设置了此标志，则 nativeWindow 是 CVPixelBufferRef。
+        // setupExternalImage 调用是同步的，允许驱动在此线程上获取缓冲区的所有权。
+        // 对于非 Metal 后端，这是空操作。
         getDriverApi().setupExternalImage(nativeWindow);
     }
     FSwapChain* p = mHeapAllocator.make<FSwapChain>(*this, nativeWindow, flags);
@@ -1631,6 +1822,14 @@ FSwapChain* FEngine::createSwapChain(void* nativeWindow, uint64_t flags) noexcep
     return p;
 }
 
+/**
+ * 创建交换链（指定尺寸）
+ * 
+ * @param width 交换链宽度
+ * @param height 交换链高度
+ * @param flags 交换链标志
+ * @return 创建的交换链指针
+ */
 FSwapChain* FEngine::createSwapChain(uint32_t width, uint32_t height, uint64_t flags) noexcept {
     FSwapChain* p = mHeapAllocator.make<FSwapChain>(*this, width, height, flags);
     if (UTILS_LIKELY(p)) {
@@ -1639,9 +1838,17 @@ FSwapChain* FEngine::createSwapChain(uint32_t width, uint32_t height, uint64_t f
     return p;
 }
 
+/**
+ * 创建同步对象
+ * 
+ * 同步对象用于跨线程同步。
+ * 
+ * @return 创建的同步对象指针
+ */
 FSync* FEngine::createSync() noexcept {
     FSync* p = mHeapAllocator.make<FSync>(*this);
     if (UTILS_LIKELY(p)) {
+        // 同步对象列表需要锁保护（可能从不同线程访问）
         std::lock_guard const guard(mSyncListLock);
         mSyncs.insert(p);
     }
@@ -1650,46 +1857,89 @@ FSync* FEngine::createSync() noexcept {
 
 /*
  * Objects created with a component manager
+ * 使用组件管理器创建的对象
  */
 
-
+/**
+ * 创建摄像机组件
+ * 
+ * @param entity 实体 ID
+ * @return 创建的摄像机指针
+ */
 FCamera* FEngine::createCamera(Entity const entity) noexcept {
     return mCameraManager.create(*this, entity);
 }
 
+/**
+ * 获取摄像机组件
+ * 
+ * @param entity 实体 ID
+ * @return 摄像机指针，如果实体没有摄像机组件返回 nullptr
+ */
 FCamera* FEngine::getCameraComponent(Entity const entity) noexcept {
     auto const ci = mCameraManager.getInstance(entity);
     return ci ? mCameraManager.getCamera(ci) : nullptr;
 }
 
+/**
+ * 销毁摄像机组件
+ * 
+ * @param entity 实体 ID
+ */
 void FEngine::destroyCameraComponent(Entity const entity) noexcept {
     mCameraManager.destroy(*this, entity);
 }
 
-
+/**
+ * 创建可渲染组件
+ * 
+ * 如果实体没有变换组件，会自动创建一个。
+ * 
+ * @param builder 可渲染组件构建器
+ * @param entity 实体 ID
+ */
 void FEngine::createRenderable(const RenderableManager::Builder& builder, Entity const entity) {
     mRenderableManager.create(builder, entity);
     auto& tcm = mTransformManager;
     // if this entity doesn't have a transform component, add one.
+    // 如果此实体没有变换组件，添加一个。
     if (!tcm.hasComponent(entity)) {
+        // 创建默认变换组件（单位矩阵）
         tcm.create(entity, 0, mat4f());
     }
 }
 
+/**
+ * 创建光源组件
+ * 
+ * @param builder 光源组件构建器
+ * @param entity 实体 ID
+ */
 void FEngine::createLight(const LightManager::Builder& builder, Entity const entity) {
     mLightManager.create(builder, entity);
 }
 
 // -----------------------------------------------------------------------------------------------
 
+/**
+ * 清理资源列表
+ * 
+ * 对列表中的每个资源调用 terminate() 并销毁。
+ * 用于清理"泄漏"的资源（用户忘记销毁的资源）。
+ * 
+ * @tparam T 资源类型
+ * @param list 资源列表（移动语义）
+ */
 template<typename T>
 UTILS_NOINLINE
 void FEngine::cleanupResourceList(ResourceList<T>&& list) {
     if (UTILS_UNLIKELY(!list.empty())) {
 #ifndef NDEBUG
+        // 调试模式下记录泄漏的资源数量
         DLOG(INFO) << "cleaning up " << list.size() << " leaked "
                    << CallStack::typeName<T>().c_str();
 #endif
+        // 遍历列表，终止并销毁每个资源
         list.forEach([this, &allocator = mHeapAllocator](T* item) {
             item->terminate(*this);
             allocator.destroy(item);
@@ -1697,10 +1947,23 @@ void FEngine::cleanupResourceList(ResourceList<T>&& list) {
         list.clear();
     }
 }
+
+/**
+ * 清理资源列表（带锁保护）
+ * 
+ * 在持有锁的情况下复制列表，然后正常清理。
+ * 用于需要线程安全的资源列表。
+ * 
+ * @tparam T 资源类型
+ * @tparam Lock 锁类型
+ * @param lock 锁对象
+ * @param list 资源列表（移动语义）
+ */
 template<typename T, typename Lock>
 UTILS_NOINLINE
 void FEngine::cleanupResourceListLocked(Lock& lock, ResourceList<T>&& list) {
     // copy the list with the lock held, then proceed as usual
+    // 在持有锁的情况下复制列表，然后正常处理
     lock.lock();
     auto copy(std::move(list));
     lock.unlock();
@@ -1709,6 +1972,16 @@ void FEngine::cleanupResourceListLocked(Lock& lock, ResourceList<T>&& list) {
 
 // -----------------------------------------------------------------------------------------------
 
+/**
+ * 验证资源指针是否有效
+ * 
+ * 检查指针是否在资源列表中。
+ * 
+ * @tparam T 资源类型
+ * @param ptr 资源指针
+ * @param list 资源列表
+ * @return 如果指针有效返回 true，否则返回 false
+ */
 template<typename T>
 UTILS_ALWAYS_INLINE
 bool FEngine::isValid(const T* ptr, ResourceList<T> const& list) const {
@@ -1716,19 +1989,32 @@ bool FEngine::isValid(const T* ptr, ResourceList<T> const& list) const {
     return l.find(ptr) != l.end();
 }
 
+/**
+ * 终止并销毁资源
+ * 
+ * 从资源列表中移除资源，调用 terminate()，然后销毁。
+ * 
+ * @tparam T 资源类型
+ * @param p 资源指针
+ * @param list 资源列表
+ * @return 如果成功销毁返回 true，如果指针无效或资源不存在返回 false
+ */
 template<typename T>
 UTILS_ALWAYS_INLINE
 bool FEngine::terminateAndDestroy(const T* p, ResourceList<T>& list) {
     if (p == nullptr) return true;
+    // 从列表中移除资源
     bool const success = list.remove(p);
 
 #if UTILS_HAS_RTTI
+    // 获取类型名称（用于错误消息）
     auto typeName = CallStack::typeName<T>();
     const char * const typeNameCStr = typeName.c_str();
 #else
     const char * const typeNameCStr = "<no-rtti>";
 #endif
 
+    // 如果成功移除，终止并销毁资源
     if (ASSERT_PRECONDITION_NON_FATAL(success,
             "Object %s at %p doesn't exist (double free?)", typeNameCStr, p)) {
         const_cast<T*>(p)->terminate(*this);
@@ -1737,21 +2023,36 @@ bool FEngine::terminateAndDestroy(const T* p, ResourceList<T>& list) {
     return success;
 }
 
+/**
+ * 终止并销毁资源（带锁保护）
+ * 
+ * 在持有锁的情况下从资源列表中移除资源，调用 terminate()，然后销毁。
+ * 
+ * @tparam T 资源类型
+ * @tparam Lock 锁类型
+ * @param lock 锁对象
+ * @param p 资源指针
+ * @param list 资源列表
+ * @return 如果成功销毁返回 true，如果指针无效或资源不存在返回 false
+ */
 template<typename T, typename Lock>
 UTILS_ALWAYS_INLINE
 bool FEngine::terminateAndDestroyLocked(Lock& lock, const T* p, ResourceList<T>& list) {
     if (p == nullptr) return true;
+    // 在持有锁的情况下从列表中移除资源
     lock.lock();
     bool const success = list.remove(p);
     lock.unlock();
 
 #if UTILS_HAS_RTTI
+    // 获取类型名称（用于错误消息）
     auto typeName = CallStack::typeName<T>();
     const char * const typeNameCStr = typeName.c_str();
 #else
     const char * const typeNameCStr = "<no-rtti>";
 #endif
 
+    // 如果成功移除，终止并销毁资源
     if (ASSERT_PRECONDITION_NON_FATAL(success,
             "Object %s at %p doesn't exist (double free?)", typeNameCStr, p)) {
         const_cast<T*>(p)->terminate(*this);
@@ -1852,11 +2153,21 @@ bool FEngine::destroy(const FInstanceBuffer* p){
     return terminateAndDestroy(p, mInstanceBuffers);
 }
 
+/**
+ * 销毁材质
+ * 
+ * 销毁材质并清理其所有材质实例。
+ * 
+ * @param p 材质指针
+ * @return 如果成功销毁返回 true，否则返回 false
+ */
 UTILS_NOINLINE
 bool FEngine::destroy(const FMaterial* p) {
     if (p == nullptr) return true;
+    // 销毁材质
     bool const success = terminateAndDestroy(p, mMaterials);
     if (UTILS_LIKELY(success)) {
+        // 清理该材质的所有材质实例
         auto const pos = mMaterialInstances.find(p);
         if (UTILS_LIKELY(pos != mMaterialInstances.cend())) {
             mMaterialInstances.erase(pos);
@@ -1865,24 +2176,38 @@ bool FEngine::destroy(const FMaterial* p) {
     return success;
 }
 
+/**
+ * 销毁材质实例
+ * 
+ * 在销毁前检查材质实例是否仍在使用中（被可渲染对象使用）。
+ * 如果仍在使用中且启用了断言，会触发断言。
+ * 
+ * @param p 材质实例指针
+ * @return 如果成功销毁返回 true，如果是默认实例或销毁失败返回 false
+ */
 UTILS_NOINLINE
 bool FEngine::destroy(const FMaterialInstance* p) {
     if (p == nullptr) return true;
 
     // Check that the material instance we're destroying is not in use in the RenderableManager
     // To do this, we currently need to inspect all render primitives in the RenderableManager
+    // 检查我们要销毁的材质实例是否仍在 RenderableManager 中使用
+    // 为此，我们需要检查 RenderableManager 中的所有渲染图元
     EntityManager const& em = mEntityManager;
     FRenderableManager const& rcm = mRenderableManager;
     Entity const* entities = rcm.getEntities();
     size_t const count = rcm.getComponentCount();
+    // 遍历所有可渲染实体
     for (size_t i = 0; i < count; i++) {
         Entity const entity = entities[i];
         if (em.isAlive(entity)) {
             RenderableManager::Instance const ri = rcm.getInstance(entity);
             size_t const primitiveCount = rcm.getPrimitiveCount(ri, 0);
+            // 检查每个图元的材质实例
             for (size_t j = 0; j < primitiveCount; j++) {
                 auto const* const mi = rcm.getMaterialInstanceAt(ri, 0, j);
                 auto const& featureFlags = features.engine.debug;
+                // 如果材质实例正在使用中，触发断言（如果启用）
                 FILAMENT_FLAG_GUARDED_CHECK_PRECONDITION(
                         mi != p,
                         featureFlags.assert_material_instance_in_use)
@@ -1893,16 +2218,26 @@ bool FEngine::destroy(const FMaterialInstance* p) {
         }
     }
 
+    // 不能销毁默认材质实例
     if (p->isDefaultInstance()) return false;
+    // 从对应材质的实例列表中移除并销毁
     auto const pos = mMaterialInstances.find(p->getMaterial());
     assert_invariant(pos != mMaterialInstances.cend());
     if (pos != mMaterialInstances.cend()) {
         return terminateAndDestroy(p, pos->second);
     }
     // this shouldn't happen, this would be double-free
+    // 这不应该发生，这将是双重释放
     return false;
 }
 
+/**
+ * 销毁实体
+ * 
+ * 销毁实体的所有组件（可渲染、光源、变换、摄像机）。
+ * 
+ * @param e 实体 ID
+ */
 UTILS_NOINLINE
 void FEngine::destroy(Entity const e) {
     mRenderableManager.destroy(e);
@@ -1947,24 +2282,47 @@ bool FEngine::isValid(const FMaterial* p) const {
     return isValid(p, mMaterials);
 }
 
+/**
+ * 验证材质实例是否有效（给定材质）
+ * 
+ * 首先验证材质是否有效，然后验证材质实例是否属于该材质。
+ * 
+ * @param m 材质指针
+ * @param p 材质实例指针
+ * @return 如果材质和材质实例都有效且材质实例属于该材质返回 true，否则返回 false
+ */
 bool FEngine::isValid(const FMaterial* m, const FMaterialInstance* p) const {
     // first make sure the material we're given is valid.
+    // 首先确保给定的材质有效
     if (!isValid(m)) {
         return false;
     }
 
     // then find the material instance list for that material
+    // 然后查找该材质的材质实例列表
     auto const it = mMaterialInstances.find(m);
     if (it == mMaterialInstances.end()) {
         // this could happen if this material has no material instances at all
+        // 如果该材质没有任何材质实例，可能发生这种情况
         return false;
     }
 
     // finally validate the material instance
+    // 最后验证材质实例
     return isValid(p, it->second);
 }
 
+/**
+ * 验证材质实例是否有效（昂贵版本）
+ * 
+ * 在所有材质的实例列表中搜索材质实例。
+ * 这是一个昂贵的操作，因为需要遍历所有材质。
+ * 
+ * @param p 材质实例指针
+ * @return 如果材质实例有效返回 true，否则返回 false
+ */
 bool FEngine::isValidExpensive(const FMaterialInstance* p) const {
+    // 在所有材质的实例列表中搜索
     return std::any_of(mMaterialInstances.cbegin(), mMaterialInstances.cend(),
             [this, p](auto&& entry) {
         return isValid(p, entry.second);
@@ -2028,13 +2386,31 @@ size_t FEngine::getSkyboxeCount() const noexcept { return mSkyboxes.size(); }
 size_t FEngine::getColorGradingCount() const noexcept { return mColorGradings.size(); }
 size_t FEngine::getRenderTargetCount() const noexcept { return mRenderTargets.size(); }
 
+/**
+ * 获取最大阴影贴图数量
+ * 
+ * 根据是否使用阴影图集返回不同的最大值。
+ * 
+ * @return 最大阴影贴图数量
+ */
 size_t FEngine::getMaxShadowMapCount() const noexcept {
     return features.engine.shadows.use_shadow_atlas ?
         CONFIG_MAX_SHADOWMAPS : CONFIG_MAX_SHADOW_LAYERS;
 }
 
+/**
+ * 流分配内存
+ * 
+ * 从驱动 API 分配临时内存，用于流操作。
+ * 只允许小分配（最大 64KB）。
+ * 
+ * @param size 分配大小（字节）
+ * @param alignment 对齐要求（字节）
+ * @return 分配的内存指针，如果分配失败或大小超过限制返回 nullptr
+ */
 void* FEngine::streamAlloc(size_t const size, size_t const alignment) noexcept {
     // we allow this only for small allocations
+    // 我们只允许小分配
     if (size > 65536) {
         return nullptr;
     }
@@ -2070,6 +2446,13 @@ bool FEngine::execute() {
     return true;  // 成功执行
 }
 
+/**
+ * 销毁 Engine 实例
+ * 
+ * 静态方法，用于正确关闭和销毁 Engine。
+ * 
+ * @param engine Engine 指针
+ */
 void FEngine::destroy(FEngine* engine) {
     if (engine) {
         engine->shutdown();
@@ -2077,19 +2460,45 @@ void FEngine::destroy(FEngine* engine) {
     }
 }
 
+/**
+ * 检查 Engine 是否暂停
+ * 
+ * @return 如果 Engine 已暂停返回 true，否则返回 false
+ */
 bool FEngine::isPaused() const noexcept {
     return mCommandBufferQueue.isPaused();
 }
 
+/**
+ * 设置 Engine 暂停状态
+ * 
+ * @param paused 是否暂停
+ */
 void FEngine::setPaused(bool const paused) {
     mCommandBufferQueue.setPaused(paused);
 }
 
+/**
+ * 获取支持的特性级别
+ * 
+ * 返回驱动支持的最高特性级别。
+ * 
+ * @return 支持的特性级别
+ */
 Engine::FeatureLevel FEngine::getSupportedFeatureLevel() const noexcept {
     DriverApi& driver = const_cast<FEngine*>(this)->getDriverApi();
     return driver.getFeatureLevel();
 }
 
+/**
+ * 设置激活的特性级别
+ * 
+ * 设置 Engine 使用的特性级别。不能超过驱动支持的特性级别，
+ * 且不能在运行时从特性级别 0 调整。
+ * 
+ * @param featureLevel 要设置的特性级别
+ * @return 实际设置的特性级别（取请求值和当前值的较大者）
+ */
 Engine::FeatureLevel FEngine::setActiveFeatureLevel(FeatureLevel featureLevel) {
     FILAMENT_CHECK_PRECONDITION(featureLevel <= getSupportedFeatureLevel())
             << "Feature level " << unsigned(featureLevel) << " not supported";
@@ -2098,21 +2507,40 @@ Engine::FeatureLevel FEngine::setActiveFeatureLevel(FeatureLevel featureLevel) {
     return (mActiveFeatureLevel = std::max(mActiveFeatureLevel, featureLevel));
 }
 
+/**
+ * 检查是否支持异步操作
+ * 
+ * @return 如果支持异步操作返回 true，否则返回 false
+ */
 bool FEngine::isAsynchronousOperationSupported() const noexcept {
     return features.backend.enable_asynchronous_operation &&
         mConfig.asynchronousMode != AsynchronousMode::NONE;
 }
 
 #if defined(__EMSCRIPTEN__)
+/**
+ * 重置后端状态
+ * 
+ * 仅在 Emscripten 平台可用。
+ * 重置后端到初始状态。
+ */
 void FEngine::resetBackendState() noexcept {
     getDriverApi().resetState();
 }
 #endif
 
+/**
+ * 切换到未保护上下文
+ * 
+ * 创建或使用虚拟交换链切换到未保护上下文。
+ * 用于某些需要未保护上下文的后端操作。
+ */
 void FEngine::unprotected() noexcept {
     if (UTILS_UNLIKELY(!mUnprotectedDummySwapchain)) {
+        // 创建虚拟交换链（1x1 像素）
         mUnprotectedDummySwapchain = createSwapChain(1, 1, 0);
     }
+    // 将虚拟交换链设为当前上下文
     mUnprotectedDummySwapchain->makeCurrent(getDriverApi());
 }
 
@@ -2170,6 +2598,7 @@ bool* FEngine::getFeatureFlagPtr(std::string_view name, bool const allowConstant
 
 // ------------------------------------------------------------------------------------------------
 
+// Engine::Builder 的默认构造函数和析构函数
 Engine::Builder::Builder() noexcept = default;
 Engine::Builder::~Builder() noexcept = default;
 Engine::Builder::Builder(Builder const& rhs) noexcept = default;
@@ -2177,41 +2606,96 @@ Engine::Builder::Builder(Builder&& rhs) noexcept = default;
 Engine::Builder& Engine::Builder::operator=(Builder const& rhs) noexcept = default;
 Engine::Builder& Engine::Builder::operator=(Builder&& rhs) noexcept = default;
 
+/**
+ * 设置后端类型
+ * 
+ * @param backend 后端类型（OpenGL、Vulkan、Metal 等）
+ * @return Builder 引用（支持链式调用）
+ */
 Engine::Builder& Engine::Builder::backend(Backend const backend) noexcept {
     mImpl->mBackend = backend;
     return *this;
 }
 
+/**
+ * 设置平台对象
+ * 
+ * @param platform 平台指针，如果为 nullptr 将创建默认平台
+ * @return Builder 引用（支持链式调用）
+ */
 Engine::Builder& Engine::Builder::platform(Platform* platform) noexcept {
     mImpl->mPlatform = platform;
     return *this;
 }
 
+/**
+ * 设置配置
+ * 
+ * @param config 配置指针，如果为 nullptr 使用默认配置
+ * @return Builder 引用（支持链式调用）
+ */
 Engine::Builder& Engine::Builder::config(Config const* config) noexcept {
     mImpl->mConfig = config ? *config : Config{};
     return *this;
 }
 
+/**
+ * 设置特性级别
+ * 
+ * @param featureLevel 特性级别
+ * @return Builder 引用（支持链式调用）
+ */
 Engine::Builder& Engine::Builder::featureLevel(FeatureLevel const featureLevel) noexcept {
     mImpl->mFeatureLevel = featureLevel;
     return *this;
 }
 
+/**
+ * 设置共享上下文
+ * 
+ * 用于多线程渲染场景，允许在不同线程间共享 OpenGL 上下文。
+ * 
+ * @param sharedContext 共享上下文指针
+ * @return Builder 引用（支持链式调用）
+ */
 Engine::Builder& Engine::Builder::sharedContext(void* sharedContext) noexcept {
     mImpl->mSharedContext = sharedContext;
     return *this;
 }
 
+/**
+ * 设置暂停状态
+ * 
+ * 如果设置为 true，Engine 创建后不会立即开始处理命令。
+ * 
+ * @param paused 是否暂停
+ * @return Builder 引用（支持链式调用）
+ */
 Engine::Builder& Engine::Builder::paused(bool const paused) noexcept {
     mImpl->mPaused = paused;
     return *this;
 }
 
+/**
+ * 设置特性标志
+ * 
+ * @param name 特性标志名称
+ * @param value 特性标志值
+ * @return Builder 引用（支持链式调用）
+ */
 Engine::Builder& Engine::Builder::feature(char const* name, bool const value) noexcept {
     mImpl->mFeatureFlags.emplace(name, value);
     return *this;
 }
 
+/**
+ * 批量设置特性标志
+ * 
+ * 将列表中的所有特性标志设置为 true。
+ * 
+ * @param list 特性标志名称列表
+ * @return Builder 引用（支持链式调用）
+ */
 Engine::Builder& Engine::Builder::features(std::initializer_list<char const *> const list) noexcept {
     for (auto const name : list) {
         if (name) {
@@ -2223,23 +2707,55 @@ Engine::Builder& Engine::Builder::features(std::initializer_list<char const *> c
 
 #if UTILS_HAS_THREADING
 
+/**
+ * 异步构建 Engine
+ * 
+ * 在单独线程中创建 Engine，并通过回调函数通知创建完成。
+ * 
+ * @param callback 回调函数，参数是创建的 Engine 指针
+ */
 void Engine::Builder::build(Invocable<void(void*)>&& callback) const {
     FEngine::create(*this, std::move(callback));
 }
 
 #endif
 
+/**
+ * 构建 Engine
+ * 
+ * 根据配置创建 Engine 实例。
+ * 
+ * @return 创建的 Engine 指针，如果创建失败返回 nullptr
+ */
 Engine* Engine::Builder::build() const {
+    // 验证并修正配置
     mImpl->mConfig = BuilderDetails::validateConfig(mImpl->mConfig);
     return FEngine::create(*this);
 }
 
+/**
+ * 验证并修正配置
+ * 
+ * 确保所有配置参数在合理范围内，并应用经验规则。
+ * 
+ * 验证规则：
+ * - 最小命令缓冲区大小：至少为构建系统默认值
+ * - 每帧命令大小：至少为构建系统默认值
+ * - 每渲染通道内存池大小：至少为构建系统默认值，且至少比每帧命令大小大 1MB
+ * - 命令缓冲区大小：至少为最小大小的 3 倍（支持 3 个并发帧）
+ * - 立体渲染眼睛数量：限制在 1 到最大眼睛数之间
+ * 
+ * @param config 配置对象
+ * @return 验证后的配置对象
+ */
 Engine::Config Engine::BuilderDetails::validateConfig(Config config) noexcept {
     // Rule of thumb: perRenderPassArenaMB must be roughly 1 MB larger than perFrameCommandsMB
+    // 经验规则：每渲染通道内存池大小必须大约比每帧命令大小大 1 MB
     constexpr uint32_t COMMAND_ARENA_OVERHEAD = 1;
     constexpr uint32_t CONCURRENT_FRAME_COUNT = 3;
 
     // Use at least the defaults set by the build system
+    // 至少使用构建系统设置的默认值
     config.minCommandBufferSizeMB = std::max(
             config.minCommandBufferSizeMB,
             uint32_t(FILAMENT_MIN_COMMAND_BUFFERS_SIZE_IN_MB)); // NOLINT(*-include-cleaner)
@@ -2252,18 +2768,22 @@ Engine::Config Engine::BuilderDetails::validateConfig(Config config) noexcept {
             config.perRenderPassArenaSizeMB,
             uint32_t(FILAMENT_PER_RENDER_PASS_ARENA_SIZE_IN_MB)); // NOLINT(*-include-cleaner)
 
+    // 命令缓冲区大小至少为最小大小的 3 倍（支持 3 个并发帧）
     config.commandBufferSizeMB = std::max(
             config.commandBufferSizeMB,
             config.minCommandBufferSizeMB * CONCURRENT_FRAME_COUNT);
 
     // Enforce pre-render-pass arena rule-of-thumb
+    // 强制执行每渲染通道内存池的经验规则
     config.perRenderPassArenaSizeMB = std::max(
             config.perRenderPassArenaSizeMB,
             config.perFrameCommandsSizeMB + COMMAND_ARENA_OVERHEAD);
 
     // This value gets validated during driver creation, so pass it through
+    // 此值在驱动创建时验证，因此直接传递
     config.driverHandleArenaSizeMB = config.driverHandleArenaSizeMB;
 
+    // 限制立体渲染眼睛数量在合理范围内
     config.stereoscopicEyeCount =
             std::clamp(config.stereoscopicEyeCount, uint8_t(1), CONFIG_MAX_STEREOSCOPIC_EYES);
 
